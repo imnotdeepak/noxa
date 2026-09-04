@@ -383,6 +383,7 @@ struct ContentView: View {
                 websiteCard
                 dailyLimitsCard
 
+                #if DEBUG
                 VStack(alignment: .leading, spacing: 14) {
                     Label("Validation controls", systemImage: "wrench.and.screwdriver")
                         .font(.headline)
@@ -437,6 +438,7 @@ struct ContentView: View {
                     }
                 }
                 .noxaCard()
+                #endif
             }
             .padding()
         }

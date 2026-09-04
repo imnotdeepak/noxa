@@ -21,6 +21,7 @@ final class FocusSessionService: ObservableObject {
 
     private let store: AppGroupStore
     private let center = DeviceActivityCenter()
+    private let authorizationCenter = AuthorizationCenter.shared
     private let settingsStore = ManagedSettingsStore(named: ManagedSettingsStore.Name("noxa.validation"))
     private let logger = Logger(subsystem: "LycheeCorp.Noxa", category: "session")
     private var reconciliationTask: Task<Void, Never>?
@@ -64,6 +65,10 @@ final class FocusSessionService: ObservableObject {
         websiteDomains: [String] = [],
         durationMinutes: Int = 15
     ) {
+        guard Self.isAuthorizationApproved(authorizationCenter.authorizationStatus) else {
+            errorMessage = "Screen Time access is required before starting a focus session."
+            return
+        }
         guard activeSession == nil else {
             errorMessage = "A focus session is already active."
             return
@@ -162,6 +167,23 @@ final class FocusSessionService: ObservableObject {
             return
         }
 
+        // Authorization can be revoked in Settings while Noxa is suspended.
+        // Apple's tokens are no longer enforceable after revocation, so do not
+        // leave a persisted session looking active or keep the blocklist lock.
+        if !Self.isAuthorizationApproved(authorizationCenter.authorizationStatus) {
+            if session.outcome == .active {
+                interrupt(
+                    session: session,
+                    message: "Screen Time access was revoked. Re-enable it to start another focus session."
+                )
+            } else if session.outcome == .startPending {
+                failPendingSession(session)
+            } else {
+                activeSession = nil
+            }
+            return
+        }
+
         guard session.outcome == .active else {
             if session.outcome == .startPending {
                 // A process termination can happen after the pending intent
@@ -191,6 +213,10 @@ final class FocusSessionService: ObservableObject {
                 try schedule(record: session)
             } catch {
                 errorMessage = "The active session needs attention: \(error.localizedDescription)"
+                interrupt(
+                    session: session,
+                    message: "The focus session could not be restored and was ended safely."
+                )
                 return
             }
         }
@@ -312,6 +338,45 @@ final class FocusSessionService: ObservableObject {
         } catch {
             errorMessage = "Restrictions were removed, but session reconciliation failed: \(error.localizedDescription)"
         }
+    }
+
+    private func failPendingSession(_ session: ActiveSessionRecord) {
+        center.stopMonitoring([NoxaDeviceActivityConfiguration.focusActivityName])
+        settingsStore.clearAllSettings()
+        store.clearFocusSessionRestrictions()
+        var failedSession = session
+        failedSession.outcome = .failedToStart
+        failedSession.lastCleanupAttemptAt = Date()
+        try? saveSnapshot(engineState: .idle, session: failedSession)
+        activeSession = nil
+    }
+
+    private func interrupt(session: ActiveSessionRecord, message: String) {
+        reconciliationTask?.cancel()
+        center.stopMonitoring([NoxaDeviceActivityConfiguration.focusActivityName])
+        settingsStore.clearAllSettings()
+        store.clearFocusSessionRestrictions()
+
+        var interruptedSession = session
+        interruptedSession.outcome = .interrupted
+        interruptedSession.actualDurationSeconds = Self.measuredDurationSeconds(
+            startedAt: session.startedAt,
+            endedAt: Date(),
+            plannedDurationSeconds: session.plannedDurationSeconds
+        )
+        interruptedSession.lastCleanupAttemptAt = Date()
+        try? saveSnapshot(engineState: .idle, session: interruptedSession)
+        activeSession = nil
+        errorMessage = message
+        logger.error("Interrupted focus session \(session.id.uuidString, privacy: .public): \(message, privacy: .public)")
+    }
+
+    private static func isAuthorizationApproved(_ status: AuthorizationStatus) -> Bool {
+        if status == .approved { return true }
+        if #available(iOS 26.4, *) {
+            return status == .approvedWithDataAccess
+        }
+        return false
     }
 
     private func saveSnapshot(

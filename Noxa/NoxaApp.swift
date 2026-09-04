@@ -88,7 +88,22 @@ struct NoxaApp: App {
                 }
             }
             .onChange(of: authentication.isAuthenticated) { isAuthenticated in
-                guard isAuthenticated else { return }
+                guard isAuthenticated else {
+                    // Do not let a request started for the previous account
+                    // publish data after sign-out.
+                    cloudSync.invalidatePendingWork()
+                    return
+                }
+                Task {
+                    await syncCloudDataIfAuthenticated()
+                }
+            }
+            .onChange(of: authentication.userID) { _ in
+                // A user switch can happen while `isAuthenticated` remains
+                // true. Invalidate the previous account's in-flight work and
+                // hydrate only the newly bound account.
+                cloudSync.invalidatePendingWork()
+                guard authentication.isAuthenticated else { return }
                 Task {
                     await syncCloudDataIfAuthenticated()
                 }
@@ -122,12 +137,17 @@ struct NoxaApp: App {
             history: focusSession.history,
             websiteDomains: websites.domains
         )
+        guard authentication.isAuthenticated, authentication.userID == userID else { return }
         applyCloudResult(prepared)
 
         if let synchronized = await cloudSync.sync(
             history: prepared.focusHistory,
             websiteDomains: prepared.websiteDomains
         ) {
+            // A sign-out or account switch may have happened while the network
+            // request was suspended. Never hydrate that result into the new
+            // account's local state.
+            guard authentication.isAuthenticated, authentication.userID == userID else { return }
             applyCloudResult(synchronized)
         }
     }

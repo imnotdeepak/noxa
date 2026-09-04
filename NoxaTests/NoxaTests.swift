@@ -55,6 +55,12 @@ struct NoxaTests {
         #expect(session.actualDurationSeconds == 120)
     }
 
+    @Test func endedEarlySessionDoesNotCountAsCompletedFocusStatistics() {
+        #expect(!SessionOutcome.endedEarly.countsTowardFocusStatistics)
+        #expect(SessionOutcome.completed.countsTowardFocusStatistics)
+        #expect(SessionOutcome.recoveredStale.countsTowardFocusStatistics)
+    }
+
     @Test @MainActor func measuredSessionDurationClampsToValidRange() {
         let start = Date(timeIntervalSince1970: 1_700_000_000)
 

@@ -158,6 +158,10 @@ final class CloudSyncService: ObservableObject {
     private let store: any CloudSyncStoring
     private var isSyncing = false
     private var queuedRequest: CloudSyncRequest?
+    /// Incremented whenever the authenticated account or local cloud state is
+    /// invalidated. In-flight requests capture this value and must not publish
+    /// or persist results after it changes.
+    private var syncGeneration = 0
 
     init(client: SupabaseClient? = nil, store: (any CloudSyncStoring)? = nil) {
         self.client = client ?? SupabaseProvider.client
@@ -263,8 +267,14 @@ final class CloudSyncService: ObservableObject {
 
         while true {
             queuedRequest = nil
+            let requestGeneration = syncGeneration
             if let result = await performSync(currentRequest) {
                 latestResult = result
+            } else if requestGeneration != syncGeneration {
+                // A result from an earlier pass belongs to an account/state
+                // that was invalidated while this pass was suspended. Do not
+                // return that stale result to a caller that might hydrate it.
+                latestResult = nil
             }
             guard let nextRequest = queuedRequest else {
                 return latestResult
@@ -275,10 +285,20 @@ final class CloudSyncService: ObservableObject {
     }
 
     func clearState() {
+        invalidatePendingWork()
         persist(CloudSyncState())
         boundUserID = nil
         status = .idle
         lastSuccessfulSyncAt = nil
+        errorMessage = nil
+    }
+
+    /// Invalidates an in-flight sync without deleting account caches. This is
+    /// used on sign-out/account changes; account deletion calls `clearState()`
+    /// afterwards to remove the durable metadata and caches.
+    func invalidatePendingWork() {
+        syncGeneration &+= 1
+        queuedRequest = nil
         errorMessage = nil
     }
 
@@ -323,16 +343,21 @@ final class CloudSyncService: ObservableObject {
     private func performSync(_ request: CloudSyncRequest) async -> CloudSyncMergeResult? {
         var preparedResult: CloudSyncMergeResult?
         var state = (try? store.loadCloudSyncState()) ?? CloudSyncState()
+        let generation = syncGeneration
+        var activeUserID: UUID?
 
         do {
             let session = try await client.auth.session
             let userID = session.user.id
+            activeUserID = userID
+            guard isCurrent(generation, userID: userID) else { return nil }
             let prepared = prepareLocalData(
                 for: userID,
                 history: request.history,
                 websiteDomains: request.websiteDomains
             )
             preparedResult = prepared
+            guard isCurrent(generation, userID: userID) else { return nil }
             state = (try? store.loadCloudSyncState()) ?? state
             state.pending = true
             state.lastAttemptAt = Date()
@@ -348,6 +373,7 @@ final class CloudSyncService: ObservableObject {
                     onConflict: "id"
                 )
                 .execute()
+            guard isCurrent(generation, userID: userID) else { return nil }
 
             let remoteWebsiteRows: [CloudWebsiteBlocklistRow] = try await client
                 .from("website_blocklist")
@@ -355,12 +381,14 @@ final class CloudSyncService: ObservableObject {
                 .eq("user_id", value: userID)
                 .execute()
                 .value
+            guard isCurrent(generation, userID: userID) else { return nil }
             let remoteFocusRows: [CloudFocusSessionRow] = try await client
                 .from("focus_sessions")
                 .select()
                 .eq("user_id", value: userID)
                 .execute()
                 .value
+            guard isCurrent(generation, userID: userID) else { return nil }
 
             var cache = loadCache(userID: userID)
             let mergedDomains = Self.mergedDomains(
@@ -379,6 +407,7 @@ final class CloudSyncService: ObservableObject {
                     params: WebsiteBlocklistSyncParameters(domains: mergedDomains)
                 )
                 .execute()
+            guard isCurrent(generation, userID: userID) else { return nil }
 
             let focusRows = mergedHistory.map {
                 CloudFocusSessionRow(userID: userID, record: $0)
@@ -389,6 +418,7 @@ final class CloudSyncService: ObservableObject {
                     .upsert(focusRows, onConflict: "id")
                     .execute()
             }
+            guard isCurrent(generation, userID: userID) else { return nil }
 
             cache.websiteDomains = mergedDomains
             cache.focusHistory = mergedHistory
@@ -405,11 +435,13 @@ final class CloudSyncService: ObservableObject {
             lastSuccessfulSyncAt = successfulAt
             errorMessage = nil
             status = .synced
+            guard isCurrent(generation, userID: userID) else { return nil }
             return CloudSyncMergeResult(
                 websiteDomains: mergedDomains,
                 focusHistory: mergedHistory
             )
         } catch {
+            guard isCurrent(generation, userID: activeUserID) else { return nil }
             state.pending = true
             state.lastError = error.localizedDescription
             persist(state)
@@ -417,6 +449,12 @@ final class CloudSyncService: ObservableObject {
             status = .failed
             return preparedResult
         }
+    }
+
+    private func isCurrent(_ generation: Int, userID: UUID? = nil) -> Bool {
+        guard !Task.isCancelled, generation == syncGeneration else { return false }
+        guard let userID else { return true }
+        return client.auth.currentSession?.user.id == userID
     }
 
     private func loadCache(userID: UUID) -> CloudAccountCache {

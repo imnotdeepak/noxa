@@ -29,9 +29,12 @@ enum SessionOutcome: String, Codable, Equatable, Sendable {
 
     var countsTowardFocusStatistics: Bool {
         switch self {
-        case .completed, .endedEarly, .recoveredStale:
+        // A session only contributes to completed-session stats when it
+        // reached its planned end. Ending early is retained in history but is
+        // intentionally treated as abandoned work.
+        case .completed, .recoveredStale:
             return true
-        case .startPending, .active, .failedToStart, .interrupted:
+        case .startPending, .active, .endedEarly, .failedToStart, .interrupted:
             return false
         }
     }
