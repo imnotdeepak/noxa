@@ -19,6 +19,7 @@ struct NoxaApp: App {
     @StateObject private var dailyLimits = DailyLimitService()
     @StateObject private var websites = WebsiteBlocklistService()
     @StateObject private var cloudSync = CloudSyncService()
+    @StateObject private var notifications = FocusNotificationService()
 
     private var hasActiveRestrictions: Bool {
         focusSession.isActive
@@ -71,6 +72,7 @@ struct NoxaApp: App {
             .environmentObject(dailyLimits)
             .environmentObject(websites)
             .environmentObject(cloudSync)
+            .environmentObject(notifications)
             .task {
                 await authentication.bootstrap()
                 await subscriptions.load()

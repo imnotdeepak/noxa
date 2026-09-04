@@ -15,6 +15,7 @@ struct ContentView: View {
     @EnvironmentObject private var dailyLimits: DailyLimitService
     @EnvironmentObject private var cloudSync: CloudSyncService
     @EnvironmentObject private var websites: WebsiteBlocklistService
+    @EnvironmentObject private var notifications: FocusNotificationService
     @StateObject private var authorization = FamilyControlsAuthorizationService()
     @State private var selectedDurationMinutes = NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes
     @State private var isRequestingAuthorization = false
@@ -26,6 +27,9 @@ struct ContentView: View {
     @State private var isDeleteAccountConfirmationPresented = false
     @State private var isCustomDuration = false
     @State private var customDurationMinutes = 30
+    @State private var isStartRitualPresented = false
+    @State private var isEndRitualPresented = false
+    @State private var isNotificationPromptPresented = false
 
     private var hasConfiguredRestrictions: Bool {
         restrictions.hasSelection || !websites.domains.isEmpty || dailyLimits.enabledCount > 0
@@ -124,6 +128,19 @@ struct ContentView: View {
             }
             .preferredColorScheme(.dark)
         }
+        .sheet(isPresented: $isStartRitualPresented) {
+            FocusStartRitualView(durationMinutes: chosenDurationMinutes) { intention in
+                beginFocusSession(intention: intention)
+            }
+        }
+        .fullScreenCover(isPresented: $isEndRitualPresented) {
+            EndSessionRitualView {
+                if let sessionID = focusSession.activeSession?.id {
+                    notifications.cancel(for: sessionID)
+                }
+                focusSession.endEarly()
+            }
+        }
         .task {
             authorization.refresh()
         }
@@ -136,6 +153,14 @@ struct ContentView: View {
             }
         } message: {
             Text("This permanently deletes your cloud account and Noxa data. Your App Store subscription must be cancelled separately in Apple settings.")
+        }
+        .alert("Get focus notifications?", isPresented: $isNotificationPromptPresented) {
+            Button("Not Now", role: .cancel) {}
+            Button("Allow Notifications") {
+                Task { await enableNotificationsForActiveSession() }
+            }
+        } message: {
+            Text("Noxa can remind you five minutes before a session ends and let you know when it is complete.")
         }
     }
 
@@ -234,11 +259,17 @@ struct ContentView: View {
                         Text("Your selected distractions are blocked until \(activeSession.plannedEndAt.formatted(date: .omitted, time: .shortened)).")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+
+                        if let intention = focusSession.activeIntention, !intention.isEmpty {
+                            Label(intention, systemImage: "scope")
+                                .font(.subheadline.weight(.medium))
+                                .padding(.top, 4)
+                        }
                     }
                 }
 
                 Button("End Session Early") {
-                    focusSession.endEarly()
+                    isEndRitualPresented = true
                 }
                 .buttonStyle(NoxaSecondaryButtonStyle())
             } else {
@@ -298,12 +329,7 @@ struct ContentView: View {
                 }
 
                 Button("Start Focus Session") {
-                    restrictions.persistSelection()
-                    focusSession.start(
-                        selection: restrictions.selection,
-                        websiteDomains: websites.domains,
-                        durationMinutes: isCustomDuration ? customDurationMinutes : selectedDurationMinutes
-                    )
+                    isStartRitualPresented = true
                 }
                 .buttonStyle(NoxaPrimaryButtonStyle())
                 .disabled(
@@ -612,7 +638,8 @@ struct ContentView: View {
     }
 
     private var statsContent: some View {
-        ScrollView {
+        let statistics = FocusStatistics(history: focusSession.history)
+        return ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Build a calmer day.")
@@ -622,9 +649,25 @@ struct ContentView: View {
                 }
 
                 HStack(spacing: 12) {
-                    statCard(title: "Sessions", value: "\(focusSession.completedSessionCount)")
-                    statCard(title: "Focus time", value: "\(focusSession.completedFocusMinutes)m")
+                    statCard(title: "Sessions", value: "\(statistics.completedSessions)")
+                    statCard(title: "This week", value: "\(statistics.weeklyFocusMinutes)m")
                 }
+
+                HStack(spacing: 12) {
+                    statCard(title: "Current streak", value: "\(statistics.currentStreak)d")
+                    statCard(title: "Longest streak", value: "\(statistics.longestStreak)d")
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("Follow-through", systemImage: "chart.line.uptrend.xyaxis")
+                        .font(.headline)
+                    Text("\(statistics.completionRate)% completion rate")
+                        .font(.title2.weight(.semibold))
+                    Text("\(statistics.completedSessions) completed · \(statistics.abandonedSessions) ended early")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .noxaCard()
 
                 recentSessionsCard
             }
@@ -793,6 +836,35 @@ struct ContentView: View {
         )
     }
 
+    private var chosenDurationMinutes: Int {
+        isCustomDuration ? customDurationMinutes : selectedDurationMinutes
+    }
+
+    private func beginFocusSession(intention: String) {
+        restrictions.persistSelection()
+        focusSession.start(
+            selection: restrictions.selection,
+            websiteDomains: websites.domains,
+            durationMinutes: chosenDurationMinutes,
+            intention: intention
+        )
+        guard let session = focusSession.activeSession else { return }
+        Task {
+            await notifications.refreshAuthorizationStatus()
+            if notifications.canSchedule {
+                await notifications.schedule(for: session)
+            } else if notifications.authorizationStatus == .notDetermined {
+                isNotificationPromptPresented = true
+            }
+        }
+    }
+
+    private func enableNotificationsForActiveSession() async {
+        guard await notifications.requestAuthorization(),
+              let session = focusSession.activeSession else { return }
+        await notifications.schedule(for: session)
+    }
+
     private func statCard(title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(value)
@@ -820,7 +892,7 @@ struct ContentView: View {
     }
 }
 
-private struct NoxaPrimaryButtonStyle: ButtonStyle {
+struct NoxaPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.body.weight(.semibold))
@@ -833,7 +905,7 @@ private struct NoxaPrimaryButtonStyle: ButtonStyle {
     }
 }
 
-private struct NoxaSecondaryButtonStyle: ButtonStyle {
+struct NoxaSecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.body.weight(.semibold))
@@ -959,4 +1031,5 @@ private extension CloudSyncService {
         .environmentObject(DailyLimitService())
         .environmentObject(WebsiteBlocklistService())
         .environmentObject(CloudSyncService())
+        .environmentObject(FocusNotificationService())
 }

@@ -18,6 +18,7 @@ final class FocusSessionService: ObservableObject {
     @Published private(set) var activeSession: ActiveSessionRecord?
     @Published private(set) var history: [ActiveSessionRecord]
     @Published private(set) var errorMessage: String?
+    @Published private(set) var activeIntention: String?
 
     private let store: AppGroupStore
     private let center = DeviceActivityCenter()
@@ -31,8 +32,10 @@ final class FocusSessionService: ObservableObject {
         let snapshot = try? self.store.loadSnapshot()
         activeSession = snapshot?.activeSession
         history = snapshot?.sessionHistory ?? []
+        activeIntention = ((try? self.store.loadFocusSessionRestrictions()) ?? nil)?.intention
         if activeSession?.outcome != .active {
             activeSession = nil
+            activeIntention = nil
         }
     }
 
@@ -63,7 +66,8 @@ final class FocusSessionService: ObservableObject {
     func start(
         selection: FamilyActivitySelection,
         websiteDomains: [String] = [],
-        durationMinutes: Int = 15
+        durationMinutes: Int = 15,
+        intention: String? = nil
     ) {
         guard Self.isAuthorizationApproved(authorizationCenter.authorizationStatus) else {
             errorMessage = "Screen Time access is required before starting a focus session."
@@ -91,7 +95,8 @@ final class FocusSessionService: ObservableObject {
         )
         let restrictionConfiguration = FocusSessionRestrictionConfiguration(
             selection: selection,
-            websiteDomains: websiteDomains
+            websiteDomains: websiteDomains,
+            intention: intention?.trimmingCharacters(in: .whitespacesAndNewlines)
         )
 
         do {
@@ -106,12 +111,14 @@ final class FocusSessionService: ObservableObject {
             activeRecord.lastRestrictionApplicationAt = Date()
             try saveSnapshot(engineState: .active, session: activeRecord)
             activeSession = activeRecord
+            activeIntention = restrictionConfiguration.intention
             scheduleReconciliation(for: activeRecord)
             logger.info("Started focus session \(activeRecord.id.uuidString, privacy: .public)")
         } catch {
             center.stopMonitoring([NoxaDeviceActivityConfiguration.focusActivityName])
             settingsStore.clearAllSettings()
             store.clearFocusSessionRestrictions()
+            activeIntention = nil
             let failedRecord = record
             try? saveSnapshot(engineState: .idle, session: failedRecord, outcome: .failedToStart)
             errorMessage = "Could not start the focus session: \(error.localizedDescription)"
@@ -146,6 +153,7 @@ final class FocusSessionService: ObservableObject {
         do {
             try saveSnapshot(engineState: .idle, session: endedRecord)
             self.activeSession = nil
+            activeIntention = nil
             logger.info("Ended focus session early \(endedRecord.id.uuidString, privacy: .public)")
         } catch {
             errorMessage = "Restrictions were removed, but session cleanup could not be recorded: \(error.localizedDescription)"
@@ -157,6 +165,7 @@ final class FocusSessionService: ObservableObject {
     func reconcile(recoverStale: Bool = true) {
         guard let snapshot = try? store.loadSnapshot() else {
             activeSession = nil
+            activeIntention = nil
             history = []
             return
         }
@@ -164,6 +173,7 @@ final class FocusSessionService: ObservableObject {
 
         guard let session = snapshot.activeSession else {
             activeSession = nil
+            activeIntention = nil
             return
         }
 
@@ -222,6 +232,7 @@ final class FocusSessionService: ObservableObject {
         }
 
         if let configuration = (try? store.loadFocusSessionRestrictions()) ?? nil {
+            activeIntention = configuration.intention
             applyShield(configuration.selection, websiteDomains: configuration.websiteDomains)
         } else if let selection = try? store.loadFamilyActivitySelection() {
             // Backward-compatible recovery for sessions created before the
@@ -260,6 +271,7 @@ final class FocusSessionService: ObservableObject {
         settingsStore.clearAllSettings()
         store.clearFocusSessionRestrictions()
         activeSession = nil
+        activeIntention = nil
         history = []
         errorMessage = nil
         store.clearSnapshot()
@@ -333,6 +345,7 @@ final class FocusSessionService: ObservableObject {
         do {
             try saveSnapshot(engineState: .idle, session: completedRecord)
             activeSession = nil
+            activeIntention = nil
             history = (try? store.loadSnapshot())?.sessionHistory ?? history
             logger.info("Finished focus session \(completedRecord.id.uuidString, privacy: .public)")
         } catch {
@@ -349,6 +362,7 @@ final class FocusSessionService: ObservableObject {
         failedSession.lastCleanupAttemptAt = Date()
         try? saveSnapshot(engineState: .idle, session: failedSession)
         activeSession = nil
+        activeIntention = nil
     }
 
     private func interrupt(session: ActiveSessionRecord, message: String) {
@@ -367,6 +381,7 @@ final class FocusSessionService: ObservableObject {
         interruptedSession.lastCleanupAttemptAt = Date()
         try? saveSnapshot(engineState: .idle, session: interruptedSession)
         activeSession = nil
+        activeIntention = nil
         errorMessage = message
         logger.error("Interrupted focus session \(session.id.uuidString, privacy: .public): \(message, privacy: .public)")
     }

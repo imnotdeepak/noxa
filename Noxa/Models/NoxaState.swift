@@ -83,10 +83,36 @@ struct ActiveSessionRecord: Codable, Equatable, Identifiable, Sendable {
 struct FocusSessionRestrictionConfiguration: Codable, Equatable, Sendable {
     let selection: FamilyActivitySelection
     let websiteDomains: [String]
+    let intention: String?
 
-    init(selection: FamilyActivitySelection, websiteDomains: [String] = []) {
+    init(
+        selection: FamilyActivitySelection,
+        websiteDomains: [String] = [],
+        intention: String? = nil
+    ) {
         self.selection = selection
         self.websiteDomains = websiteDomains
+        self.intention = intention
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case selection
+        case websiteDomains
+        case intention
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        selection = try container.decode(FamilyActivitySelection.self, forKey: .selection)
+        websiteDomains = try container.decodeIfPresent([String].self, forKey: .websiteDomains) ?? []
+        intention = try container.decodeIfPresent(String.self, forKey: .intention)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(selection, forKey: .selection)
+        try container.encode(websiteDomains, forKey: .websiteDomains)
+        try container.encodeIfPresent(intention, forKey: .intention)
     }
 }
 

@@ -170,6 +170,45 @@ struct NoxaTests {
         store.clearSnapshot()
     }
 
+    @Test func focusStatisticsCalculateWeeklyProgressStreaksAndAbandonment() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(secondsFromGMT: 0))
+        let now = try #require(calendar.date(from: DateComponents(
+            year: 2026, month: 9, day: 4, hour: 12
+        )))
+
+        func session(daysAgo: Int, outcome: SessionOutcome, minutes: Int) throws -> ActiveSessionRecord {
+            let start = try #require(calendar.date(byAdding: .day, value: -daysAgo, to: now))
+            return ActiveSessionRecord(
+                startedAt: start,
+                plannedEndAt: start.addingTimeInterval(TimeInterval(minutes * 60)),
+                plannedDurationSeconds: minutes * 60,
+                outcome: outcome,
+                actualDurationSeconds: minutes * 60
+            )
+        }
+
+        let history = try [
+            session(daysAgo: 0, outcome: .completed, minutes: 25),
+            session(daysAgo: 1, outcome: .completed, minutes: 20),
+            session(daysAgo: 2, outcome: .recoveredStale, minutes: 15),
+            session(daysAgo: 3, outcome: .endedEarly, minutes: 5),
+            session(daysAgo: 10, outcome: .completed, minutes: 30),
+            session(daysAgo: 11, outcome: .interrupted, minutes: 2),
+            session(daysAgo: 12, outcome: .failedToStart, minutes: 0)
+        ]
+
+        let statistics = FocusStatistics(history: history, now: now, calendar: calendar)
+
+        #expect(statistics.completedSessions == 4)
+        #expect(statistics.abandonedSessions == 2)
+        #expect(statistics.totalFocusMinutes == 90)
+        #expect(statistics.weeklyFocusMinutes == 60)
+        #expect(statistics.currentStreak == 3)
+        #expect(statistics.longestStreak == 3)
+        #expect(statistics.completionRate == 67)
+    }
+
     @Test @MainActor func onboardingMilestonesPersistAcrossServiceInstances() throws {
         let defaults = try #require(UserDefaults(suiteName: "NoxaTests.Onboarding.\(UUID().uuidString)"))
         let store = AppGroupStore(defaults: defaults)
