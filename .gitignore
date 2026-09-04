@@ -18,3 +18,4 @@ xcuserdata/
 
 # Supabase local development
 .supabase/
+supabase/.temp/
