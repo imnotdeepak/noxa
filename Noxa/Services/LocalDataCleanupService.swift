@@ -22,8 +22,8 @@ enum LocalDataCleanupService {
         let store = store ?? AppGroupStore.shared
         monitoring.stop()
         dailyLimits.clearConfigurations()
-        restrictions.clearSelection()
-        websites.removeAllDomains()
+        restrictions.clearSelection(force: true)
+        websites.removeAllDomains(force: true)
         focusSession.clearAllLocalData()
         cloudSync.clearState()
         store.clearCloudSyncState()

@@ -78,18 +78,20 @@ final class FocusSessionService: ObservableObject {
 
         errorMessage = nil
         let startedAt = Date()
-        let duration = max(
-            NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes,
-            durationMinutes
-        ) * 60
+        let duration = Self.normalizedDurationMinutes(durationMinutes) * 60
         let record = ActiveSessionRecord(
             startedAt: startedAt,
             plannedEndAt: startedAt.addingTimeInterval(TimeInterval(duration)),
             plannedDurationSeconds: duration
         )
+        let restrictionConfiguration = FocusSessionRestrictionConfiguration(
+            selection: selection,
+            websiteDomains: websiteDomains
+        )
 
         do {
             try store.saveFamilyActivitySelection(selection)
+            try store.saveFocusSessionRestrictions(restrictionConfiguration)
             try saveSnapshot(engineState: .starting, session: record)
             applyShield(selection, websiteDomains: websiteDomains)
             try schedule(record: record)
@@ -104,6 +106,7 @@ final class FocusSessionService: ObservableObject {
         } catch {
             center.stopMonitoring([NoxaDeviceActivityConfiguration.focusActivityName])
             settingsStore.clearAllSettings()
+            store.clearFocusSessionRestrictions()
             let failedRecord = record
             try? saveSnapshot(engineState: .idle, session: failedRecord, outcome: .failedToStart)
             errorMessage = "Could not start the focus session: \(error.localizedDescription)"
@@ -125,6 +128,7 @@ final class FocusSessionService: ObservableObject {
 
         center.stopMonitoring([NoxaDeviceActivityConfiguration.focusActivityName])
         settingsStore.clearAllSettings()
+        store.clearFocusSessionRestrictions()
 
         var endedRecord = activeSession
         endedRecord.outcome = .endedEarly
@@ -159,6 +163,19 @@ final class FocusSessionService: ObservableObject {
         }
 
         guard session.outcome == .active else {
+            if session.outcome == .startPending {
+                // A process termination can happen after the pending intent
+                // is persisted but before DeviceActivity accepts the
+                // schedule. Treat that half-start as failed and remove any
+                // shield it may have applied so the lock cannot linger.
+                center.stopMonitoring([NoxaDeviceActivityConfiguration.focusActivityName])
+                settingsStore.clearAllSettings()
+                store.clearFocusSessionRestrictions()
+                var failedSession = session
+                failedSession.outcome = .failedToStart
+                failedSession.lastCleanupAttemptAt = Date()
+                try? saveSnapshot(engineState: .idle, session: failedSession)
+            }
             activeSession = nil
             return
         }
@@ -178,7 +195,11 @@ final class FocusSessionService: ObservableObject {
             }
         }
 
-        if let selection = try? store.loadFamilyActivitySelection() {
+        if let configuration = (try? store.loadFocusSessionRestrictions()) ?? nil {
+            applyShield(configuration.selection, websiteDomains: configuration.websiteDomains)
+        } else if let selection = try? store.loadFamilyActivitySelection() {
+            // Backward-compatible recovery for sessions created before the
+            // immutable focus-session snapshot was introduced.
             let domains = (try? store.loadWebsiteBlocklist()) ?? []
             applyShield(selection, websiteDomains: domains)
         }
@@ -211,6 +232,7 @@ final class FocusSessionService: ObservableObject {
         reconciliationTask?.cancel()
         center.stopMonitoring([NoxaDeviceActivityConfiguration.focusActivityName])
         settingsStore.clearAllSettings()
+        store.clearFocusSessionRestrictions()
         activeSession = nil
         history = []
         errorMessage = nil
@@ -276,6 +298,7 @@ final class FocusSessionService: ObservableObject {
         reconciliationTask?.cancel()
         center.stopMonitoring([NoxaDeviceActivityConfiguration.focusActivityName])
         settingsStore.clearAllSettings()
+        store.clearFocusSessionRestrictions()
 
         var completedRecord = session
         completedRecord.outcome = recovered ? .recoveredStale : .completed
@@ -318,6 +341,13 @@ final class FocusSessionService: ObservableObject {
         plannedDurationSeconds: Int
     ) -> Int {
         max(0, min(plannedDurationSeconds, Int(endedAt.timeIntervalSince(startedAt))))
+    }
+
+    static func normalizedDurationMinutes(_ minutes: Int) -> Int {
+        min(
+            max(minutes, NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes),
+            NoxaDeviceActivityConfiguration.maximumFocusSessionMinutes
+        )
     }
 }
 

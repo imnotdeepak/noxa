@@ -16,7 +16,7 @@ struct ContentView: View {
     @EnvironmentObject private var cloudSync: CloudSyncService
     @EnvironmentObject private var websites: WebsiteBlocklistService
     @StateObject private var authorization = FamilyControlsAuthorizationService()
-    @State private var selectedDurationMinutes = 25
+    @State private var selectedDurationMinutes = NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes
     @State private var isRequestingAuthorization = false
     @State private var newDomain = ""
     @State private var isDailyLimitPickerPresented = false
@@ -24,6 +24,8 @@ struct ContentView: View {
     @State private var selectedDailyLimitMinutes = 30
     @State private var isPaywallPresented = false
     @State private var isDeleteAccountConfirmationPresented = false
+    @State private var isCustomDuration = false
+    @State private var customDurationMinutes = 30
 
     private var hasConfiguredRestrictions: Bool {
         restrictions.hasSelection || !websites.domains.isEmpty || dailyLimits.enabledCount > 0
@@ -86,12 +88,14 @@ struct ContentView: View {
             NavigationStack {
                 FamilyActivityPicker(selection: $restrictions.selection)
                     .navigationTitle("Choose restrictions")
+                    .disabled(focusSession.isActive)
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
                             Button("Done") {
                                 restrictions.isPickerPresented = false
                                 restrictions.persistSelection()
                             }
+                            .disabled(focusSession.isActive)
                         }
                     }
             }
@@ -101,6 +105,7 @@ struct ContentView: View {
             NavigationStack {
                 FamilyActivityPicker(selection: $dailyLimitSelection)
                     .navigationTitle("Choose limit apps")
+                    .disabled(focusSession.isActive)
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
                             Button("Save") {
@@ -113,6 +118,7 @@ struct ContentView: View {
                                     isDailyLimitPickerPresented = false
                                 }
                             }
+                            .disabled(focusSession.isActive)
                         }
                     }
             }
@@ -241,18 +247,54 @@ struct ContentView: View {
                      : "Choose apps or websites first, then start a session.")
                     .foregroundStyle(.secondary)
 
-                HStack(spacing: 8) {
-                    ForEach([25, 45, 60, 120], id: \.self) { minutes in
-                        Button(Self.durationLabel(minutes: minutes)) {
-                            selectedDurationMinutes = minutes
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach([15, 25, 45, 60, 120], id: \.self) { minutes in
+                            Button(Self.durationLabel(minutes: minutes)) {
+                                selectedDurationMinutes = minutes
+                                isCustomDuration = false
+                            }
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(!isCustomDuration && selectedDurationMinutes == minutes ? .black : .white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 9)
+                            .background(!isCustomDuration && selectedDurationMinutes == minutes ? Color.white : Color.white.opacity(0.08))
+                            .clipShape(Capsule())
+                        }
+
+                        Button("Custom") {
+                            isCustomDuration = true
                         }
                         .font(.subheadline.weight(.medium))
-                        .foregroundStyle(selectedDurationMinutes == minutes ? .black : .white)
+                        .foregroundStyle(isCustomDuration ? .black : .white)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 9)
-                        .background(selectedDurationMinutes == minutes ? Color.white : Color.white.opacity(0.08))
+                        .background(isCustomDuration ? Color.white : Color.white.opacity(0.08))
                         .clipShape(Capsule())
                     }
+                }
+
+                if isCustomDuration {
+                    HStack(spacing: 12) {
+                        Text("Custom duration")
+                            .font(.subheadline.weight(.medium))
+                        Spacer()
+                        TextField("Minutes", value: $customDurationMinutes, format: .number)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 88)
+                            .onChange(of: customDurationMinutes) { value in
+                                customDurationMinutes = min(
+                                    max(value, NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes),
+                                    NoxaDeviceActivityConfiguration.maximumFocusSessionMinutes
+                                )
+                            }
+                    }
+
+                    Text("Choose \(NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes)–\(NoxaDeviceActivityConfiguration.maximumFocusSessionMinutes) minutes.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
 
                 Button("Start Focus Session") {
@@ -260,7 +302,7 @@ struct ContentView: View {
                     focusSession.start(
                         selection: restrictions.selection,
                         websiteDomains: websites.domains,
-                        durationMinutes: selectedDurationMinutes
+                        durationMinutes: isCustomDuration ? customDurationMinutes : selectedDurationMinutes
                     )
                 }
                 .buttonStyle(NoxaPrimaryButtonStyle())
@@ -291,6 +333,7 @@ struct ContentView: View {
                     restrictions.isPickerPresented = true
                 }
                 .font(.subheadline.weight(.semibold))
+                .disabled(focusSession.isActive)
             }
 
             Text(hasConfiguredRestrictions
@@ -303,7 +346,7 @@ struct ContentView: View {
                     restrictions.isPickerPresented = true
                 }
                 .buttonStyle(NoxaSecondaryButtonStyle())
-                .disabled(!authorization.state.isApproved)
+                .disabled(!authorization.state.isApproved || focusSession.isActive)
             }
         }
         .noxaCard()
@@ -315,11 +358,17 @@ struct ContentView: View {
                 Text("Selections stay private on this device. Noxa works with Apple’s opaque Screen Time tokens instead of reading inside your apps.")
                     .foregroundStyle(.secondary)
 
+                if focusSession.isActive {
+                    Label("Blocklist locked until this focus session ends", systemImage: "lock.fill")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.orange)
+                }
+
                 Button("Choose Apps and Websites") {
                     restrictions.isPickerPresented = true
                 }
                 .buttonStyle(NoxaPrimaryButtonStyle())
-                .disabled(!authorization.state.isApproved)
+                .disabled(!authorization.state.isApproved || focusSession.isActive)
 
                 VStack(alignment: .leading, spacing: 12) {
                     Label("Saved selection", systemImage: "lock.shield")
@@ -415,6 +464,7 @@ struct ContentView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .textFieldStyle(.roundedBorder)
+                    .disabled(focusSession.isActive)
 
                 Button("Add") {
                     if websites.addDomain(newDomain) {
@@ -423,7 +473,7 @@ struct ContentView: View {
                 }
                 .buttonStyle(NoxaSecondaryButtonStyle())
                 .fixedSize()
-                .disabled(websites.domains.count >= WebsiteBlocklistService.maximumDomains)
+                .disabled(focusSession.isActive || websites.domains.count >= WebsiteBlocklistService.maximumDomains)
             }
 
             if websites.domains.isEmpty {
@@ -441,6 +491,7 @@ struct ContentView: View {
                         }
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
+                        .disabled(focusSession.isActive)
                     }
                 }
             }
@@ -480,6 +531,7 @@ struct ContentView: View {
                     .padding(.vertical, 8)
                     .background(selectedDailyLimitMinutes == minutes ? Color.white : Color.white.opacity(0.08))
                     .clipShape(Capsule())
+                    .disabled(focusSession.isActive)
                 }
             }
 
@@ -490,6 +542,7 @@ struct ContentView: View {
             .buttonStyle(NoxaSecondaryButtonStyle())
             .disabled(
                 !authorization.state.isApproved
+                    || focusSession.isActive
                     || dailyLimits.configurations.count >= DailyLimitService.maximumConfigurations
             )
 
@@ -507,6 +560,7 @@ struct ContentView: View {
                                 .foregroundStyle(configuration.isEnabled ? .white : .secondary)
                         }
                         .buttonStyle(.plain)
+                        .disabled(focusSession.isActive)
 
                         VStack(alignment: .leading, spacing: 3) {
                             Text("\(configuration.dailyLimitMinutes) minutes per day")
@@ -521,6 +575,7 @@ struct ContentView: View {
                         }
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
+                        .disabled(focusSession.isActive)
                     }
                 }
             }
@@ -541,6 +596,7 @@ struct ContentView: View {
                 .disabled(
                     dailyLimits.configurations.filter(\.isEnabled).isEmpty
                         || (!hasActiveDailyLimits && !authorization.state.isApproved)
+                        || focusSession.isActive
                 )
             }
 

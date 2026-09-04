@@ -73,6 +73,20 @@ struct ActiveSessionRecord: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+/// The device-local restriction snapshot owned by an active focus session.
+/// Screen Time selections are opaque Apple-managed tokens and never leave the
+/// device. This configuration is separate from the user's editable blocklist
+/// so changing settings cannot weaken an active session.
+struct FocusSessionRestrictionConfiguration: Codable, Equatable, Sendable {
+    let selection: FamilyActivitySelection
+    let websiteDomains: [String]
+
+    init(selection: FamilyActivitySelection, websiteDomains: [String] = []) {
+        self.selection = selection
+        self.websiteDomains = websiteDomains
+    }
+}
+
 /// A daily allowance associated with an opaque Screen Time selection. The
 /// selection is kept local and is never converted to bundle identifiers.
 struct DailyLimitConfiguration: Codable, Equatable, Identifiable, Sendable {

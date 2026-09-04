@@ -75,6 +75,73 @@ struct NoxaTests {
         ) == 0)
     }
 
+    @Test @MainActor func focusSessionDurationStaysWithinDeviceActivityBounds() {
+        #expect(FocusSessionService.normalizedDurationMinutes(1) == 15)
+        #expect(FocusSessionService.normalizedDurationMinutes(45) == 45)
+        #expect(FocusSessionService.normalizedDurationMinutes(600) == 480)
+    }
+
+    @Test @MainActor func focusSessionRestrictionsRoundTripThroughAppGroupStore() throws {
+        let suiteName = "NoxaTests.FocusRestrictions.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let store = AppGroupStore(defaults: defaults)
+        let configuration = FocusSessionRestrictionConfiguration(
+            selection: FamilyActivitySelection(),
+            websiteDomains: ["reddit.com", "news.ycombinator.com"]
+        )
+
+        try store.saveFocusSessionRestrictions(configuration)
+
+        #expect(try store.loadFocusSessionRestrictions() == configuration)
+        store.clearFocusSessionRestrictions()
+        #expect(try store.loadFocusSessionRestrictions() == nil)
+    }
+
+    @Test @MainActor func blocklistEditsAreRejectedDuringAnActiveFocusSession() throws {
+        let suiteName = "NoxaTests.FocusLock.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let store = AppGroupStore(defaults: defaults)
+        var snapshot = NoxaLocalSnapshot()
+        snapshot.activeSession = ActiveSessionRecord(
+            plannedEndAt: Date().addingTimeInterval(900),
+            plannedDurationSeconds: 900,
+            outcome: .active
+        )
+        try store.saveSnapshot(snapshot)
+
+        let websites = WebsiteBlocklistService(store: store)
+
+        #expect(!websites.addDomain("reddit.com"))
+        #expect(websites.domains.isEmpty)
+        #expect(websites.errorMessage == "Blocklist changes are locked until the focus session ends.")
+    }
+
+    @Test @MainActor func interruptedPendingSessionReleasesFocusLock() throws {
+        let suiteName = "NoxaTests.PendingFocus.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let store = AppGroupStore(defaults: defaults)
+        let session = ActiveSessionRecord(
+            plannedEndAt: Date().addingTimeInterval(900),
+            plannedDurationSeconds: 900
+        )
+        var snapshot = NoxaLocalSnapshot(sessionEngineState: .starting)
+        snapshot.activeSession = session
+        try store.saveSnapshot(snapshot)
+        try store.saveFocusSessionRestrictions(
+            FocusSessionRestrictionConfiguration(selection: FamilyActivitySelection())
+        )
+
+        let service = FocusSessionService(store: store)
+        #expect(store.hasActiveFocusSession())
+
+        service.reconcile()
+
+        #expect(service.activeSession == nil)
+        #expect(!store.hasActiveFocusSession())
+        #expect(try store.loadFocusSessionRestrictions() == nil)
+        #expect(service.history.first?.outcome == .failedToStart)
+    }
+
     @Test @MainActor func recoveredSessionCountsTowardStatisticsAndSurvivesReconcile() throws {
         let defaults = try #require(UserDefaults(suiteName: "NoxaTests.History.\(UUID().uuidString)"))
         let store = AppGroupStore(defaults: defaults)

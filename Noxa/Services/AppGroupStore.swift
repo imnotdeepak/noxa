@@ -23,6 +23,7 @@ final class AppGroupStore {
     private enum Key {
         static let localSnapshot = "noxa.localSnapshot"
         static let familyActivitySelection = "noxa.familyActivitySelection"
+        static let focusSessionRestrictions = "noxa.focusSessionRestrictions"
         static let websiteBlocklist = "noxa.websiteBlocklist"
         static let dailyLimits = "noxa.dailyLimits"
         static let cloudSyncState = "noxa.cloudSyncState"
@@ -79,6 +80,35 @@ final class AppGroupStore {
 
     func clearFamilyActivitySelection() {
         defaults.removeObject(forKey: Key.familyActivitySelection)
+    }
+
+    /// Stores the immutable device-local restriction snapshot for the active
+    /// focus session. It is intentionally separate from the editable
+    /// blocklist so a session remains enforceable after the app is terminated.
+    func loadFocusSessionRestrictions() throws -> FocusSessionRestrictionConfiguration? {
+        guard let data = defaults.data(forKey: Key.focusSessionRestrictions) else {
+            return nil
+        }
+
+        return try JSONDecoder().decode(FocusSessionRestrictionConfiguration.self, from: data)
+    }
+
+    func saveFocusSessionRestrictions(_ configuration: FocusSessionRestrictionConfiguration) throws {
+        let data = try JSONEncoder().encode(configuration)
+        defaults.set(data, forKey: Key.focusSessionRestrictions)
+    }
+
+    func clearFocusSessionRestrictions() {
+        defaults.removeObject(forKey: Key.focusSessionRestrictions)
+    }
+
+    /// Returns whether a focus session is in a start-pending or active state.
+    /// The check is persisted so the UI and local services can reject edits
+    /// even while the app is recovering from termination.
+    func hasActiveFocusSession() -> Bool {
+        guard let snapshot = try? loadSnapshot() else { return false }
+        return snapshot.activeSession?.outcome == .active
+            || snapshot.activeSession?.outcome == .startPending
     }
 
     func loadWebsiteBlocklist() throws -> [String] {

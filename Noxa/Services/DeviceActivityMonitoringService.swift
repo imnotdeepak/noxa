@@ -18,6 +18,7 @@ enum NoxaDeviceActivityConfiguration {
     static let dailyLimitReachedEventsKey = "noxa.dailyLimitReachedEvents"
     static let dailyLimitResetDayKey = "noxa.dailyLimitResetDay"
     static let minimumFocusSessionMinutes = 15
+    static let maximumFocusSessionMinutes = 480
 
     static func dailyLimitEventName(for id: UUID) -> DeviceActivityEvent.Name {
         DeviceActivityEvent.Name("noxa.daily.limit.\(id.uuidString.lowercased())")
@@ -130,8 +131,16 @@ final class DailyLimitService: ObservableObject {
         configurations.filter(\.isEnabled).count
     }
 
+    var isLockedForFocusSession: Bool {
+        store.hasActiveFocusSession()
+    }
+
     func add(selection: FamilyActivitySelection, minutes: Int) {
         errorMessage = nil
+        guard !isLockedForFocusSession else {
+            errorMessage = "Daily limits cannot be changed during a focus session."
+            return
+        }
         guard !selection.applicationTokens.isEmpty else {
             errorMessage = "Select at least one app for a daily limit."
             return
@@ -150,17 +159,29 @@ final class DailyLimitService: ObservableObject {
     }
 
     func remove(_ configuration: DailyLimitConfiguration) {
+        guard !isLockedForFocusSession else {
+            errorMessage = "Daily limits cannot be changed during a focus session."
+            return
+        }
         configurations.removeAll { $0.id == configuration.id }
         persistAndRestartIfNeeded()
     }
 
     func setEnabled(_ enabled: Bool, for configuration: DailyLimitConfiguration) {
+        guard !isLockedForFocusSession else {
+            errorMessage = "Daily limits cannot be changed during a focus session."
+            return
+        }
         guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
         configurations[index].isEnabled = enabled
         persistAndRestartIfNeeded()
     }
 
     func startMonitoring() {
+        guard !isLockedForFocusSession else {
+            errorMessage = "Daily limits cannot be changed during a focus session."
+            return
+        }
         startMonitoring(resetReachedState: true)
     }
 
@@ -236,7 +257,11 @@ final class DailyLimitService: ObservableObject {
         }
     }
 
-    func stopMonitoring() {
+    func stopMonitoring(force: Bool = false) {
+        guard force || !isLockedForFocusSession else {
+            errorMessage = "Daily limits cannot be changed during a focus session."
+            return
+        }
         center.stopMonitoring([NoxaDeviceActivityConfiguration.dailyLimitActivityName])
         settingsStore.clearAllSettings()
         let defaults = UserDefaults(suiteName: AppGroupStore.suiteName)
@@ -249,7 +274,7 @@ final class DailyLimitService: ObservableObject {
     }
 
     func clearConfigurations() {
-        stopMonitoring()
+        stopMonitoring(force: true)
         configurations = []
         store.clearDailyLimitConfigurations()
         if var snapshot = try? store.loadSnapshot() {

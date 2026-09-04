@@ -25,6 +25,14 @@ private enum NoxaMonitorActivity {
     }
 }
 
+/// Mirrors the main app's device-local focus-session restriction snapshot.
+/// This type intentionally lives in the extension target so Screen Time tokens
+/// remain local and the extension can enforce the immutable session state.
+private struct PersistedFocusSessionConfiguration: Codable {
+    let selection: FamilyActivitySelection
+    let websiteDomains: [String]
+}
+
 private struct PersistedDailyLimitConfiguration: Codable {
     let id: UUID
     let selection: FamilyActivitySelection
@@ -43,7 +51,7 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
     override func intervalDidStart(for activity: DeviceActivityName) {
         super.intervalDidStart(for: activity)
         if activity == NoxaMonitorActivity.focusActivityName {
-            applyPersistedShield(reason: "focus session started")
+            applyPersistedFocusShield(reason: "focus session started")
         } else if activity == NoxaMonitorActivity.dailyLimitActivityName {
             let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa")
             let today = NoxaMonitorActivity.dailyLimitDayStamp()
@@ -76,8 +84,30 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         super.intervalDidEnd(for: activity)
         if activity == NoxaMonitorActivity.focusActivityName {
             settingsStore.clearAllSettings()
+            UserDefaults(suiteName: "group.LycheeCorp.Noxa")?.removeObject(
+                forKey: "noxa.focusSessionRestrictions"
+            )
             logger.info("Removed focus shield when session ended")
         }
+    }
+
+    private func applyPersistedFocusShield(reason: String) {
+        guard let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa"),
+              let data = defaults.data(forKey: "noxa.focusSessionRestrictions"),
+              let configuration = try? JSONDecoder().decode(
+                  PersistedFocusSessionConfiguration.self,
+                  from: data
+              )
+        else {
+            logger.error("Could not load the immutable focus-session restrictions")
+            return
+        }
+
+        applyShield(
+            selection: configuration.selection,
+            websiteDomains: configuration.websiteDomains,
+            reason: reason
+        )
     }
 
     private func applyPersistedShield(reason: String) {
@@ -89,6 +119,26 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
             return
         }
 
+        let websiteDomains: [String]
+        if let blocklistData = defaults.data(forKey: "noxa.websiteBlocklist"),
+           let domains = try? JSONDecoder().decode([String].self, from: blocklistData) {
+            websiteDomains = domains
+        } else {
+            websiteDomains = []
+        }
+
+        applyShield(
+            selection: selection,
+            websiteDomains: websiteDomains,
+            reason: reason
+        )
+    }
+
+    private func applyShield(
+        selection: FamilyActivitySelection,
+        websiteDomains: [String],
+        reason: String
+    ) {
         settingsStore.shield.applications = selection.applicationTokens.isEmpty
             ? nil
             : selection.applicationTokens
@@ -98,14 +148,14 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         settingsStore.shield.webDomains = selection.webDomainTokens.isEmpty
             ? nil
             : selection.webDomainTokens
-        if let blocklistData = defaults.data(forKey: "noxa.websiteBlocklist"),
-           let domains = try? JSONDecoder().decode([String].self, from: blocklistData),
-           !domains.isEmpty {
-            settingsStore.webContent.blockedByFilter = .specific(Set(domains.map(WebDomain.init(domain:))))
+        if !websiteDomains.isEmpty {
+            settingsStore.webContent.blockedByFilter = .specific(
+                Set(websiteDomains.map(WebDomain.init(domain:)))
+            )
         } else {
             settingsStore.webContent.blockedByFilter = nil
         }
-        logger.info("Applied persisted monitor shield: \(reason, privacy: .public)")
+        logger.info("Applied monitor shield: \(reason, privacy: .public)")
     }
 
     private func applyDailyLimitShield(for event: DeviceActivityEvent.Name) {

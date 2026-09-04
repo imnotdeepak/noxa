@@ -46,8 +46,19 @@ final class ScreenTimeRestrictionService: ObservableObject {
         selectedItemCount > 0
     }
 
+    /// Selection edits are locked while a focus session is pending or active.
+    /// The persisted check protects the invariant even after app relaunch.
+    var isLockedForFocusSession: Bool {
+        store.hasActiveFocusSession()
+    }
+
     func persistSelection() {
         errorMessage = nil
+        guard !isLockedForFocusSession else {
+            restoreActiveSessionSelection()
+            errorMessage = "Blocklist changes are locked until the focus session ends."
+            return
+        }
         do {
             try store.saveFamilyActivitySelection(selection)
         } catch {
@@ -60,6 +71,11 @@ final class ScreenTimeRestrictionService: ObservableObject {
     /// main app for the first physical-device spike; the monitor extension
     /// applies the same shield when its callbacks arrive.
     func applyShield(customDomains: [String] = []) {
+        guard !isLockedForFocusSession else {
+            restoreActiveSessionSelection()
+            errorMessage = "Blocklist changes are locked until the focus session ends."
+            return
+        }
         guard hasSelection || !customDomains.isEmpty else {
             errorMessage = "Choose at least one app, category, or website first."
             return
@@ -82,16 +98,37 @@ final class ScreenTimeRestrictionService: ObservableObject {
         logger.info("Applied local shield for \(self.selectedItemCount) selected item(s)")
     }
 
-    func removeShield() {
+    func removeShield(force: Bool = false) {
+        guard force || !isLockedForFocusSession else {
+            errorMessage = "Blocklist changes are locked until the focus session ends."
+            return
+        }
         errorMessage = nil
         settingsStore.clearAllSettings()
         isShieldActive = false
         logger.info("Removed all local Managed Settings restrictions")
     }
 
-    func clearSelection() {
+    func clearSelection(force: Bool = false) {
+        guard force || !isLockedForFocusSession else {
+            restoreActiveSessionSelection()
+            errorMessage = "Blocklist changes are locked until the focus session ends."
+            return
+        }
         selection = FamilyActivitySelection()
         store.clearFamilyActivitySelection()
-        removeShield()
+        removeShield(force: true)
+    }
+
+    /// Restores the immutable selection captured when the active session began.
+    /// This is used if a picker was already open when a session became active.
+    func restoreActiveSessionSelection() {
+        do {
+            if let configuration = try store.loadFocusSessionRestrictions() {
+                selection = configuration.selection
+            }
+        } catch {
+            logger.error("Could not restore active-session selection: \(error.localizedDescription, privacy: .public)")
+        }
     }
 }

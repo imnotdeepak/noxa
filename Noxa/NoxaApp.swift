@@ -172,7 +172,7 @@ private struct RestrictionRecoveryView: View {
                 }
             }
 
-            if restrictions.isShieldActive {
+            if restrictions.isShieldActive && !focusSession.isActive {
                 RecoveryActionButton(title: "Remove App and Website Shield") {
                     restrictions.removeShield()
                 }
@@ -181,7 +181,9 @@ private struct RestrictionRecoveryView: View {
             if monitoring.isMonitoring {
                 RecoveryActionButton(title: "Stop Usage Monitor") {
                     monitoring.stop()
-                    restrictions.removeShield()
+                    if !focusSession.isActive {
+                        restrictions.removeShield()
+                    }
                 }
             }
 

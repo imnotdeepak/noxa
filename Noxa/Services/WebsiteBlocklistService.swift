@@ -27,8 +27,16 @@ final class WebsiteBlocklistService: ObservableObject {
         self.domains = (try? self.store.loadWebsiteBlocklist()) ?? []
     }
 
+    var isLockedForFocusSession: Bool {
+        store.hasActiveFocusSession()
+    }
+
     @discardableResult
     func addDomain(_ input: String) -> Bool {
+        guard !isLockedForFocusSession else {
+            errorMessage = "Blocklist changes are locked until the focus session ends."
+            return false
+        }
         guard let domain = Self.normalize(input) else {
             errorMessage = "Enter a valid domain such as reddit.com."
             return false
@@ -49,6 +57,10 @@ final class WebsiteBlocklistService: ObservableObject {
     }
 
     func removeDomain(_ domain: String) {
+        guard !isLockedForFocusSession else {
+            errorMessage = "Blocklist changes are locked until the focus session ends."
+            return
+        }
         domains.removeAll { $0 == domain }
         persist()
     }
@@ -56,6 +68,10 @@ final class WebsiteBlocklistService: ObservableObject {
     /// Replaces cloud-supported domains after account hydration or merging.
     /// Every value is normalized again before entering local enforcement state.
     func replaceDomains(_ newDomains: [String]) {
+        guard !isLockedForFocusSession else {
+            logger.info("Ignored cloud blocklist replacement while a focus session is active")
+            return
+        }
         let normalized = Array(Set(newDomains.compactMap(Self.normalize))).sorted()
         let bounded = Array(normalized.prefix(Self.maximumDomains))
         guard bounded != domains else { return }
@@ -74,6 +90,10 @@ final class WebsiteBlocklistService: ObservableObject {
     }
 
     func applyBlocklist() {
+        guard !isLockedForFocusSession else {
+            errorMessage = "Blocklist changes are locked until the focus session ends."
+            return
+        }
         guard !domains.isEmpty else {
             settingsStore.webContent.blockedByFilter = nil
             return
@@ -82,14 +102,22 @@ final class WebsiteBlocklistService: ObservableObject {
         logger.info("Applied \(self.domains.count) custom website restriction(s)")
     }
 
-    func clearBlocklist() {
+    func clearBlocklist(force: Bool = false) {
+        guard force || !isLockedForFocusSession else {
+            errorMessage = "Blocklist changes are locked until the focus session ends."
+            return
+        }
         settingsStore.webContent.blockedByFilter = nil
     }
 
-    func removeAllDomains() {
+    func removeAllDomains(force: Bool = false) {
+        guard force || !isLockedForFocusSession else {
+            errorMessage = "Blocklist changes are locked until the focus session ends."
+            return
+        }
         domains = []
         store.clearWebsiteBlocklist()
-        clearBlocklist()
+        clearBlocklist(force: true)
         errorMessage = nil
     }
 
