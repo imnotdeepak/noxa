@@ -146,10 +146,55 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
     var hasCompletedGoals = false
     var hasCompletedDistractions = false
     var hasSeenCapabilitiesExplainer = false
+    var hasSeenPricingPreview = false
     var hasCompletedInitialSetup = false
     var hasSeenFirstSessionPrompt = false
     var draftPersonalizationAnswers: [String] = []
     var draftSetupConfiguration: [String: String] = [:]
+
+    private enum CodingKeys: String, CodingKey {
+        case hasSeenWelcome
+        case hasCompletedGoals
+        case hasCompletedDistractions
+        case hasSeenCapabilitiesExplainer
+        case hasSeenPricingPreview
+        case hasCompletedInitialSetup
+        case hasSeenFirstSessionPrompt
+        case draftPersonalizationAnswers
+        case draftSetupConfiguration
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        hasSeenWelcome = try container.decodeIfPresent(Bool.self, forKey: .hasSeenWelcome) ?? false
+        hasCompletedGoals = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedGoals) ?? false
+        hasCompletedDistractions = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedDistractions) ?? false
+        hasSeenCapabilitiesExplainer = try container.decodeIfPresent(Bool.self, forKey: .hasSeenCapabilitiesExplainer) ?? false
+        // Build 8 completed onboarding at the capabilities step. Treat those
+        // existing users as complete rather than routing them backwards after
+        // the pricing preview was introduced in Build 9.
+        hasSeenPricingPreview = try container.decodeIfPresent(Bool.self, forKey: .hasSeenPricingPreview)
+            ?? hasSeenCapabilitiesExplainer
+        hasCompletedInitialSetup = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedInitialSetup) ?? false
+        hasSeenFirstSessionPrompt = try container.decodeIfPresent(Bool.self, forKey: .hasSeenFirstSessionPrompt) ?? false
+        draftPersonalizationAnswers = try container.decodeIfPresent([String].self, forKey: .draftPersonalizationAnswers) ?? []
+        draftSetupConfiguration = try container.decodeIfPresent([String: String].self, forKey: .draftSetupConfiguration) ?? [:]
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(hasSeenWelcome, forKey: .hasSeenWelcome)
+        try container.encode(hasCompletedGoals, forKey: .hasCompletedGoals)
+        try container.encode(hasCompletedDistractions, forKey: .hasCompletedDistractions)
+        try container.encode(hasSeenCapabilitiesExplainer, forKey: .hasSeenCapabilitiesExplainer)
+        try container.encode(hasSeenPricingPreview, forKey: .hasSeenPricingPreview)
+        try container.encode(hasCompletedInitialSetup, forKey: .hasCompletedInitialSetup)
+        try container.encode(hasSeenFirstSessionPrompt, forKey: .hasSeenFirstSessionPrompt)
+        try container.encode(draftPersonalizationAnswers, forKey: .draftPersonalizationAnswers)
+        try container.encode(draftSetupConfiguration, forKey: .draftSetupConfiguration)
+    }
 }
 
 /// The app-level snapshot needed for launch reconciliation.

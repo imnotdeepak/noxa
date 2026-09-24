@@ -18,19 +18,24 @@ struct AuthenticationView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(spacing: 28) {
                 Spacer(minLength: 44)
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Noxa")
-                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                VStack(spacing: 10) {
+                    Text("noxa")
+                        .font(NoxaTheme.font(18, weight: .medium, relativeTo: .headline))
                         .foregroundStyle(.secondary)
-                    Text("Protect your\nattention.")
-                        .font(.system(size: 42, weight: .bold, design: .rounded))
+                    Text(mode == .signIn ? "Welcome back." : "Create your account.")
+                        .font(NoxaTheme.font(40, weight: .bold, relativeTo: .largeTitle))
                         .tracking(-1)
-                    Text("Sign in to continue to your focus tools.")
+                        .multilineTextAlignment(.center)
+                    Text(mode == .signIn
+                         ? "Sign in to continue to your focus tools."
+                         : "Your plan comes next. It only takes a moment.")
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                 }
+                .frame(maxWidth: .infinity)
 
                 VStack(spacing: 18) {
                     Picker("Authentication mode", selection: $mode) {
@@ -57,16 +62,17 @@ struct AuthenticationView: View {
                     }
 
                     Button(action: submitEmailForm) {
-                        HStack {
-                            Text(mode.rawValue)
+                        HStack(spacing: 10) {
                             Spacer()
+                            Text(mode.rawValue)
                             if authentication.isBusy {
                                 ProgressView()
                                     .tint(.black)
                             }
+                            Spacer()
                         }
                     }
-                    .buttonStyle(AuthenticationPrimaryButtonStyle())
+                    .buttonStyle(NoxaPrimaryButtonStyle())
                     .disabled(authentication.isBusy)
 
                     if mode == .signIn {
@@ -86,7 +92,7 @@ struct AuthenticationView: View {
                         Rectangle().fill(Color.white.opacity(0.14)).frame(height: 1)
                     }
 
-                    SignInWithAppleButton(.signIn) { request in
+                    SignInWithAppleButton(mode == .createAccount ? .signUp : .signIn) { request in
                         let nonce = AppleNonce.make()
                         currentAppleNonce = nonce
                         request.requestedScopes = [.fullName, .email]
@@ -117,12 +123,11 @@ struct AuthenticationView: View {
                         .disabled(authentication.isBusy)
                     }
                 }
-                .padding(20)
-                .background(Color.white.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .padding(22)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 20)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .stroke(NoxaTheme.border, lineWidth: 1)
                 }
 
                 LegalLinksView()
@@ -130,7 +135,8 @@ struct AuthenticationView: View {
             .padding(20)
         }
         .scrollDismissesKeyboard(.interactively)
-        .background(Color.black.ignoresSafeArea())
+        .font(NoxaTheme.font(17))
+        .background(NoxaBackground())
         .preferredColorScheme(.dark)
         .onChange(of: mode) { _ in
             authentication.message = nil
@@ -197,7 +203,7 @@ private struct PasswordResetRequestView: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Reset your password")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .font(NoxaTheme.font(30, weight: .bold, relativeTo: .largeTitle))
                 Text("We’ll email you a secure link that opens Noxa so you can choose a new password.")
                     .foregroundStyle(.secondary)
 
@@ -213,7 +219,7 @@ private struct PasswordResetRequestView: View {
                         await authentication.sendPasswordReset(to: email)
                     }
                 }
-                .buttonStyle(AuthenticationPrimaryButtonStyle())
+                .buttonStyle(NoxaPrimaryButtonStyle())
                 .disabled(authentication.isBusy)
 
                 if let message = authentication.message {
@@ -225,7 +231,7 @@ private struct PasswordResetRequestView: View {
                 Spacer()
             }
             .padding(20)
-            .background(Color.black.ignoresSafeArea())
+            .background(NoxaBackground())
             .preferredColorScheme(.dark)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -245,7 +251,7 @@ struct PasswordUpdateView: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Choose a new password")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .font(NoxaTheme.font(30, weight: .bold, relativeTo: .largeTitle))
                 Text("Use at least 8 characters.")
                     .foregroundStyle(.secondary)
 
@@ -265,7 +271,7 @@ struct PasswordUpdateView: View {
                         await authentication.updateRecoveredPassword(password)
                     }
                 }
-                .buttonStyle(AuthenticationPrimaryButtonStyle())
+                .buttonStyle(NoxaPrimaryButtonStyle())
                 .disabled(authentication.isBusy || password.isEmpty || confirmation.isEmpty)
 
                 if let message = authentication.message {
@@ -277,7 +283,7 @@ struct PasswordUpdateView: View {
                 Spacer()
             }
             .padding(20)
-            .background(Color.black.ignoresSafeArea())
+            .background(NoxaBackground())
             .preferredColorScheme(.dark)
             .interactiveDismissDisabled()
         }
@@ -312,19 +318,6 @@ private enum AppleNonce {
         SHA256.hash(data: Data(input.utf8))
             .map { String(format: "%02x", $0) }
             .joined()
-    }
-}
-
-private struct AuthenticationPrimaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.body.weight(.semibold))
-            .foregroundStyle(.black)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity)
-            .background(Color.white.opacity(configuration.isPressed ? 0.75 : 1))
-            .clipShape(RoundedRectangle(cornerRadius: 13))
     }
 }
 

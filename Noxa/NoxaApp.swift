@@ -38,7 +38,7 @@ struct NoxaApp: App {
                             && (!authentication.isAuthenticated
                                 || (subscriptions.hasLoaded && !subscriptions.hasAccess)) {
                     RestrictionRecoveryView()
-                } else if !onboarding.progress.hasSeenCapabilitiesExplainer {
+                } else if !onboarding.progress.hasSeenPricingPreview {
                     OnboardingView()
                 } else if authentication.isAuthenticated {
                     if cloudSync.boundUserID != authentication.userID {

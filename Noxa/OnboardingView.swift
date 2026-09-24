@@ -13,8 +13,11 @@ struct OnboardingView: View {
     private enum Page: Int, CaseIterable {
         case welcome
         case goals
+        case goalInsight
         case distractions
+        case distractionInsight
         case capabilities
+        case pricing
     }
 
     private let goalOptions = ["Studying", "Work", "Sleep", "Reduce screen time", "Deep focus", "Better habits"]
@@ -70,10 +73,16 @@ struct OnboardingView: View {
                     welcomePage
                 case .goals:
                     goalsPage
+                case .goalInsight:
+                    goalInsightPage
                 case .distractions:
                     distractionsPage
+                case .distractionInsight:
+                    distractionInsightPage
                 case .capabilities:
                     capabilitiesPage
+                case .pricing:
+                    pricingPage
                 }
             }
             .transition(.opacity)
@@ -117,10 +126,21 @@ struct OnboardingView: View {
             onboardingErrorView
             onboardingButton("Continue") {
                 if onboarding.saveGoals(Array(goals).sorted()) {
-                    page = .distractions
+                    page = .goalInsight
                 }
             }
             .disabled(goals.isEmpty)
+        }
+    }
+
+    private var goalInsightPage: some View {
+        insightPage(
+            statistic: "53%",
+            title: "You’re not alone.",
+            message: "More than half of U.S. adults say they spend too much time on their smartphone.",
+            source: "Pew Research Center, 2026"
+        ) {
+            page = .distractions
         }
     }
 
@@ -132,10 +152,21 @@ struct OnboardingView: View {
             onboardingErrorView
             onboardingButton("Continue") {
                 if onboarding.saveDistractions(Array(distractions).sorted()) {
-                    page = .capabilities
+                    page = .distractionInsight
                 }
             }
             .disabled(distractions.isEmpty)
+        }
+    }
+
+    private var distractionInsightPage: some View {
+        insightPage(
+            statistic: "Small changes add up",
+            title: "Less screen time can help.",
+            message: "In a randomized trial of healthy students, reducing smartphone use for three weeks improved well-being, stress, sleep, and depressive symptoms.",
+            source: "Pieh et al., BMC Medicine, 2025"
+        ) {
+            page = .capabilities
         }
     }
 
@@ -183,8 +214,10 @@ struct OnboardingView: View {
             Spacer()
 
             if authorization.state.isApproved {
-                onboardingButton("Continue to account") {
-                    _ = onboarding.completeCapabilitiesExplainer()
+                onboardingButton("See plans") {
+                    if onboarding.completeCapabilitiesExplainer() {
+                        page = .pricing
+                    }
                 }
             } else {
                 onboardingButton(isRequestingAuthorization ? "Requesting…" : "Allow Screen Time Access") {
@@ -205,6 +238,134 @@ struct OnboardingView: View {
                 .foregroundStyle(.secondary)
                 .padding(.top, 10)
             }
+        }
+    }
+
+    private var pricingPage: some View {
+        pageLayout {
+            pageHeader("Simple pricing. Full focus.", subtitle: "Choose a plan after you create your account. Both plans include every Noxa feature.")
+
+            VStack(alignment: .leading, spacing: 14) {
+                featureRow("Focused app and website blocking")
+                featureRow("Timed focus sessions and daily limits")
+                featureRow("Focus history and future improvements")
+            }
+            .noxaCard()
+
+            VStack(spacing: 12) {
+                pricingCard(
+                    name: "Monthly",
+                    price: "$1.99",
+                    detail: "about $0.07 per day"
+                )
+                pricingCard(
+                    name: "Annual",
+                    price: "$19.99",
+                    detail: "about $1.67 per month · $0.05 per day",
+                    badge: "BEST VALUE"
+                )
+            }
+
+            Label {
+                Text("Clear pricing, always. You’ll see the current price before purchase, and Apple will notify you before any future renewal price change.")
+            } icon: {
+                Image(systemName: "shield.checkered")
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+            Spacer(minLength: 6)
+            onboardingErrorView
+            onboardingButton("Create your account") {
+                _ = onboarding.completePricingPreview()
+            }
+
+            Text("The App Store confirms your exact local price and handles payment securely. Subscriptions renew automatically until canceled.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func insightPage(
+        statistic: String,
+        title: String,
+        message: String,
+        source: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        pageLayout {
+            Spacer()
+
+            VStack(spacing: 16) {
+                Text(statistic)
+                    .font(NoxaTheme.font(statistic.count < 5 ? 68 : 38, weight: .bold, relativeTo: .largeTitle))
+                    .tracking(-1.4)
+                    .multilineTextAlignment(.center)
+
+                Text(title)
+                    .font(NoxaTheme.font(30, weight: .bold, relativeTo: .title))
+                    .multilineTextAlignment(.center)
+
+                Text(message)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(source)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(NoxaTheme.border, lineWidth: 1)
+            }
+
+            Spacer()
+            onboardingButton("Continue", action: action)
+        }
+    }
+
+    private func featureRow(_ title: String) -> some View {
+        Label(title, systemImage: "checkmark")
+            .font(NoxaTheme.font(15, weight: .medium, relativeTo: .subheadline))
+    }
+
+    private func pricingCard(name: String, price: String, detail: String, badge: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(name)
+                    .font(NoxaTheme.font(19, weight: .semibold, relativeTo: .headline))
+                Spacer()
+                if let badge {
+                    Text(badge)
+                        .font(.caption2.weight(.bold))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(NoxaTheme.accent, in: Capsule())
+                        .foregroundStyle(.black)
+                }
+            }
+            Text(price)
+                .font(NoxaTheme.font(34, weight: .bold, relativeTo: .largeTitle))
+                .monospacedDigit()
+            Text(detail)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(Color.white.opacity(0.85), lineWidth: 1.25)
         }
     }
 
@@ -298,10 +459,16 @@ struct OnboardingView: View {
             break
         case .goals:
             page = .welcome
-        case .distractions:
+        case .goalInsight:
             page = .goals
-        case .capabilities:
+        case .distractions:
+            page = .goalInsight
+        case .distractionInsight:
             page = .distractions
+        case .capabilities:
+            page = .distractionInsight
+        case .pricing:
+            page = .capabilities
         }
     }
 
@@ -311,10 +478,12 @@ struct OnboardingView: View {
             distractions = Set(savedDistractions.split(separator: "|").map(String.init))
         }
 
-        if onboarding.progress.hasCompletedDistractions {
-            page = .capabilities
+        if onboarding.progress.hasSeenCapabilitiesExplainer {
+            page = .pricing
+        } else if onboarding.progress.hasCompletedDistractions {
+            page = .distractionInsight
         } else if onboarding.progress.hasCompletedGoals {
-            page = .distractions
+            page = .goalInsight
         } else if onboarding.progress.hasSeenWelcome {
             page = .goals
         }

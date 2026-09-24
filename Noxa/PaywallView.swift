@@ -21,28 +21,23 @@ struct PaywallView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(subscriptions.hasAccess ? "Your Noxa subscription" : "Choose your Noxa plan")
-                            .font(.system(size: 38, weight: .bold, design: .rounded))
+                VStack(spacing: 22) {
+                    VStack(spacing: 8) {
+                        Text(subscriptions.hasAccess ? "Your Noxa subscription" : "Choose your plan")
+                            .font(NoxaTheme.font(38, weight: .bold, relativeTo: .largeTitle))
                             .tracking(-1)
+                            .multilineTextAlignment(.center)
                         Text(subscriptions.hasAccess
                              ? "An active subscription was found on this Apple Account. Continue to use it with this Noxa account."
-                             : "A subscription is required to use Noxa and its focus tools.")
+                             : "Every plan includes the complete Noxa experience.")
                             .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
                     }
-
-                    VStack(alignment: .leading, spacing: 14) {
-                        featureRow("Focused app and website blocking")
-                        featureRow("Timed focus sessions and daily limits")
-                        featureRow("Focus history and future improvements")
-                    }
-                    .noxaCard()
+                    .frame(maxWidth: .infinity)
 
                     if subscriptions.purchasingProductID != nil {
                         HStack(spacing: 10) {
-                            ProgressView()
-                                .tint(.white)
+                            ProgressView().tint(.white)
                             Text("Processing your purchase…")
                                 .font(.subheadline.weight(.semibold))
                             Spacer()
@@ -54,7 +49,7 @@ struct PaywallView: View {
                     }
 
                     if subscriptions.hasAccess {
-                        VStack(alignment: .leading, spacing: 16) {
+                        VStack(spacing: 16) {
                             Label("Your Noxa subscription is active", systemImage: "checkmark.seal.fill")
                                 .foregroundStyle(.green)
                                 .font(.headline)
@@ -62,21 +57,24 @@ struct PaywallView: View {
                                 Button("Continue with Current Subscription") {
                                     subscriptions.continueWithCurrentSubscription(for: authentication.userID)
                                 }
-                                .buttonStyle(NoxaPaywallPlanButtonStyle())
+                                .buttonStyle(NoxaPrimaryButtonStyle())
                             }
                         }
+                        .frame(maxWidth: .infinity)
                     } else if subscriptions.products.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(spacing: 10) {
                             if subscriptions.isLoading {
                                 ProgressView("Loading plans…")
                             } else {
                                 Text("Plans are not available yet.")
                                     .font(.headline)
-                                Text("The app is ready for StoreKit testing. Add the product IDs shown in SubscriptionService.swift to App Store Connect or an Xcode StoreKit configuration file.")
+                                Text("Please check your connection and try again. You can also restore a purchase below.")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
                             }
                         }
+                        .frame(maxWidth: .infinity)
                         .noxaCard()
                     } else {
                         ForEach(subscriptions.products) { product in
@@ -88,24 +86,23 @@ struct PaywallView: View {
                                     subscriptions.continueWithCurrentSubscription(for: accountID)
                                 }
                             } label: {
-                                HStack(spacing: 14) {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(product.displayName)
-                                            .font(.headline)
-                                        Text(product.description)
-                                            .font(.footnote)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
+                                VStack(spacing: 8) {
+                                    Text(product.displayName)
+                                        .font(NoxaTheme.font(18, weight: .semibold, relativeTo: .headline))
                                     if subscriptions.purchasingProductID == product.id {
                                         ProgressView()
-                                            .tint(.black)
+                                            .tint(.white)
                                             .accessibilityLabel("Processing")
                                     } else {
                                         Text(product.displayPrice)
-                                            .font(.headline.monospacedDigit())
+                                            .font(NoxaTheme.font(34, weight: .bold, relativeTo: .largeTitle))
+                                            .monospacedDigit()
                                     }
+                                    Text(subscriptionPeriodText(for: product))
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
                                 }
+                                .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(NoxaPaywallPlanButtonStyle())
                             .disabled(subscriptions.isLoading)
@@ -115,29 +112,28 @@ struct PaywallView: View {
                                     : product.displayPrice
                             )
                         }
+
+                        Text("Tap a plan to confirm your purchase securely with the App Store.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
                     }
 
                     LegalLinksView()
 
                     Button("Restore Purchases") {
-                        Task {
-                            await subscriptions.restorePurchases()
-                        }
+                        Task { await subscriptions.restorePurchases() }
                     }
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
                     .disabled(subscriptions.isLoading)
 
                     if !allowsDismissal {
                         Button("Sign Out") {
-                            Task {
-                                await authentication.signOut()
-                            }
+                            Task { await authentication.signOut() }
                         }
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
                         .disabled(authentication.isBusy)
                     }
 
@@ -146,28 +142,28 @@ struct PaywallView: View {
                     }
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity)
                     .disabled(authentication.isBusy)
 
                     Link("Manage subscriptions in Apple settings", destination: URL(string: "https://apps.apple.com/account/subscriptions")!)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
 
                     if let message = subscriptions.message {
                         Text(message)
                             .font(.footnote)
                             .foregroundStyle(subscriptions.hasAccess ? .green : .secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .multilineTextAlignment(.center)
                     }
 
-                    Text("Subscriptions are billed by Apple. You can manage or cancel them from your Apple Account settings.")
+                    Text("Subscriptions are billed by Apple and renew automatically until canceled. Manage or cancel them in your Apple Account settings.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                 }
                 .padding(20)
             }
-            .background(Color.black.ignoresSafeArea())
+            .font(NoxaTheme.font(17))
+            .background(NoxaBackground())
             .preferredColorScheme(.dark)
             .alert("Delete your Noxa account?", isPresented: $isDeleteAccountConfirmationPresented) {
                 Button("Cancel", role: .cancel) {}
@@ -197,19 +193,36 @@ struct PaywallView: View {
         }
     }
 
-    private func featureRow(_ title: String) -> some View {
-        Label(title, systemImage: "checkmark")
-            .font(.subheadline)
+    private func subscriptionPeriodText(for product: Product) -> String {
+        guard let period = product.subscription?.subscriptionPeriod else {
+            return "Auto-renewing subscription"
+        }
+
+        switch period.unit {
+        case .day: return period.value == 1 ? "Billed daily" : "Billed every \(period.value) days"
+        case .week: return period.value == 1 ? "Billed weekly" : "Billed every \(period.value) weeks"
+        case .month: return period.value == 1 ? "Billed monthly" : "Billed every \(period.value) months"
+        case .year: return period.value == 1 ? "Billed annually" : "Billed every \(period.value) years"
+        @unknown default: return "Auto-renewing subscription"
+        }
     }
 }
 
 private struct NoxaPaywallPlanButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(.black)
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(configuration.isPressed ? 0.75 : 1))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .foregroundStyle(.white)
+            .padding(20)
+            .frame(maxWidth: .infinity)
+            .background(
+                Color.black.opacity(configuration.isPressed ? 0.75 : 0.45),
+                in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(Color.white.opacity(configuration.isPressed ? 0.55 : 0.9), lineWidth: 1.25)
+            }
+            .scaleEffect(configuration.isPressed ? 0.985 : 1)
+            .animation(.easeOut(duration: 0.14), value: configuration.isPressed)
     }
 }

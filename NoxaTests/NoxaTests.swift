@@ -240,7 +240,38 @@ struct NoxaTests {
         #expect(service.saveDistractions(["Social media"]))
         #expect(service.completeCapabilitiesExplainer())
         #expect(service.progress.hasSeenCapabilitiesExplainer)
+        #expect(service.completePricingPreview())
+        #expect(service.progress.hasSeenPricingPreview)
         store.clearSnapshot()
+    }
+
+    @Test @MainActor func pricingPreviewRequiresCapabilitiesMilestone() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.PricingGate.\(UUID().uuidString)"))
+        let store = AppGroupStore(defaults: defaults)
+        let service = OnboardingService(store: store)
+
+        #expect(!service.completePricingPreview())
+        #expect(!service.progress.hasSeenPricingPreview)
+        store.clearSnapshot()
+    }
+
+    @Test func buildEightOnboardingProgressMigratesPastPricingPreview() throws {
+        let legacyJSON = """
+        {
+          "hasSeenWelcome": true,
+          "hasCompletedGoals": true,
+          "hasCompletedDistractions": true,
+          "hasSeenCapabilitiesExplainer": true,
+          "hasCompletedInitialSetup": false,
+          "hasSeenFirstSessionPrompt": false,
+          "draftPersonalizationAnswers": ["Work"],
+          "draftSetupConfiguration": {"distractions": "Social media"}
+        }
+        """
+
+        let progress = try JSONDecoder().decode(OnboardingProgress.self, from: Data(legacyJSON.utf8))
+
+        #expect(progress.hasSeenPricingPreview)
     }
 
     @Test @MainActor func failedOnboardingSaveDoesNotAdvanceInMemoryProgress() {

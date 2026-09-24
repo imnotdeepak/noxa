@@ -69,6 +69,15 @@ final class OnboardingService: ObservableObject {
     }
 
     @discardableResult
+    func completePricingPreview() -> Bool {
+        guard progress.hasSeenCapabilitiesExplainer else {
+            errorMessage = "Allow Screen Time access before continuing."
+            return false
+        }
+        return commit { $0.hasSeenPricingPreview = true }
+    }
+
+    @discardableResult
     func reset() -> Bool {
         commit { $0 = OnboardingProgress() }
     }
