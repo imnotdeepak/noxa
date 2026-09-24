@@ -242,20 +242,27 @@ struct OnboardingView: View {
                     .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
                     .background(selected.wrappedValue.contains(option) ? Color.white : Color.white.opacity(0.08))
                     .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
             }
         }
     }
 
     private func onboardingButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(title, action: action)
-            .font(.body.weight(.semibold))
-            .foregroundStyle(.black)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity)
-            .background(Color.white)
-            .clipShape(RoundedRectangle(cornerRadius: 13))
+        Button(action: action) {
+            Text(title)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.black)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: 13))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder

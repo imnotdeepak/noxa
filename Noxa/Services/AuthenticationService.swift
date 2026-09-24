@@ -26,6 +26,8 @@ final class AuthenticationService: ObservableObject {
     @Published private(set) var isBusy = false
     @Published private(set) var userID: UUID?
     @Published private(set) var userEmail: String?
+    @Published private(set) var confirmationEmail: String?
+    @Published private(set) var requiresEmailConfirmation = false
     @Published var isPasswordRecoveryPresented = false
     @Published var message: String?
 
@@ -67,7 +69,14 @@ final class AuthenticationService: ObservableObject {
                 password: password
             )
             self.apply(session: session)
+            self.confirmationEmail = nil
+            self.requiresEmailConfirmation = false
             self.message = nil
+        }
+
+        if message == "Confirm your email address before signing in." {
+            confirmationEmail = validatedEmail
+            requiresEmailConfirmation = true
         }
     }
 
@@ -81,13 +90,26 @@ final class AuthenticationService: ObservableObject {
 
             if let session = response.session {
                 self.apply(session: session)
+                self.confirmationEmail = nil
+                self.requiresEmailConfirmation = false
                 self.message = nil
             } else {
                 self.isAuthenticated = false
                 self.userID = nil
                 self.userEmail = nil
+                self.confirmationEmail = validatedEmail
+                self.requiresEmailConfirmation = true
                 self.message = "Check your email to confirm your account, then return here to sign in."
             }
+        }
+    }
+
+    func resendConfirmationEmail() async {
+        guard let confirmationEmail else { return }
+
+        await perform {
+            try await self.client.auth.resend(email: confirmationEmail, type: .signup)
+            self.message = "A new confirmation email was sent. Check your inbox and spam folder."
         }
     }
 
@@ -121,6 +143,8 @@ final class AuthenticationService: ObservableObject {
             self.isAuthenticated = false
             self.userID = nil
             self.userEmail = nil
+            self.confirmationEmail = nil
+            self.requiresEmailConfirmation = false
             self.message = nil
         }
     }
@@ -167,6 +191,8 @@ final class AuthenticationService: ObservableObject {
         await perform {
             let session = try await self.client.auth.session(from: url)
             self.apply(session: session)
+            self.confirmationEmail = nil
+            self.requiresEmailConfirmation = false
             self.message = nil
         }
     }
@@ -216,6 +242,8 @@ final class AuthenticationService: ObservableObject {
             isAuthenticated = false
             userID = nil
             userEmail = nil
+            confirmationEmail = nil
+            requiresEmailConfirmation = false
         case .passwordRecovery:
             if let session {
                 apply(session: session)

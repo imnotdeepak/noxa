@@ -765,6 +765,8 @@ struct ContentView: View {
                 }
                 .noxaCard()
 
+                LegalLinksView()
+
                 if focusSession.isActive {
                     Text("End the active focus session before signing out.")
                         .font(.footnote)

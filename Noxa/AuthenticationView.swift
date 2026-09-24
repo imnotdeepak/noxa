@@ -102,8 +102,19 @@ struct AuthenticationView: View {
                     if let message = authentication.message {
                         Text(message)
                             .font(.footnote)
-                            .foregroundStyle(message.hasPrefix("Check your email") ? .green : .red)
+                            .foregroundStyle(isPositiveAuthenticationMessage(message) ? .green : .red)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    if authentication.requiresEmailConfirmation {
+                        Button("Resend confirmation email") {
+                            Task {
+                                await authentication.resendConfirmationEmail()
+                            }
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .disabled(authentication.isBusy)
                     }
                 }
                 .padding(20)
@@ -113,6 +124,8 @@ struct AuthenticationView: View {
                     RoundedRectangle(cornerRadius: 20)
                         .stroke(Color.white.opacity(0.1), lineWidth: 1)
                 }
+
+                LegalLinksView()
             }
             .padding(20)
         }
@@ -136,6 +149,10 @@ struct AuthenticationView: View {
                 await authentication.signUp(email: email, password: password)
             }
         }
+    }
+
+    private func isPositiveAuthenticationMessage(_ message: String) -> Bool {
+        message.hasPrefix("Check your email") || message.hasPrefix("A new confirmation email")
     }
 
     private func handleAppleResult(_ result: Result<ASAuthorization, Error>) {

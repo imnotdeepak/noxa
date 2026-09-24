@@ -54,7 +54,7 @@ struct NoxaApp: App {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .background(Color.black)
                             .preferredColorScheme(.dark)
-                    } else if subscriptions.hasAccess {
+                    } else if subscriptions.canEnterApp(for: authentication.userID) {
                         ContentView()
                     } else {
                         PaywallView(allowsDismissal: false)

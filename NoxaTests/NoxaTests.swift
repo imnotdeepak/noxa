@@ -327,6 +327,26 @@ struct NoxaTests {
         #expect(SubscriptionService.productIDs.contains(SubscriptionService.annualProductID))
     }
 
+    @Test @MainActor func subscriptionRequiresReviewForEachNoxaAccount() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.\(UUID().uuidString)"))
+        let firstAccount = UUID()
+        let secondAccount = UUID()
+        let subscriptions = SubscriptionService(defaults: defaults)
+
+        #expect(!subscriptions.canEnterApp(for: firstAccount))
+        subscriptions.continueWithCurrentSubscription(for: firstAccount)
+        #expect(!subscriptions.canEnterApp(for: firstAccount))
+        #expect(subscriptions.reviewedAccountIDs.isEmpty)
+
+        // A local acknowledgement cannot grant access without a verified
+        // StoreKit entitlement, and it never applies to another account.
+        defaults.set([firstAccount.uuidString], forKey: "reviewedSubscriptionAccountIDs")
+        let reloaded = SubscriptionService(defaults: defaults)
+        #expect(reloaded.reviewedAccountIDs.contains(firstAccount.uuidString))
+        #expect(!reloaded.reviewedAccountIDs.contains(secondAccount.uuidString))
+        #expect(!reloaded.canEnterApp(for: firstAccount))
+    }
+
     @Test @MainActor func cloudSessionPayloadPreservesOutcomeAndUsesStableIdentity() throws {
         let userID = try #require(UUID(uuidString: "00000000-0000-0000-0000-000000000010"))
         let sessionID = try #require(UUID(uuidString: "00000000-0000-0000-0000-000000000011"))

@@ -15,11 +15,17 @@ final class SubscriptionService: ObservableObject {
     @Published private(set) var hasAccess = false
     @Published private(set) var hasLoaded = false
     @Published private(set) var isLoading = false
+    @Published private(set) var purchasingProductID: String?
+    @Published private(set) var reviewedAccountIDs: Set<String>
     @Published var message: String?
 
     private var transactionUpdatesTask: Task<Void, Never>?
+    private let defaults: UserDefaults
+    private static let reviewedAccountIDsKey = "reviewedSubscriptionAccountIDs"
 
-    init() {
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        reviewedAccountIDs = Set(defaults.stringArray(forKey: Self.reviewedAccountIDsKey) ?? [])
         transactionUpdatesTask = Task { [weak self] in
             await self?.observeTransactionUpdates()
         }
@@ -27,6 +33,17 @@ final class SubscriptionService: ObservableObject {
 
     deinit {
         transactionUpdatesTask?.cancel()
+    }
+
+    func canEnterApp(for userID: UUID?) -> Bool {
+        guard let userID else { return false }
+        return hasAccess && reviewedAccountIDs.contains(userID.uuidString)
+    }
+
+    func continueWithCurrentSubscription(for userID: UUID?) {
+        guard hasAccess, let userID else { return }
+        reviewedAccountIDs.insert(userID.uuidString)
+        defaults.set(reviewedAccountIDs.sorted(), forKey: Self.reviewedAccountIDsKey)
     }
 
     func load() async {
@@ -66,10 +83,15 @@ final class SubscriptionService: ObservableObject {
         hasAccess = isEntitled
     }
 
-    func purchase(_ product: Product) async {
-        guard !isLoading else { return }
+    @discardableResult
+    func purchase(_ product: Product) async -> Bool {
+        guard !isLoading else { return false }
         isLoading = true
-        defer { isLoading = false }
+        purchasingProductID = product.id
+        defer {
+            purchasingProductID = nil
+            isLoading = false
+        }
 
         do {
             let result = try await product.purchase()
@@ -79,18 +101,23 @@ final class SubscriptionService: ObservableObject {
                 await transaction.finish()
                 await refreshEntitlements()
                 message = hasAccess ? "Your Noxa subscription is active on this Apple Account." : nil
+                return hasAccess
 
             case .userCancelled:
                 message = nil
+                return false
 
             case .pending:
                 message = "The purchase is pending approval. Noxa will unlock when Apple confirms it."
+                return false
 
             @unknown default:
                 message = "The purchase could not be completed. Please try again."
+                return false
             }
         } catch {
             message = "The purchase could not be completed. Please try again."
+            return false
         }
     }
 

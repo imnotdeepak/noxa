@@ -23,10 +23,12 @@ struct PaywallView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Choose your Noxa plan")
+                        Text(subscriptions.hasAccess ? "Your Noxa subscription" : "Choose your Noxa plan")
                             .font(.system(size: 38, weight: .bold, design: .rounded))
                             .tracking(-1)
-                        Text("A subscription is required to use Noxa and its focus tools.")
+                        Text(subscriptions.hasAccess
+                             ? "An active subscription was found on this Apple Account. Continue to use it with this Noxa account."
+                             : "A subscription is required to use Noxa and its focus tools.")
                             .foregroundStyle(.secondary)
                     }
 
@@ -37,10 +39,32 @@ struct PaywallView: View {
                     }
                     .noxaCard()
 
+                    if subscriptions.purchasingProductID != nil {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                                .tint(.white)
+                            Text("Processing your purchase…")
+                                .font(.subheadline.weight(.semibold))
+                            Spacer()
+                        }
+                        .foregroundStyle(.white)
+                        .noxaCard()
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Processing your purchase")
+                    }
+
                     if subscriptions.hasAccess {
-                        Label("Your Noxa subscription is active", systemImage: "checkmark.seal.fill")
-                            .foregroundStyle(.green)
-                            .font(.headline)
+                        VStack(alignment: .leading, spacing: 16) {
+                            Label("Your Noxa subscription is active", systemImage: "checkmark.seal.fill")
+                                .foregroundStyle(.green)
+                                .font(.headline)
+                            if !allowsDismissal {
+                                Button("Continue with Current Subscription") {
+                                    subscriptions.continueWithCurrentSubscription(for: authentication.userID)
+                                }
+                                .buttonStyle(NoxaPaywallPlanButtonStyle())
+                            }
+                        }
                     } else if subscriptions.products.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
                             if subscriptions.isLoading {
@@ -58,7 +82,10 @@ struct PaywallView: View {
                         ForEach(subscriptions.products) { product in
                             Button {
                                 Task {
-                                    await subscriptions.purchase(product)
+                                    let accountID = authentication.userID
+                                    let purchased = await subscriptions.purchase(product)
+                                    guard purchased, authentication.userID == accountID else { return }
+                                    subscriptions.continueWithCurrentSubscription(for: accountID)
                                 }
                             } label: {
                                 HStack(spacing: 14) {
@@ -70,14 +97,27 @@ struct PaywallView: View {
                                             .foregroundStyle(.secondary)
                                     }
                                     Spacer()
-                                    Text(product.displayPrice)
-                                        .font(.headline.monospacedDigit())
+                                    if subscriptions.purchasingProductID == product.id {
+                                        ProgressView()
+                                            .tint(.black)
+                                            .accessibilityLabel("Processing")
+                                    } else {
+                                        Text(product.displayPrice)
+                                            .font(.headline.monospacedDigit())
+                                    }
                                 }
                             }
                             .buttonStyle(NoxaPaywallPlanButtonStyle())
                             .disabled(subscriptions.isLoading)
+                            .accessibilityValue(
+                                subscriptions.purchasingProductID == product.id
+                                    ? "Processing purchase"
+                                    : product.displayPrice
+                            )
                         }
                     }
+
+                    LegalLinksView()
 
                     Button("Restore Purchases") {
                         Task {

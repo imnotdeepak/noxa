@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		00431224304F9028003BCE77 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 00431223304F9028003BCE77 /* StoreKit.framework */; };
 		00A10000000000000000000B /* NoxaMonitor.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 00A100000000000000000001 /* NoxaMonitor.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		00B100000000000000000001 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 00B100000000000000000003 /* Supabase */; };
 /* End PBXBuildFile section */
@@ -53,6 +54,7 @@
 		004310653048CD18003BCE77 /* Noxa.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Noxa.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		004310723048CD19003BCE77 /* NoxaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NoxaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0043107C3048CD19003BCE77 /* NoxaUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NoxaUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		00431223304F9028003BCE77 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 		00A100000000000000000001 /* NoxaMonitor.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NoxaMonitor.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -98,6 +100,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				00B100000000000000000001 /* Supabase in Frameworks */,
+				00431224304F9028003BCE77 /* StoreKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -132,6 +135,7 @@
 				004310753048CD19003BCE77 /* NoxaTests */,
 				0043107F3048CD19003BCE77 /* NoxaUITests */,
 				00A100000000000000000002 /* NoxaMonitor */,
+				00431222304F9028003BCE77 /* Frameworks */,
 				004310663048CD18003BCE77 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -145,6 +149,14 @@
 				00A100000000000000000001 /* NoxaMonitor.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		00431222304F9028003BCE77 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				00431223304F9028003BCE77 /* StoreKit.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -503,7 +515,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Noxa/Noxa.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = 7QPHM2BM3N;
 				ENABLE_PREVIEWS = YES;
 				EXCLUDED_SOURCE_FILE_NAMES = Info.plist;
@@ -539,7 +551,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Noxa/Noxa.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = 7QPHM2BM3N;
 				ENABLE_PREVIEWS = YES;
 				EXCLUDED_SOURCE_FILE_NAMES = Info.plist;
@@ -659,7 +671,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = NoxaMonitor/NoxaMonitor.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = 7QPHM2BM3N;
 				EXCLUDED_SOURCE_FILE_NAMES = Info.plist;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -685,7 +697,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = NoxaMonitor/NoxaMonitor.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = 7QPHM2BM3N;
 				EXCLUDED_SOURCE_FILE_NAMES = Info.plist;
 				GENERATE_INFOPLIST_FILE = NO;
