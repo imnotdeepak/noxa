@@ -33,10 +33,7 @@ struct NoxaApp: App {
         WindowGroup {
             Group {
                 if authentication.isBootstrapping {
-                    ProgressView("Opening Noxa…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color.black)
-                        .preferredColorScheme(.dark)
+                    NoxaLoadingView(message: "Opening Noxa…")
                 } else if hasActiveRestrictions
                             && (!authentication.isAuthenticated
                                 || (subscriptions.hasLoaded && !subscriptions.hasAccess)) {
@@ -45,15 +42,9 @@ struct NoxaApp: App {
                     OnboardingView()
                 } else if authentication.isAuthenticated {
                     if cloudSync.boundUserID != authentication.userID {
-                        ProgressView("Loading your account…")
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .background(Color.black)
-                            .preferredColorScheme(.dark)
+                        NoxaLoadingView(message: "Loading your account…")
                     } else if !subscriptions.hasLoaded {
-                        ProgressView("Checking subscription…")
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .background(Color.black)
-                            .preferredColorScheme(.dark)
+                        NoxaLoadingView(message: "Checking subscription…")
                     } else if subscriptions.canEnterApp(for: authentication.userID) {
                         ContentView()
                     } else {

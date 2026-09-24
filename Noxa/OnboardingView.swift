@@ -47,12 +47,19 @@ struct OnboardingView: View {
                     .accessibilityLabel("Back")
                 }
 
-                Text("Noxa")
-                    .font(.headline.weight(.semibold))
                 Spacer()
-                Text("\(page.rawValue + 1) of \(Page.allCases.count)")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+
+                Text("noxa")
+                    .font(NoxaTheme.font(17, weight: .medium, relativeTo: .headline))
+                    .foregroundStyle(NoxaTheme.primaryText)
+
+                Spacer()
+
+                if page != .welcome {
+                    Color.clear
+                        .frame(width: 17, height: 17)
+                        .accessibilityHidden(true)
+                }
             }
             .padding(.horizontal, 20)
             .padding(.top, 18)
@@ -71,7 +78,8 @@ struct OnboardingView: View {
             }
             .transition(.opacity)
         }
-        .background(Color.black.ignoresSafeArea())
+        .font(NoxaTheme.font(17))
+        .background(NoxaBackground())
         .preferredColorScheme(.dark)
         .animation(.easeInOut(duration: 0.2), value: page)
         .onAppear(perform: restoreDraft)
@@ -82,7 +90,7 @@ struct OnboardingView: View {
             Spacer()
 
             Text("Take back your\nattention.")
-                .font(.system(size: 44, weight: .bold, design: .rounded))
+                .font(NoxaTheme.font(44, weight: .bold, relativeTo: .largeTitle))
                 .tracking(-1.2)
 
             Text("Block distractions, build better screen habits, and focus when you need to.")
@@ -138,25 +146,30 @@ struct OnboardingView: View {
             Image(systemName: authorization.state.isApproved ? "checkmark.shield.fill" : "lock.shield")
                 .font(.system(size: 52))
                 .foregroundStyle(authorization.state.isApproved ? .white : .secondary)
+                .frame(maxWidth: .infinity)
 
             Text("Noxa needs Screen Time access")
-                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .font(NoxaTheme.font(32, weight: .bold, relativeTo: .largeTitle))
                 .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
 
             Text("Apple keeps your app and website selections private. Noxa uses that permission to block only what you choose.")
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
 
             if authorization.state.isApproved {
                 Label("Screen Time access is ready", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)
                     .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
             } else if authorization.state == .denied {
                 Text("Permission is currently denied. Enable Screen Time access in Settings, then try again.")
                     .font(.footnote)
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
             }
 
             if let errorMessage = authorization.errorMessage ?? onboarding.errorMessage {
@@ -213,7 +226,7 @@ struct OnboardingView: View {
     private func pageHeader(_ title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .font(NoxaTheme.font(32, weight: .bold, relativeTo: .largeTitle))
                 .tracking(-0.6)
             Text(subtitle)
                 .foregroundStyle(.secondary)
@@ -221,7 +234,7 @@ struct OnboardingView: View {
     }
 
     private func selectionGrid(options: [String], selected: Binding<Set<String>>) -> some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+        LazyVStack(spacing: 12) {
             ForEach(options, id: \.self) { option in
                 Button {
                     if selected.wrappedValue.contains(option) {
@@ -230,18 +243,28 @@ struct OnboardingView: View {
                         selected.wrappedValue.insert(option)
                     }
                 } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: selected.wrappedValue.contains(option) ? "checkmark.circle.fill" : "circle")
+                    HStack(spacing: 12) {
                         Text(option)
                             .multilineTextAlignment(.leading)
                         Spacer(minLength: 0)
+                        if selected.wrappedValue.contains(option) {
+                            Image(systemName: "checkmark")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(NoxaTheme.accent)
+                        }
                     }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(selected.wrappedValue.contains(option) ? .black : .white)
-                    .padding(14)
-                    .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
-                    .background(selected.wrappedValue.contains(option) ? Color.white : Color.white.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .font(NoxaTheme.font(17, weight: .medium))
+                    .foregroundStyle(NoxaTheme.primaryText)
+                    .padding(.horizontal, 18)
+                    .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .stroke(
+                                selected.wrappedValue.contains(option) ? NoxaTheme.accent : NoxaTheme.border,
+                                lineWidth: selected.wrappedValue.contains(option) ? 1.5 : 1
+                            )
+                    }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -252,16 +275,10 @@ struct OnboardingView: View {
     private func onboardingButton(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-                .background(Color.white)
-                .clipShape(RoundedRectangle(cornerRadius: 13))
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(NoxaPrimaryButtonStyle())
         .frame(maxWidth: .infinity)
     }
 

@@ -7,6 +7,14 @@ import FamilyControls
 import SwiftUI
 
 struct ContentView: View {
+    private enum MainTab: Hashable {
+        case dailyLimits
+        case blocklist
+        case home
+        case stats
+        case account
+    }
+
     @EnvironmentObject private var authentication: AuthenticationService
     @EnvironmentObject private var subscriptions: SubscriptionService
     @EnvironmentObject private var focusSession: FocusSessionService
@@ -17,7 +25,7 @@ struct ContentView: View {
     @EnvironmentObject private var websites: WebsiteBlocklistService
     @EnvironmentObject private var notifications: FocusNotificationService
     @StateObject private var authorization = FamilyControlsAuthorizationService()
-    @State private var selectedDurationMinutes = NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes
+    @State private var selectedDurationMinutes = 30
     @State private var isRequestingAuthorization = false
     @State private var newDomain = ""
     @State private var isDailyLimitPickerPresented = false
@@ -26,10 +34,12 @@ struct ContentView: View {
     @State private var isPaywallPresented = false
     @State private var isDeleteAccountConfirmationPresented = false
     @State private var isCustomDuration = false
-    @State private var customDurationMinutes = 30
+    @State private var customDurationText = "30"
     @State private var isStartRitualPresented = false
     @State private var isEndRitualPresented = false
     @State private var isNotificationPromptPresented = false
+    @State private var selectedTab = MainTab.home
+    @FocusState private var isCustomDurationFieldFocused: Bool
 
     private var hasConfiguredRestrictions: Bool {
         restrictions.hasSelection || !websites.domains.isEmpty || dailyLimits.enabledCount > 0
@@ -52,14 +62,15 @@ struct ContentView: View {
     }
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             NavigationStack {
-                homeContent
-                    .navigationTitle("Home")
+                dailyLimitsContent
+                    .navigationTitle("Daily Limits")
             }
             .tabItem {
-                Label("Home", systemImage: "house")
+                Label("Limits", systemImage: "hourglass")
             }
+            .tag(MainTab.dailyLimits)
 
             NavigationStack {
                 blocklistContent
@@ -68,6 +79,16 @@ struct ContentView: View {
             .tabItem {
                 Label("Blocklist", systemImage: "hand.raised.slash")
             }
+            .tag(MainTab.blocklist)
+
+            NavigationStack {
+                homeContent
+                    .toolbar(.hidden, for: .navigationBar)
+            }
+            .tabItem {
+                Label("Home", systemImage: "circle.circle.fill")
+            }
+            .tag(MainTab.home)
 
             NavigationStack {
                 statsContent
@@ -76,6 +97,7 @@ struct ContentView: View {
             .tabItem {
                 Label("Stats", systemImage: "chart.bar")
             }
+            .tag(MainTab.stats)
 
             NavigationStack {
                 accountContent
@@ -84,10 +106,14 @@ struct ContentView: View {
             .tabItem {
                 Label("Account", systemImage: "person.crop.circle")
             }
+            .tag(MainTab.account)
         }
-        .tint(.white)
+        .tint(NoxaTheme.accent)
         .preferredColorScheme(.dark)
-        .background(Color.black.ignoresSafeArea())
+        .font(NoxaTheme.font(17))
+        .toolbarBackground(NoxaTheme.background.opacity(0.96), for: .tabBar)
+        .toolbarBackground(.visible, for: .tabBar)
+        .background(NoxaBackground())
         .sheet(isPresented: $restrictions.isPickerPresented) {
             NavigationStack {
                 FamilyActivityPicker(selection: $restrictions.selection)
@@ -162,6 +188,15 @@ struct ContentView: View {
         } message: {
             Text("Noxa can remind you five minutes before a session ends and let you know when it is complete.")
         }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    commitCustomDuration()
+                    isCustomDurationFieldFocused = false
+                }
+            }
+        }
     }
 
     private var homeContent: some View {
@@ -179,22 +214,24 @@ struct ContentView: View {
             .padding()
         }
         .scrollIndicators(.hidden)
-        .background(Color.black)
+        .noxaScreenBackground()
     }
 
     private var hero: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Noxa")
-                .font(.system(size: 18, weight: .semibold, design: .rounded))
-                .foregroundStyle(.secondary)
+            Text("TIME PROTECTED")
+                .font(NoxaTheme.font(12, weight: .bold, relativeTo: .caption))
+                .tracking(1.6)
+                .foregroundStyle(NoxaTheme.accent)
 
-            Text("Take back\nyour attention.")
-                .font(.system(size: 40, weight: .bold, design: .rounded))
-                .tracking(-1)
+            Text("\(focusSession.completedFocusMinutes)")
+                .font(NoxaTheme.font(64, weight: .medium, relativeTo: .largeTitle))
+                .monospacedDigit()
+                .tracking(-2.4)
 
-            Text("Block distractions when you need to focus.\nKeep the rest of your day yours.")
-                .font(.body)
-                .foregroundStyle(.secondary)
+            Text(focusSession.completedFocusMinutes == 1 ? "minute focused" : "minutes focused")
+                .font(NoxaTheme.font(19, weight: .medium, relativeTo: .headline))
+                .foregroundStyle(NoxaTheme.secondaryText)
         }
     }
 
@@ -252,7 +289,7 @@ struct ContentView: View {
                     let remaining = max(0, activeSession.plannedEndAt.timeIntervalSince(context.date))
                     VStack(alignment: .leading, spacing: 6) {
                         Text(Self.durationString(seconds: Int(remaining)))
-                            .font(.system(size: 54, weight: .semibold, design: .rounded))
+                            .font(NoxaTheme.font(54, weight: .medium, relativeTo: .largeTitle))
                             .monospacedDigit()
                             .tracking(-2)
 
@@ -280,27 +317,28 @@ struct ContentView: View {
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        ForEach([15, 25, 45, 60, 120], id: \.self) { minutes in
+                        ForEach([30, 45, 60, 120, 180], id: \.self) { minutes in
                             Button(Self.durationLabel(minutes: minutes)) {
                                 selectedDurationMinutes = minutes
                                 isCustomDuration = false
                             }
                             .font(.subheadline.weight(.medium))
-                            .foregroundStyle(!isCustomDuration && selectedDurationMinutes == minutes ? .black : .white)
+                            .foregroundStyle(!isCustomDuration && selectedDurationMinutes == minutes ? .black : NoxaTheme.primaryText)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 9)
-                            .background(!isCustomDuration && selectedDurationMinutes == minutes ? Color.white : Color.white.opacity(0.08))
+                            .background(!isCustomDuration && selectedDurationMinutes == minutes ? NoxaTheme.accent : NoxaTheme.elevated)
                             .clipShape(Capsule())
                         }
 
                         Button("Custom") {
                             isCustomDuration = true
+                            isCustomDurationFieldFocused = true
                         }
                         .font(.subheadline.weight(.medium))
-                        .foregroundStyle(isCustomDuration ? .black : .white)
+                        .foregroundStyle(isCustomDuration ? .black : NoxaTheme.primaryText)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 9)
-                        .background(isCustomDuration ? Color.white : Color.white.opacity(0.08))
+                        .background(isCustomDuration ? NoxaTheme.accent : NoxaTheme.elevated)
                         .clipShape(Capsule())
                     }
                 }
@@ -310,16 +348,17 @@ struct ContentView: View {
                         Text("Custom duration")
                             .font(.subheadline.weight(.medium))
                         Spacer()
-                        TextField("Minutes", value: $customDurationMinutes, format: .number)
+                        TextField("Minutes", text: $customDurationText)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 88)
-                            .onChange(of: customDurationMinutes) { value in
-                                customDurationMinutes = min(
-                                    max(value, NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes),
-                                    NoxaDeviceActivityConfiguration.maximumFocusSessionMinutes
-                                )
+                            .font(NoxaTheme.font(17, weight: .semibold))
+                            .padding(.horizontal, 14)
+                            .frame(width: 104, height: 46)
+                            .background(.thinMaterial, in: Capsule())
+                            .overlay { Capsule().stroke(NoxaTheme.border, lineWidth: 1) }
+                            .focused($isCustomDurationFieldFocused)
+                            .onChange(of: customDurationText) { value in
+                                customDurationText = String(value.filter(\.isNumber).prefix(3))
                             }
                     }
 
@@ -407,7 +446,6 @@ struct ContentView: View {
                 .noxaCard()
 
                 websiteCard
-                dailyLimitsCard
 
                 #if DEBUG
                 VStack(alignment: .leading, spacing: 14) {
@@ -469,7 +507,27 @@ struct ContentView: View {
             .padding()
         }
         .scrollIndicators(.hidden)
-        .background(Color.black)
+        .noxaScreenBackground()
+    }
+
+    private var dailyLimitsContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Protect your time every day.")
+                        .font(NoxaTheme.font(31, weight: .bold, relativeTo: .largeTitle))
+                        .tracking(-0.7)
+                    Text("Set a daily allowance for distracting apps. Noxa applies each limit locally using Screen Time.")
+                        .font(NoxaTheme.font(16))
+                        .foregroundStyle(NoxaTheme.secondaryText)
+                }
+
+                dailyLimitsCard
+            }
+            .padding()
+        }
+        .scrollIndicators(.hidden)
+        .noxaScreenBackground()
     }
 
     private var websiteCard: some View {
@@ -643,7 +701,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Build a calmer day.")
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .font(NoxaTheme.font(32, weight: .bold, relativeTo: .largeTitle))
                     Text("Your completed focus sessions and streaks will appear here.")
                         .foregroundStyle(.secondary)
                 }
@@ -674,7 +732,7 @@ struct ContentView: View {
             .padding()
         }
         .scrollIndicators(.hidden)
-        .background(Color.black)
+        .noxaScreenBackground()
     }
 
     private var recentSessionsCard: some View {
@@ -782,7 +840,7 @@ struct ContentView: View {
             .padding()
         }
         .scrollIndicators(.hidden)
-        .background(Color.black)
+        .noxaScreenBackground()
         .sheet(isPresented: $isPaywallPresented) {
             PaywallView()
                 .environmentObject(subscriptions)
@@ -839,7 +897,20 @@ struct ContentView: View {
     }
 
     private var chosenDurationMinutes: Int {
-        isCustomDuration ? customDurationMinutes : selectedDurationMinutes
+        guard isCustomDuration else { return selectedDurationMinutes }
+        return normalizedCustomDuration
+    }
+
+    private var normalizedCustomDuration: Int {
+        let value = Int(customDurationText) ?? NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes
+        return min(
+            max(value, NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes),
+            NoxaDeviceActivityConfiguration.maximumFocusSessionMinutes
+        )
+    }
+
+    private func commitCustomDuration() {
+        customDurationText = String(normalizedCustomDuration)
     }
 
     private func beginFocusSession(intention: String) {
@@ -870,7 +941,7 @@ struct ContentView: View {
     private func statCard(title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(value)
-                .font(.system(size: 30, weight: .semibold, design: .rounded))
+                .font(NoxaTheme.font(30, weight: .semibold, relativeTo: .title))
             Text(title)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -891,46 +962,6 @@ struct ContentView: View {
             return String(format: "%d:%02d:%02d", hours, minutes, remainingSeconds)
         }
         return String(format: "%02d:%02d", minutes, remainingSeconds)
-    }
-}
-
-struct NoxaPrimaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.body.weight(.semibold))
-            .foregroundStyle(.black)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 13)
-            .frame(maxWidth: .infinity)
-            .background(Color.white.opacity(configuration.isPressed ? 0.75 : 1))
-            .clipShape(RoundedRectangle(cornerRadius: 13))
-    }
-}
-
-struct NoxaSecondaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.body.weight(.semibold))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 13)
-            .frame(maxWidth: .infinity)
-            .background(Color.white.opacity(configuration.isPressed ? 0.16 : 0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 13))
-    }
-}
-
-extension View {
-    func noxaCard() -> some View {
-        self
-            .padding(18)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(0.06))
-            .overlay {
-                RoundedRectangle(cornerRadius: 18)
-                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 }
 
