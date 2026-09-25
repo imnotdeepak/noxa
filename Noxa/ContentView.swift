@@ -35,7 +35,6 @@ struct ContentView: View {
     @State private var isDeleteAccountConfirmationPresented = false
     @State private var isCustomDuration = false
     @State private var customDurationText = "30"
-    @State private var isStartRitualPresented = false
     @State private var isEndRitualPresented = false
     @State private var isNotificationPromptPresented = false
     @State private var selectedTab = MainTab.home
@@ -154,11 +153,6 @@ struct ContentView: View {
             }
             .preferredColorScheme(.dark)
         }
-        .sheet(isPresented: $isStartRitualPresented) {
-            FocusStartRitualView(durationMinutes: chosenDurationMinutes) { intention in
-                beginFocusSession(intention: intention)
-            }
-        }
         .fullScreenCover(isPresented: $isEndRitualPresented) {
             EndSessionRitualView {
                 if let sessionID = focusSession.activeSession?.id {
@@ -201,7 +195,7 @@ struct ContentView: View {
 
     private var homeContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(spacing: 22) {
                 hero
 
                 if !authorization.state.isApproved {
@@ -218,21 +212,44 @@ struct ContentView: View {
     }
 
     private var hero: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(spacing: 8) {
             Text("TIME PROTECTED")
                 .font(NoxaTheme.font(12, weight: .bold, relativeTo: .caption))
                 .tracking(1.6)
                 .foregroundStyle(NoxaTheme.accent)
 
-            Text("\(focusSession.completedFocusMinutes)")
-                .font(NoxaTheme.font(64, weight: .medium, relativeTo: .largeTitle))
-                .monospacedDigit()
-                .tracking(-2.4)
+            HStack(alignment: .firstTextBaseline, spacing: 7) {
+                if focusSession.completedFocusMinutes >= 60 {
+                    Text("\(focusSession.completedFocusMinutes / 60)")
+                        .font(NoxaTheme.font(62, weight: .medium, relativeTo: .largeTitle))
+                    Text("hr")
+                        .font(NoxaTheme.font(20, weight: .medium, relativeTo: .headline))
+                        .foregroundStyle(NoxaTheme.secondaryText)
 
-            Text(focusSession.completedFocusMinutes == 1 ? "minute focused" : "minutes focused")
-                .font(NoxaTheme.font(19, weight: .medium, relativeTo: .headline))
+                    if focusSession.completedFocusMinutes % 60 > 0 {
+                        Text("\(focusSession.completedFocusMinutes % 60)")
+                            .font(NoxaTheme.font(62, weight: .medium, relativeTo: .largeTitle))
+                        Text("min")
+                            .font(NoxaTheme.font(20, weight: .medium, relativeTo: .headline))
+                            .foregroundStyle(NoxaTheme.secondaryText)
+                    }
+                } else {
+                    Text("\(focusSession.completedFocusMinutes)")
+                        .font(NoxaTheme.font(68, weight: .medium, relativeTo: .largeTitle))
+                    Text(focusSession.completedFocusMinutes == 1 ? "minute" : "minutes")
+                        .font(NoxaTheme.font(20, weight: .medium, relativeTo: .headline))
+                        .foregroundStyle(NoxaTheme.secondaryText)
+                }
+            }
+            .monospacedDigit()
+            .tracking(-1.5)
+
+            Text("protected from distractions")
+                .font(NoxaTheme.font(16, weight: .medium, relativeTo: .subheadline))
                 .foregroundStyle(NoxaTheme.secondaryText)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 18)
     }
 
     private var permissionCard: some View {
@@ -274,35 +291,62 @@ struct ContentView: View {
     private var focusSessionCard: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Label("Focus session", systemImage: "timer")
-                    .font(.headline)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(focusSession.isActive ? "Stay focused" : "Start a focus")
+                        .font(NoxaTheme.font(24, weight: .bold, relativeTo: .title2))
+                    Text(focusSession.isActive ? "Noxa is protecting your time." : "Choose a duration and begin.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
                 if focusSession.isActive {
-                    Text("ACTIVE")
+                    Text("LIVE")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(NoxaTheme.accent, in: Capsule())
                 }
             }
 
             if let activeSession = focusSession.activeSession {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     let remaining = max(0, activeSession.plannedEndAt.timeIntervalSince(context.date))
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(Self.durationString(seconds: Int(remaining)))
-                            .font(NoxaTheme.font(54, weight: .medium, relativeTo: .largeTitle))
-                            .monospacedDigit()
-                            .tracking(-2)
+                    let progress = min(max(remaining / Double(activeSession.plannedDurationSeconds), 0), 1)
+                    VStack(spacing: 16) {
+                        ZStack {
+                            Circle()
+                                .stroke(Color.white.opacity(0.08), lineWidth: 10)
+                            Circle()
+                                .trim(from: 0, to: progress)
+                                .stroke(
+                                    NoxaTheme.accent,
+                                    style: StrokeStyle(lineWidth: 10, lineCap: .round)
+                                )
+                                .rotationEffect(.degrees(-90))
 
-                        Text("Your selected distractions are blocked until \(activeSession.plannedEndAt.formatted(date: .omitted, time: .shortened)).")
-                            .font(.subheadline)
+                            VStack(spacing: 3) {
+                                Text(Self.durationString(seconds: Int(remaining)))
+                                    .font(NoxaTheme.font(38, weight: .medium, relativeTo: .largeTitle))
+                                    .monospacedDigit()
+                                    .tracking(-1.5)
+                                Text("remaining")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .frame(width: 190, height: 190)
+
+                        Text("Blocked until \(activeSession.plannedEndAt.formatted(date: .omitted, time: .shortened))")
+                            .font(.subheadline.weight(.medium))
                             .foregroundStyle(.secondary)
 
                         if let intention = focusSession.activeIntention, !intention.isEmpty {
                             Label(intention, systemImage: "scope")
                                 .font(.subheadline.weight(.medium))
-                                .padding(.top, 4)
                         }
                     }
+                    .frame(maxWidth: .infinity)
                 }
 
                 Button("End Session Early") {
@@ -310,65 +354,89 @@ struct ContentView: View {
                 }
                 .buttonStyle(NoxaSecondaryButtonStyle())
             } else {
-                Text(hasFocusRestrictions
-                     ? "\(focusRestrictionCount) distraction(s) ready to block."
-                     : "Choose apps or websites first, then start a session.")
-                    .foregroundStyle(.secondary)
+                VStack(spacing: 2) {
+                    Text(Self.durationLabel(minutes: chosenDurationMinutes))
+                        .font(NoxaTheme.font(58, weight: .medium, relativeTo: .largeTitle))
+                        .monospacedDigit()
+                        .tracking(-2)
+                    Text("focus session")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach([30, 45, 60, 120, 180], id: \.self) { minutes in
-                            Button(Self.durationLabel(minutes: minutes)) {
-                                selectedDurationMinutes = minutes
-                                isCustomDuration = false
-                            }
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(!isCustomDuration && selectedDurationMinutes == minutes ? .black : NoxaTheme.primaryText)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 9)
-                            .background(!isCustomDuration && selectedDurationMinutes == minutes ? NoxaTheme.accent : NoxaTheme.elevated)
-                            .clipShape(Capsule())
-                        }
-
-                        Button("Custom") {
-                            isCustomDuration = true
-                            isCustomDurationFieldFocused = true
-                        }
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(isCustomDuration ? .black : NoxaTheme.primaryText)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 9)
-                        .background(isCustomDuration ? NoxaTheme.accent : NoxaTheme.elevated)
-                        .clipShape(Capsule())
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 9), count: 3), spacing: 9) {
+                    ForEach([30, 45, 60, 120, 180], id: \.self) { minutes in
+                        durationButton(title: Self.durationLabel(minutes: minutes), minutes: minutes)
                     }
+
+                    Button("Custom") {
+                        customDurationText = String(selectedDurationMinutes)
+                        isCustomDuration = true
+                        isCustomDurationFieldFocused = true
+                    }
+                    .buttonStyle(NoxaDurationButtonStyle(isSelected: isCustomDuration))
                 }
 
                 if isCustomDuration {
-                    HStack(spacing: 12) {
-                        Text("Custom duration")
-                            .font(.subheadline.weight(.medium))
-                        Spacer()
+                    HStack(spacing: 10) {
+                        Button {
+                            adjustCustomDuration(by: -5)
+                        } label: {
+                            Image(systemName: "minus")
+                                .frame(width: 42, height: 42)
+                        }
+                        .buttonStyle(.plain)
+                        .background(.thinMaterial, in: Circle())
+
                         TextField("Minutes", text: $customDurationText)
                             .keyboardType(.numberPad)
-                            .multilineTextAlignment(.trailing)
-                            .font(NoxaTheme.font(17, weight: .semibold))
+                            .multilineTextAlignment(.center)
+                            .font(NoxaTheme.font(22, weight: .semibold, relativeTo: .title3))
                             .padding(.horizontal, 14)
-                            .frame(width: 104, height: 46)
+                            .frame(maxWidth: .infinity, minHeight: 48)
                             .background(.thinMaterial, in: Capsule())
                             .overlay { Capsule().stroke(NoxaTheme.border, lineWidth: 1) }
                             .focused($isCustomDurationFieldFocused)
                             .onChange(of: customDurationText) { value in
                                 customDurationText = String(value.filter(\.isNumber).prefix(3))
                             }
+
+                        Button {
+                            adjustCustomDuration(by: 5)
+                        } label: {
+                            Image(systemName: "plus")
+                                .frame(width: 42, height: 42)
+                        }
+                        .buttonStyle(.plain)
+                        .background(.thinMaterial, in: Circle())
                     }
 
-                    Text("Choose \(NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes)–\(NoxaDeviceActivityConfiguration.maximumFocusSessionMinutes) minutes.")
+                    Text("Enter \(NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes)–\(NoxaDeviceActivityConfiguration.maximumFocusSessionMinutes) minutes.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
 
-                Button("Start Focus Session") {
-                    isStartRitualPresented = true
+                if hasFocusRestrictions {
+                    Label("\(focusRestrictionCount) selected distraction\(focusRestrictionCount == 1 ? "" : "s") will be blocked", systemImage: "checkmark.shield.fill")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(NoxaTheme.accent)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                } else {
+                    Button {
+                        selectedTab = .blocklist
+                    } label: {
+                        Label("Choose distractions first", systemImage: "plus")
+                    }
+                    .buttonStyle(NoxaSecondaryButtonStyle())
+                }
+
+                Button("Start \(Self.durationLabel(minutes: chosenDurationMinutes)) Focus") {
+                    commitCustomDuration()
+                    isCustomDurationFieldFocused = false
+                    beginFocusSession(intention: "")
                 }
                 .buttonStyle(NoxaPrimaryButtonStyle())
                 .disabled(
@@ -402,7 +470,7 @@ struct ContentView: View {
             }
 
             Text(hasConfiguredRestrictions
-                 ? "\(configuredRestrictionCount) private selection(s) saved on this device."
+                 ? "\(configuredRestrictionCount) private selection\(configuredRestrictionCount == 1 ? "" : "s") saved on this device."
                  : "Nothing selected yet.")
                 .foregroundStyle(.secondary)
 
@@ -913,6 +981,28 @@ struct ContentView: View {
         customDurationText = String(normalizedCustomDuration)
     }
 
+    private func adjustCustomDuration(by amount: Int) {
+        let current = Int(customDurationText) ?? selectedDurationMinutes
+        let adjusted = min(
+            max(current + amount, NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes),
+            NoxaDeviceActivityConfiguration.maximumFocusSessionMinutes
+        )
+        customDurationText = String(adjusted)
+    }
+
+    private func durationButton(title: String, minutes: Int) -> some View {
+        Button(title) {
+            selectedDurationMinutes = minutes
+            isCustomDuration = false
+            isCustomDurationFieldFocused = false
+        }
+        .buttonStyle(
+            NoxaDurationButtonStyle(
+                isSelected: !isCustomDuration && selectedDurationMinutes == minutes
+            )
+        )
+    }
+
     private func beginFocusSession(intention: String) {
         restrictions.persistSelection()
         focusSession.start(
@@ -962,6 +1052,27 @@ struct ContentView: View {
             return String(format: "%d:%02d:%02d", hours, minutes, remainingSeconds)
         }
         return String(format: "%02d:%02d", minutes, remainingSeconds)
+    }
+}
+
+private struct NoxaDurationButtonStyle: ButtonStyle {
+    let isSelected: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(NoxaTheme.font(15, weight: .semibold, relativeTo: .subheadline))
+            .foregroundStyle(isSelected ? .black : NoxaTheme.primaryText)
+            .frame(maxWidth: .infinity, minHeight: 46)
+            .background(
+                isSelected ? NoxaTheme.accent : NoxaTheme.elevated,
+                in: Capsule()
+            )
+            .overlay {
+                Capsule()
+                    .stroke(isSelected ? NoxaTheme.accent : NoxaTheme.border, lineWidth: 1)
+            }
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
