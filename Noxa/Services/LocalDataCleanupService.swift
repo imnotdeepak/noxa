@@ -15,6 +15,7 @@ enum LocalDataCleanupService {
         restrictions: ScreenTimeRestrictionService,
         monitoring: DeviceActivityMonitoringService,
         dailyLimits: DailyLimitService,
+        schedules: RestrictionScheduleService,
         websites: WebsiteBlocklistService,
         cloudSync: CloudSyncService,
         store: AppGroupStore? = nil
@@ -22,6 +23,7 @@ enum LocalDataCleanupService {
         let store = store ?? AppGroupStore.shared
         monitoring.stop()
         dailyLimits.clearConfigurations()
+        schedules.clearConfigurations()
         restrictions.clearSelection(force: true)
         websites.removeAllDomains(force: true)
         focusSession.clearAllLocalData()

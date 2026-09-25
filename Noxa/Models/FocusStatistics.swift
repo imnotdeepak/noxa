@@ -4,7 +4,10 @@ struct FocusStatistics: Equatable, Sendable {
     let completedSessions: Int
     let abandonedSessions: Int
     let totalFocusMinutes: Int
+    let dailyFocusMinutes: Int
     let weeklyFocusMinutes: Int
+    let monthlyFocusMinutes: Int
+    let yearlyFocusMinutes: Int
     let currentStreak: Int
     let longestStreak: Int
 
@@ -25,11 +28,11 @@ struct FocusStatistics: Equatable, Sendable {
         abandonedSessions = abandoned.count
         totalFocusMinutes = Self.minutes(in: completed)
 
-        let week = calendar.dateInterval(of: .weekOfYear, for: now)
-        weeklyFocusMinutes = Self.minutes(in: completed.filter { record in
-            guard let week else { return false }
-            return week.contains(record.startedAt)
-        })
+        let today = calendar.startOfDay(for: now)
+        dailyFocusMinutes = Self.minutes(in: Self.records(completed, sinceDaysAgo: 0, today: today, calendar: calendar))
+        weeklyFocusMinutes = Self.minutes(in: Self.records(completed, sinceDaysAgo: 6, today: today, calendar: calendar))
+        monthlyFocusMinutes = Self.minutes(in: Self.records(completed, sinceDaysAgo: 29, today: today, calendar: calendar))
+        yearlyFocusMinutes = Self.minutes(in: Self.records(completed, sinceDaysAgo: 364, today: today, calendar: calendar))
 
         let completedDays = Set(completed.map { calendar.startOfDay(for: $0.startedAt) })
         let streaks = Self.streaks(completedDays: completedDays, now: now, calendar: calendar)
@@ -41,6 +44,19 @@ struct FocusStatistics: Equatable, Sendable {
         records.reduce(0) {
             $0 + (($1.actualDurationSeconds ?? $1.plannedDurationSeconds) / 60)
         }
+    }
+
+    private static func records(
+        _ records: [ActiveSessionRecord],
+        sinceDaysAgo days: Int,
+        today: Date,
+        calendar: Calendar
+    ) -> [ActiveSessionRecord] {
+        guard let start = calendar.date(byAdding: .day, value: -days, to: today),
+              let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) else {
+            return []
+        }
+        return records.filter { $0.startedAt >= start && $0.startedAt < tomorrow }
     }
 
     private static func streaks(

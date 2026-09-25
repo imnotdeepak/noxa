@@ -14,6 +14,7 @@ private enum NoxaMonitorActivity {
     static let dailyLimitActivityName = DeviceActivityName("noxa.daily.limits")
     static let dailyLimitReachedEventsKey = "noxa.dailyLimitReachedEvents"
     static let dailyLimitResetDayKey = "noxa.dailyLimitResetDay"
+    static let scheduleActivityPrefix = "noxa.schedule."
 
     static func dailyLimitEventPrefix() -> String {
         "noxa.daily.limit."
@@ -41,6 +42,15 @@ private struct PersistedDailyLimitConfiguration: Codable {
     let isEnabled: Bool
 }
 
+private struct PersistedRestrictionScheduleConfiguration: Codable {
+    let id: UUID
+    let selection: FamilyActivitySelection
+    let allowedStartMinutes: Int
+    let allowedEndMinutes: Int
+    let createdAt: Date
+    let isEnabled: Bool
+}
+
 /// Runs outside the Noxa process so restrictions can be enforced after the
 /// app is backgrounded or terminated by the operating system.
 final class NoxaMonitorExtension: DeviceActivityMonitor {
@@ -63,6 +73,8 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
             } else {
                 logger.info("Restarted daily limit monitoring without resetting today's reached limits")
             }
+        } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleActivityPrefix) {
+            applyScheduleShield(for: activity)
         } else {
             logger.info("DeviceActivity validation interval started")
         }
@@ -88,6 +100,9 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
                 forKey: "noxa.focusSessionRestrictions"
             )
             logger.info("Removed focus shield when session ended")
+        } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleActivityPrefix) {
+            ManagedSettingsStore(named: ManagedSettingsStore.Name(activity.rawValue)).clearAllSettings()
+            logger.info("Removed scheduled shield for \(activity.rawValue, privacy: .public)")
         }
     }
 
@@ -195,5 +210,34 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         dailyLimitSettingsStore.shield.applicationCategories = categories.isEmpty ? nil : .specific(categories)
         dailyLimitSettingsStore.shield.webDomains = webDomains.isEmpty ? nil : webDomains
         logger.info("Applied daily limit shields for \(reachedConfigurations.count) reached configuration(s)")
+    }
+
+    private func applyScheduleShield(for activity: DeviceActivityName) {
+        let parts = activity.rawValue.split(separator: ".")
+        guard let idText = parts.last,
+              let id = UUID(uuidString: String(idText)),
+              let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa"),
+              let data = defaults.data(forKey: "noxa.restrictionSchedules"),
+              let schedules = try? JSONDecoder().decode(
+                  [PersistedRestrictionScheduleConfiguration].self,
+                  from: data
+              ),
+              let schedule = schedules.first(where: { $0.id == id && $0.isEnabled })
+        else {
+            logger.error("Could not load schedule for \(activity.rawValue, privacy: .public)")
+            return
+        }
+
+        let store = ManagedSettingsStore(named: ManagedSettingsStore.Name(activity.rawValue))
+        store.shield.applications = schedule.selection.applicationTokens.isEmpty
+            ? nil
+            : schedule.selection.applicationTokens
+        store.shield.applicationCategories = schedule.selection.categoryTokens.isEmpty
+            ? nil
+            : .specific(schedule.selection.categoryTokens)
+        store.shield.webDomains = schedule.selection.webDomainTokens.isEmpty
+            ? nil
+            : schedule.selection.webDomainTokens
+        logger.info("Applied scheduled shield for \(activity.rawValue, privacy: .public)")
     }
 }

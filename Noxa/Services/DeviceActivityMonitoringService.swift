@@ -15,6 +15,7 @@ enum NoxaDeviceActivityConfiguration {
     static let thresholdEvent = DeviceActivityEvent.Name("noxa.validation.threshold")
     static let focusActivityName = DeviceActivityName("noxa.focus.session")
     static let dailyLimitActivityName = DeviceActivityName("noxa.daily.limits")
+    static let scheduleActivityPrefix = "noxa.schedule"
     static let dailyLimitReachedEventsKey = "noxa.dailyLimitReachedEvents"
     static let dailyLimitResetDayKey = "noxa.dailyLimitResetDay"
     static let minimumFocusSessionMinutes = 15
@@ -22,6 +23,10 @@ enum NoxaDeviceActivityConfiguration {
 
     static func dailyLimitEventName(for id: UUID) -> DeviceActivityEvent.Name {
         DeviceActivityEvent.Name("noxa.daily.limit.\(id.uuidString.lowercased())")
+    }
+
+    static func scheduleActivityName(for id: UUID, segment: String) -> DeviceActivityName {
+        DeviceActivityName("\(scheduleActivityPrefix).\(segment).\(id.uuidString.lowercased())")
     }
 
     static func dailyLimitDayStamp(for date: Date = Date(), calendar: Calendar = .autoupdatingCurrent) -> String {
@@ -177,6 +182,16 @@ final class DailyLimitService: ObservableObject {
         persistAndRestartIfNeeded()
     }
 
+    func updateMinutes(_ minutes: Int, for configuration: DailyLimitConfiguration) {
+        guard !isLockedForFocusSession else {
+            errorMessage = "Daily limits cannot be changed during a focus session."
+            return
+        }
+        guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
+        configurations[index].dailyLimitMinutes = min(max(minutes, 5), 240)
+        persistAndRestartIfNeeded()
+    }
+
     func startMonitoring() {
         guard !isLockedForFocusSession else {
             errorMessage = "Daily limits cannot be changed during a focus session."
@@ -325,5 +340,179 @@ final class DailyLimitService: ObservableObject {
         settingsStore.shield.applicationCategories = categories.isEmpty ? nil : .specific(categories)
         settingsStore.shield.webDomains = webDomains.isEmpty ? nil : webDomains
         isShieldActive = !applications.isEmpty || !categories.isEmpty || !webDomains.isEmpty
+    }
+}
+
+/// Keeps selected apps unavailable except during a user-defined daily window.
+/// Each half of a schedule has its own ManagedSettings store so overlapping
+/// schedules cannot accidentally clear one another's shields.
+@MainActor
+final class RestrictionScheduleService: ObservableObject {
+    static let maximumConfigurations = 8
+
+    @Published private(set) var configurations: [RestrictionScheduleConfiguration]
+    @Published private(set) var errorMessage: String?
+
+    private let store: AppGroupStore
+    private let center = DeviceActivityCenter()
+    private let logger = Logger(subsystem: "LycheeCorp.Noxa", category: "schedules")
+
+    init(store: AppGroupStore? = nil) {
+        self.store = store ?? AppGroupStore.shared
+        configurations = (try? self.store.loadRestrictionSchedules()) ?? []
+    }
+
+    var enabledCount: Int {
+        configurations.filter(\.isEnabled).count
+    }
+
+    func add(selection: FamilyActivitySelection, allowedStart: Date, allowedEnd: Date) {
+        guard !store.hasActiveFocusSession() else {
+            errorMessage = "Schedules cannot be changed during a focus session."
+            return
+        }
+        guard !selection.applicationTokens.isEmpty else {
+            errorMessage = "Select at least one app for this schedule."
+            return
+        }
+        guard configurations.count < Self.maximumConfigurations else {
+            errorMessage = "You can create up to \(Self.maximumConfigurations) schedules."
+            return
+        }
+
+        let calendar = Calendar.autoupdatingCurrent
+        let start = Self.minutesSinceMidnight(allowedStart, calendar: calendar)
+        let end = Self.minutesSinceMidnight(allowedEnd, calendar: calendar)
+        guard end - start >= 15 else {
+            errorMessage = "The allowed window must be at least 15 minutes and end later the same day."
+            return
+        }
+
+        configurations.append(
+            RestrictionScheduleConfiguration(
+                selection: selection,
+                allowedStartMinutes: start,
+                allowedEndMinutes: end
+            )
+        )
+        persistAndReschedule()
+    }
+
+    func setEnabled(_ enabled: Bool, for configuration: RestrictionScheduleConfiguration) {
+        guard !store.hasActiveFocusSession() else {
+            errorMessage = "Schedules cannot be changed during a focus session."
+            return
+        }
+        guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
+        configurations[index].isEnabled = enabled
+        persistAndReschedule()
+    }
+
+    func remove(_ configuration: RestrictionScheduleConfiguration) {
+        guard !store.hasActiveFocusSession() else {
+            errorMessage = "Schedules cannot be changed during a focus session."
+            return
+        }
+        stop(configuration)
+        configurations.removeAll { $0.id == configuration.id }
+        persistAndReschedule()
+    }
+
+    func rescheduleAll() {
+        errorMessage = nil
+        for configuration in configurations {
+            stop(configuration)
+            guard configuration.isEnabled else { continue }
+            do {
+                try start(configuration)
+                applyCurrentShield(for: configuration)
+            } catch {
+                stop(configuration)
+                errorMessage = "Could not start a schedule: \(error.localizedDescription)"
+                logger.error("Schedule start failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    func clearConfigurations() {
+        configurations.forEach(stop)
+        configurations = []
+        store.clearRestrictionSchedules()
+        errorMessage = nil
+    }
+
+    private func persistAndReschedule() {
+        do {
+            try store.saveRestrictionSchedules(configurations)
+            rescheduleAll()
+        } catch {
+            errorMessage = "Could not save schedules: \(error.localizedDescription)"
+        }
+    }
+
+    private func start(_ configuration: RestrictionScheduleConfiguration) throws {
+        let beforeName = NoxaDeviceActivityConfiguration.scheduleActivityName(for: configuration.id, segment: "before")
+        let afterName = NoxaDeviceActivityConfiguration.scheduleActivityName(for: configuration.id, segment: "after")
+        let start = Self.components(for: configuration.allowedStartMinutes)
+        let end = Self.components(for: configuration.allowedEndMinutes)
+
+        try center.startMonitoring(
+            beforeName,
+            during: DeviceActivitySchedule(
+                intervalStart: DateComponents(hour: 0, minute: 0),
+                intervalEnd: start,
+                repeats: true
+            )
+        )
+        try center.startMonitoring(
+            afterName,
+            during: DeviceActivitySchedule(
+                intervalStart: end,
+                intervalEnd: DateComponents(hour: 23, minute: 59),
+                repeats: true
+            )
+        )
+    }
+
+    private func stop(_ configuration: RestrictionScheduleConfiguration) {
+        let names = [
+            NoxaDeviceActivityConfiguration.scheduleActivityName(for: configuration.id, segment: "before"),
+            NoxaDeviceActivityConfiguration.scheduleActivityName(for: configuration.id, segment: "after")
+        ]
+        center.stopMonitoring(names)
+        for name in names {
+            ManagedSettingsStore(named: ManagedSettingsStore.Name(name.rawValue)).clearAllSettings()
+        }
+    }
+
+    private func applyCurrentShield(for configuration: RestrictionScheduleConfiguration) {
+        let now = Self.minutesSinceMidnight(Date(), calendar: .autoupdatingCurrent)
+        let segment: String?
+        if now < configuration.allowedStartMinutes {
+            segment = "before"
+        } else if now >= configuration.allowedEndMinutes {
+            segment = "after"
+        } else {
+            segment = nil
+        }
+        guard let segment else { return }
+        let name = NoxaDeviceActivityConfiguration.scheduleActivityName(for: configuration.id, segment: segment)
+        let settings = ManagedSettingsStore(named: ManagedSettingsStore.Name(name.rawValue))
+        settings.shield.applications = configuration.selection.applicationTokens
+        settings.shield.applicationCategories = configuration.selection.categoryTokens.isEmpty
+            ? nil
+            : .specific(configuration.selection.categoryTokens)
+        settings.shield.webDomains = configuration.selection.webDomainTokens.isEmpty
+            ? nil
+            : configuration.selection.webDomainTokens
+    }
+
+    private static func minutesSinceMidnight(_ date: Date, calendar: Calendar) -> Int {
+        let components = calendar.dateComponents([.hour, .minute], from: date)
+        return (components.hour ?? 0) * 60 + (components.minute ?? 0)
+    }
+
+    private static func components(for minutes: Int) -> DateComponents {
+        DateComponents(hour: minutes / 60, minute: minutes % 60)
     }
 }

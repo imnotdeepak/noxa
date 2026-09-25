@@ -9,6 +9,7 @@ struct PaywallView: View {
     @EnvironmentObject private var restrictions: ScreenTimeRestrictionService
     @EnvironmentObject private var monitoring: DeviceActivityMonitoringService
     @EnvironmentObject private var dailyLimits: DailyLimitService
+    @EnvironmentObject private var schedules: RestrictionScheduleService
     @EnvironmentObject private var websites: WebsiteBlocklistService
     @EnvironmentObject private var cloudSync: CloudSyncService
     let allowsDismissal: Bool
@@ -175,6 +176,7 @@ struct PaywallView: View {
                             restrictions: restrictions,
                             monitoring: monitoring,
                             dailyLimits: dailyLimits,
+                            schedules: schedules,
                             websites: websites,
                             cloudSync: cloudSync
                         )

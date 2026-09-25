@@ -203,10 +203,29 @@ struct NoxaTests {
         #expect(statistics.completedSessions == 4)
         #expect(statistics.abandonedSessions == 2)
         #expect(statistics.totalFocusMinutes == 90)
+        #expect(statistics.dailyFocusMinutes == 25)
         #expect(statistics.weeklyFocusMinutes == 60)
+        #expect(statistics.monthlyFocusMinutes == 90)
+        #expect(statistics.yearlyFocusMinutes == 90)
         #expect(statistics.currentStreak == 3)
         #expect(statistics.longestStreak == 3)
         #expect(statistics.completionRate == 67)
+    }
+
+    @Test func restrictionSchedulesRoundTripThroughAppGroupStore() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.Schedules.\(UUID().uuidString)"))
+        let store = AppGroupStore(defaults: defaults)
+        let schedule = RestrictionScheduleConfiguration(
+            selection: FamilyActivitySelection(),
+            allowedStartMinutes: 21 * 60,
+            allowedEndMinutes: 22 * 60
+        )
+
+        try store.saveRestrictionSchedules([schedule])
+
+        #expect(try store.loadRestrictionSchedules() == [schedule])
+        store.clearRestrictionSchedules()
+        #expect(try store.loadRestrictionSchedules().isEmpty)
     }
 
     @Test @MainActor func onboardingMilestonesPersistAcrossServiceInstances() throws {

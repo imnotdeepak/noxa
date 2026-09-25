@@ -63,10 +63,37 @@ final class FocusNotificationService: ObservableObject {
         )
     }
 
+    func schedulePomodoro(for session: ActiveSessionRecord, breakMinutes: Int) async {
+        await refreshAuthorizationStatus()
+        guard canSchedule else { return }
+
+        cancel(for: session.id)
+        let focusComplete = UNMutableNotificationContent()
+        focusComplete.title = "Focus interval complete"
+        focusComplete.body = "Your apps are available. Take a \(breakMinutes)-minute break."
+        focusComplete.sound = .default
+        await add(
+            content: focusComplete,
+            date: session.plannedEndAt,
+            identifier: completionIdentifier(for: session.id)
+        )
+
+        let breakComplete = UNMutableNotificationContent()
+        breakComplete.title = "Break complete"
+        breakComplete.body = "Ready for another Pomodoro? Open Noxa when you’re ready to begin."
+        breakComplete.sound = .default
+        await add(
+            content: breakComplete,
+            date: session.plannedEndAt.addingTimeInterval(TimeInterval(max(1, breakMinutes) * 60)),
+            identifier: breakIdentifier(for: session.id)
+        )
+    }
+
     func cancel(for sessionID: UUID) {
         center.removePendingNotificationRequests(withIdentifiers: [
             warningIdentifier(for: sessionID),
-            completionIdentifier(for: sessionID)
+            completionIdentifier(for: sessionID),
+            breakIdentifier(for: sessionID)
         ])
     }
 
@@ -86,5 +113,9 @@ final class FocusNotificationService: ObservableObject {
 
     private func completionIdentifier(for sessionID: UUID) -> String {
         "noxa.focus.\(sessionID.uuidString).complete"
+    }
+
+    private func breakIdentifier(for sessionID: UUID) -> String {
+        "noxa.focus.\(sessionID.uuidString).break-complete"
     }
 }

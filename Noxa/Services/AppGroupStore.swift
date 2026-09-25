@@ -26,6 +26,7 @@ final class AppGroupStore {
         static let focusSessionRestrictions = "noxa.focusSessionRestrictions"
         static let websiteBlocklist = "noxa.websiteBlocklist"
         static let dailyLimits = "noxa.dailyLimits"
+        static let restrictionSchedules = "noxa.restrictionSchedules"
         static let cloudSyncState = "noxa.cloudSyncState"
         static let cloudAccountCaches = "noxa.cloudAccountCaches"
     }
@@ -143,6 +144,21 @@ final class AppGroupStore {
 
     func clearDailyLimitConfigurations() {
         defaults.removeObject(forKey: Key.dailyLimits)
+    }
+
+    func loadRestrictionSchedules() throws -> [RestrictionScheduleConfiguration] {
+        guard let data = defaults.data(forKey: Key.restrictionSchedules) else {
+            return []
+        }
+        return try JSONDecoder().decode([RestrictionScheduleConfiguration].self, from: data)
+    }
+
+    func saveRestrictionSchedules(_ schedules: [RestrictionScheduleConfiguration]) throws {
+        defaults.set(try JSONEncoder().encode(schedules), forKey: Key.restrictionSchedules)
+    }
+
+    func clearRestrictionSchedules() {
+        defaults.removeObject(forKey: Key.restrictionSchedules)
     }
 
     func loadCloudSyncState() throws -> CloudSyncState? {

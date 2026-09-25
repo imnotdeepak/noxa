@@ -17,6 +17,7 @@ struct NoxaApp: App {
     @StateObject private var restrictions = ScreenTimeRestrictionService()
     @StateObject private var monitoring = DeviceActivityMonitoringService()
     @StateObject private var dailyLimits = DailyLimitService()
+    @StateObject private var schedules = RestrictionScheduleService()
     @StateObject private var websites = WebsiteBlocklistService()
     @StateObject private var cloudSync = CloudSyncService()
     @StateObject private var notifications = FocusNotificationService()
@@ -27,6 +28,7 @@ struct NoxaApp: App {
             || monitoring.isMonitoring
             || dailyLimits.isMonitoring
             || dailyLimits.isShieldActive
+            || schedules.enabledCount > 0
     }
 
     var body: some Scene {
@@ -61,6 +63,7 @@ struct NoxaApp: App {
             .environmentObject(restrictions)
             .environmentObject(monitoring)
             .environmentObject(dailyLimits)
+            .environmentObject(schedules)
             .environmentObject(websites)
             .environmentObject(cloudSync)
             .environmentObject(notifications)
@@ -68,6 +71,7 @@ struct NoxaApp: App {
                 await authentication.bootstrap()
                 await subscriptions.load()
                 focusSession.reconcile()
+                schedules.rescheduleAll()
                 await syncCloudDataIfAuthenticated()
             }
             .onChange(of: scenePhase) { newPhase in
@@ -158,6 +162,7 @@ private struct RestrictionRecoveryView: View {
     @EnvironmentObject private var restrictions: ScreenTimeRestrictionService
     @EnvironmentObject private var monitoring: DeviceActivityMonitoringService
     @EnvironmentObject private var dailyLimits: DailyLimitService
+    @EnvironmentObject private var schedules: RestrictionScheduleService
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -203,6 +208,12 @@ private struct RestrictionRecoveryView: View {
             if dailyLimits.isMonitoring || dailyLimits.isShieldActive {
                 RecoveryActionButton(title: "Stop Daily Limits") {
                     dailyLimits.stopMonitoring()
+                }
+            }
+
+            if schedules.enabledCount > 0 {
+                RecoveryActionButton(title: "Stop App Schedules") {
+                    schedules.clearConfigurations()
                 }
             }
 

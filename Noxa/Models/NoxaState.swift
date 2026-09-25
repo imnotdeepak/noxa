@@ -140,6 +140,33 @@ struct DailyLimitConfiguration: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+/// A daily window during which the selected apps are available. Noxa shields
+/// them before and after this window using independent DeviceActivity stores.
+struct RestrictionScheduleConfiguration: Codable, Equatable, Identifiable, Sendable {
+    let id: UUID
+    var selection: FamilyActivitySelection
+    var allowedStartMinutes: Int
+    var allowedEndMinutes: Int
+    var createdAt: Date
+    var isEnabled: Bool
+
+    init(
+        id: UUID = UUID(),
+        selection: FamilyActivitySelection,
+        allowedStartMinutes: Int,
+        allowedEndMinutes: Int,
+        createdAt: Date = Date(),
+        isEnabled: Bool = true
+    ) {
+        self.id = id
+        self.selection = selection
+        self.allowedStartMinutes = min(max(allowedStartMinutes, 15), 1_425)
+        self.allowedEndMinutes = min(max(allowedEndMinutes, 15), 1_425)
+        self.createdAt = createdAt
+        self.isEnabled = isEnabled
+    }
+}
+
 /// Progress and draft data used to resume onboarding safely after interruption.
 struct OnboardingProgress: Codable, Equatable, Sendable {
     var hasSeenWelcome = false
