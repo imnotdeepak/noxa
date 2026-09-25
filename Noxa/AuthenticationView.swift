@@ -136,7 +136,8 @@ struct AuthenticationView: View {
 
                 LegalLinksView()
             }
-            .padding(20)
+            .padding(.horizontal, 40)
+            .padding(.vertical, 20)
         }
         .scrollDismissesKeyboard(.interactively)
         .font(NoxaTheme.font(17))

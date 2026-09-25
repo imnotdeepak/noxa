@@ -58,7 +58,8 @@ struct OnboardingWelcomeView: View {
             .opacity(revealsDetails ? 1 : 0)
             .offset(y: revealsDetails ? 0 : 16)
         }
-        .padding(24)
+        .padding(.horizontal, 40)
+        .padding(.vertical, 24)
         .font(NoxaTheme.font(17))
         .background(NoxaOnboardingBackground())
         .preferredColorScheme(.dark)
@@ -162,7 +163,7 @@ struct OnboardingView: View {
                         .accessibilityHidden(true)
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 40)
             .padding(.top, 18)
 
             Group {
@@ -542,7 +543,8 @@ struct OnboardingView: View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(alignment: .leading, spacing: 18, content: content)
-                    .padding(24)
+                    .padding(.horizontal, 40)
+                    .padding(.vertical, 24)
                     .frame(
                         maxWidth: .infinity,
                         minHeight: geometry.size.height,
