@@ -60,7 +60,7 @@ struct OnboardingWelcomeView: View {
         }
         .padding(24)
         .font(NoxaTheme.font(17))
-        .background(NoxaBackground())
+        .background(NoxaOnboardingBackground())
         .preferredColorScheme(.dark)
         .onAppear {
             if reduceMotion {
@@ -190,7 +190,7 @@ struct OnboardingView: View {
             .transition(.opacity)
         }
         .font(NoxaTheme.font(17))
-        .background(NoxaBackground())
+        .background(NoxaOnboardingBackground())
         .preferredColorScheme(.dark)
         .animation(.easeInOut(duration: 0.2), value: page)
         .onAppear(perform: restoreDraft)

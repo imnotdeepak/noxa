@@ -140,7 +140,7 @@ struct AuthenticationView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .font(NoxaTheme.font(17))
-        .background(NoxaBackground())
+        .background(NoxaOnboardingBackground())
         .preferredColorScheme(.dark)
         .onChange(of: mode) { _ in
             authentication.message = nil

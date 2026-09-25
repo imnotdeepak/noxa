@@ -42,6 +42,45 @@ struct NoxaBackground: View {
     }
 }
 
+/// A quieter, edge-lit variation used only throughout account creation and
+/// onboarding. The soft olive outline is drawn in SwiftUI so it stays crisp at
+/// every iPhone size and never includes branding from a visual reference.
+struct NoxaOnboardingBackground: View {
+    var body: some View {
+        ZStack {
+            NoxaTheme.background
+
+            RoundedRectangle(cornerRadius: 58, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.63, green: 0.76, blue: 0.43).opacity(0.7),
+                            Color(red: 0.31, green: 0.4, blue: 0.18).opacity(0.42),
+                            Color(red: 0.56, green: 0.68, blue: 0.35).opacity(0.62)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 28
+                )
+                .blur(radius: 28)
+                .padding(5)
+
+            RoundedRectangle(cornerRadius: 48, style: .continuous)
+                .stroke(Color.white.opacity(0.035), lineWidth: 1)
+                .padding(14)
+
+            LinearGradient(
+                colors: [Color.clear, Color.black.opacity(0.24)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+}
+
 struct NoxaLoadingView: View {
     let message: String
     @State private var rotation = 0.0
