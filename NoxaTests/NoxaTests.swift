@@ -269,13 +269,19 @@ struct NoxaTests {
         let firstService = OnboardingService(store: store)
 
         firstService.markWelcomeSeen()
+        firstService.saveName("Deepak")
         firstService.saveGoals(["Work", "Deep focus"])
         firstService.saveDistractions(["Web browsing"])
+        firstService.saveProblemTimes(["Evening"])
+        firstService.saveMotivations(["Being more present"])
 
         let secondService = OnboardingService(store: store)
         #expect(secondService.progress.hasSeenWelcome)
+        #expect(secondService.progress.hasCompletedName)
         #expect(secondService.progress.hasCompletedGoals)
         #expect(secondService.progress.hasCompletedDistractions)
+        #expect(secondService.progress.hasCompletedProblemTimes)
+        #expect(secondService.progress.hasCompletedMotivation)
         #expect(secondService.progress.draftPersonalizationAnswers == ["Work", "Deep focus"])
         #expect(secondService.progress.draftSetupConfiguration["distractions"] == "Web browsing")
         store.clearSnapshot()
@@ -290,8 +296,11 @@ struct NoxaTests {
         #expect(!service.progress.hasSeenCapabilitiesExplainer)
 
         #expect(service.markWelcomeSeen())
+        #expect(service.saveName("Deepak"))
         #expect(service.saveGoals(["Work"]))
         #expect(service.saveDistractions(["Social media"]))
+        #expect(service.saveProblemTimes(["Before bed"]))
+        #expect(service.saveMotivations(["Better sleep"]))
         #expect(service.completeCapabilitiesExplainer())
         #expect(service.progress.hasSeenCapabilitiesExplainer)
         #expect(service.completePricingPreview())
@@ -306,6 +315,28 @@ struct NoxaTests {
 
         #expect(!service.completePricingPreview())
         #expect(!service.progress.hasSeenPricingPreview)
+        store.clearSnapshot()
+    }
+
+    @Test @MainActor func onboardingProgressIsIsolatedWhenAccountsChange() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.OnboardingAccounts.\(UUID().uuidString)"))
+        let store = AppGroupStore(defaults: defaults)
+        let service = OnboardingService(store: store)
+        let firstUserID = UUID()
+        let secondUserID = UUID()
+
+        #expect(service.beginAuthentication(mode: AuthenticationView.Mode.createAccount.rawValue))
+        #expect(service.bind(to: firstUserID, remoteCompletion: false))
+        #expect(service.saveName("First User"))
+        #expect(service.progress.ownerUserID == firstUserID)
+
+        #expect(service.bind(to: secondUserID, remoteCompletion: false))
+        #expect(service.progress.ownerUserID == secondUserID)
+        #expect(!service.progress.hasCompletedName)
+        #expect(service.progress.hasSeenWelcome)
+
+        #expect(service.bind(to: secondUserID, remoteCompletion: true))
+        #expect(service.isComplete(for: secondUserID, remoteCompletion: true))
         store.clearSnapshot()
     }
 

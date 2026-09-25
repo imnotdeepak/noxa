@@ -40,9 +40,18 @@ struct NoxaApp: App {
                             && (!authentication.isAuthenticated
                                 || (subscriptions.hasLoaded && !subscriptions.hasAccess)) {
                     RestrictionRecoveryView()
-                } else if !onboarding.progress.hasSeenPricingPreview {
+                } else if !authentication.isAuthenticated {
+                    if onboarding.progress.hasSeenWelcome {
+                        AuthenticationView(initialMode: initialAuthenticationMode)
+                    } else {
+                        OnboardingWelcomeView()
+                    }
+                } else if !onboarding.isComplete(
+                    for: authentication.userID,
+                    remoteCompletion: authentication.hasCompletedOnboarding
+                ) {
                     OnboardingView()
-                } else if authentication.isAuthenticated {
+                } else {
                     if cloudSync.boundUserID != authentication.userID {
                         NoxaLoadingView(message: "Loading your account…")
                     } else if !subscriptions.hasLoaded {
@@ -52,8 +61,6 @@ struct NoxaApp: App {
                     } else {
                         PaywallView(allowsDismissal: false)
                     }
-                } else {
-                    AuthenticationView()
                 }
             }
             .environmentObject(authentication)
@@ -69,6 +76,7 @@ struct NoxaApp: App {
             .environmentObject(notifications)
             .task {
                 await authentication.bootstrap()
+                await reconcileOnboardingAccount()
                 await subscriptions.load()
                 focusSession.reconcile()
                 schedules.rescheduleAll()
@@ -81,6 +89,7 @@ struct NoxaApp: App {
                     if subscriptions.hasLoaded {
                         await subscriptions.refreshEntitlements()
                     }
+                    await reconcileOnboardingAccount()
                     await syncCloudDataIfAuthenticated()
                 }
             }
@@ -92,6 +101,7 @@ struct NoxaApp: App {
                     return
                 }
                 Task {
+                    await reconcileOnboardingAccount()
                     await syncCloudDataIfAuthenticated()
                 }
             }
@@ -102,7 +112,14 @@ struct NoxaApp: App {
                 cloudSync.invalidatePendingWork()
                 guard authentication.isAuthenticated else { return }
                 Task {
+                    await reconcileOnboardingAccount()
                     await syncCloudDataIfAuthenticated()
+                }
+            }
+            .onChange(of: onboarding.progress.isComplete) { isComplete in
+                guard isComplete else { return }
+                Task {
+                    await reconcileOnboardingAccount()
                 }
             }
             .onChange(of: focusSession.history) { _ in
@@ -124,6 +141,26 @@ struct NoxaApp: App {
                 PasswordUpdateView()
                     .environmentObject(authentication)
             }
+        }
+    }
+
+    private var initialAuthenticationMode: AuthenticationView.Mode {
+        guard !onboarding.progress.isComplete,
+              let rawValue = onboarding.progress.draftSetupConfiguration["authenticationMode"],
+              let mode = AuthenticationView.Mode(rawValue: rawValue) else {
+            return .signIn
+        }
+        return mode
+    }
+
+    private func reconcileOnboardingAccount() async {
+        guard authentication.isAuthenticated, let userID = authentication.userID else { return }
+        _ = onboarding.bind(
+            to: userID,
+            remoteCompletion: authentication.hasCompletedOnboarding
+        )
+        if onboarding.progress.isComplete && !authentication.hasCompletedOnboarding {
+            _ = await authentication.syncOnboardingProfile(onboarding.progress)
         }
     }
 

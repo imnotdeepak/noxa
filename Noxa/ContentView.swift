@@ -39,6 +39,7 @@ struct ContentView: View {
     @EnvironmentObject private var cloudSync: CloudSyncService
     @EnvironmentObject private var websites: WebsiteBlocklistService
     @EnvironmentObject private var notifications: FocusNotificationService
+    @EnvironmentObject private var onboarding: OnboardingService
     @StateObject private var authorization = FamilyControlsAuthorizationService()
     @State private var selectedDurationMinutes = 30
     @State private var isRequestingAuthorization = false
@@ -1115,6 +1116,10 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Label("Signed in", systemImage: "checkmark.shield.fill")
                         .font(.headline)
+                    if let displayName = authentication.displayName, !displayName.isEmpty {
+                        Text(displayName)
+                            .font(NoxaTheme.font(22, weight: .semibold, relativeTo: .title3))
+                    }
                     Text(authentication.userEmail ?? "Apple account")
                         .foregroundStyle(.secondary)
                     Text("Screen Time selections and active shields stay on this device. Focus history and website domains sync securely when you’re online.")
@@ -1226,7 +1231,8 @@ struct ContentView: View {
             dailyLimits: dailyLimits,
             schedules: schedules,
             websites: websites,
-            cloudSync: cloudSync
+            cloudSync: cloudSync,
+            onboarding: onboarding
         )
     }
 
@@ -1488,4 +1494,5 @@ private extension CloudSyncService {
         .environmentObject(WebsiteBlocklistService())
         .environmentObject(CloudSyncService())
         .environmentObject(FocusNotificationService())
+        .environmentObject(OnboardingService())
 }

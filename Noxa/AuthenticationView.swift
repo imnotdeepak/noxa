@@ -16,6 +16,10 @@ struct AuthenticationView: View {
     @State private var currentAppleNonce: String?
     @State private var isPasswordResetPresented = false
 
+    init(initialMode: Mode = .signIn) {
+        _mode = State(initialValue: initialMode)
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 28) {

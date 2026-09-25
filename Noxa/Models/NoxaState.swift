@@ -169,9 +169,13 @@ struct RestrictionScheduleConfiguration: Codable, Equatable, Identifiable, Senda
 
 /// Progress and draft data used to resume onboarding safely after interruption.
 struct OnboardingProgress: Codable, Equatable, Sendable {
+    var ownerUserID: UUID?
     var hasSeenWelcome = false
+    var hasCompletedName = false
     var hasCompletedGoals = false
     var hasCompletedDistractions = false
+    var hasCompletedProblemTimes = false
+    var hasCompletedMotivation = false
     var hasSeenCapabilitiesExplainer = false
     var hasSeenPricingPreview = false
     var hasCompletedInitialSetup = false
@@ -179,10 +183,18 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
     var draftPersonalizationAnswers: [String] = []
     var draftSetupConfiguration: [String: String] = [:]
 
+    var isComplete: Bool {
+        hasSeenPricingPreview
+    }
+
     private enum CodingKeys: String, CodingKey {
+        case ownerUserID
         case hasSeenWelcome
+        case hasCompletedName
         case hasCompletedGoals
         case hasCompletedDistractions
+        case hasCompletedProblemTimes
+        case hasCompletedMotivation
         case hasSeenCapabilitiesExplainer
         case hasSeenPricingPreview
         case hasCompletedInitialSetup
@@ -195,9 +207,13 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        ownerUserID = try container.decodeIfPresent(UUID.self, forKey: .ownerUserID)
         hasSeenWelcome = try container.decodeIfPresent(Bool.self, forKey: .hasSeenWelcome) ?? false
+        hasCompletedName = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedName) ?? false
         hasCompletedGoals = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedGoals) ?? false
         hasCompletedDistractions = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedDistractions) ?? false
+        hasCompletedProblemTimes = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedProblemTimes) ?? false
+        hasCompletedMotivation = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedMotivation) ?? false
         hasSeenCapabilitiesExplainer = try container.decodeIfPresent(Bool.self, forKey: .hasSeenCapabilitiesExplainer) ?? false
         // Build 8 completed onboarding at the capabilities step. Treat those
         // existing users as complete rather than routing them backwards after
@@ -212,9 +228,13 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(ownerUserID, forKey: .ownerUserID)
         try container.encode(hasSeenWelcome, forKey: .hasSeenWelcome)
+        try container.encode(hasCompletedName, forKey: .hasCompletedName)
         try container.encode(hasCompletedGoals, forKey: .hasCompletedGoals)
         try container.encode(hasCompletedDistractions, forKey: .hasCompletedDistractions)
+        try container.encode(hasCompletedProblemTimes, forKey: .hasCompletedProblemTimes)
+        try container.encode(hasCompletedMotivation, forKey: .hasCompletedMotivation)
         try container.encode(hasSeenCapabilitiesExplainer, forKey: .hasSeenCapabilitiesExplainer)
         try container.encode(hasSeenPricingPreview, forKey: .hasSeenPricingPreview)
         try container.encode(hasCompletedInitialSetup, forKey: .hasCompletedInitialSetup)

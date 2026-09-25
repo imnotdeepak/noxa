@@ -12,6 +12,7 @@ struct PaywallView: View {
     @EnvironmentObject private var schedules: RestrictionScheduleService
     @EnvironmentObject private var websites: WebsiteBlocklistService
     @EnvironmentObject private var cloudSync: CloudSyncService
+    @EnvironmentObject private var onboarding: OnboardingService
     let allowsDismissal: Bool
     @State private var isDeleteAccountConfirmationPresented = false
 
@@ -178,7 +179,8 @@ struct PaywallView: View {
                             dailyLimits: dailyLimits,
                             schedules: schedules,
                             websites: websites,
-                            cloudSync: cloudSync
+                            cloudSync: cloudSync,
+                            onboarding: onboarding
                         )
                     }
                 }

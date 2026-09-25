@@ -18,6 +18,7 @@ enum LocalDataCleanupService {
         schedules: RestrictionScheduleService,
         websites: WebsiteBlocklistService,
         cloudSync: CloudSyncService,
+        onboarding: OnboardingService,
         store: AppGroupStore? = nil
     ) {
         let store = store ?? AppGroupStore.shared
@@ -28,6 +29,7 @@ enum LocalDataCleanupService {
         websites.removeAllDomains(force: true)
         focusSession.clearAllLocalData()
         cloudSync.clearState()
+        _ = onboarding.reset()
         store.clearCloudSyncState()
         store.clearCloudAccountCaches()
     }

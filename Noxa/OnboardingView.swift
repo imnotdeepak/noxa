@@ -2,20 +2,99 @@ import FamilyControls
 import SwiftUI
 import UIKit
 
+struct OnboardingWelcomeView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @EnvironmentObject private var onboarding: OnboardingService
+    @State private var revealsDetails = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer()
+
+            VStack(spacing: 14) {
+                Image("NoxaLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 250, maxHeight: 126)
+                    .accessibilityHidden(true)
+
+                Text("noxa")
+                    .font(NoxaTheme.font(42, weight: .bold, relativeTo: .largeTitle))
+                    .tracking(-1)
+            }
+            .frame(maxWidth: .infinity)
+
+            VStack(spacing: 12) {
+                Text("Your attention belongs to you.")
+                    .font(NoxaTheme.font(28, weight: .bold, relativeTo: .title))
+                    .multilineTextAlignment(.center)
+
+                Text("Block distractions, protect your time, and build a healthier relationship with your phone.")
+                    .foregroundStyle(NoxaTheme.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, 30)
+            .opacity(revealsDetails ? 1 : 0)
+            .offset(y: revealsDetails ? 0 : 22)
+
+            Spacer()
+
+            VStack(spacing: 12) {
+                Button("Get my life back") {
+                    _ = onboarding.beginAuthentication(
+                        mode: AuthenticationView.Mode.createAccount.rawValue
+                    )
+                }
+                .buttonStyle(NoxaPrimaryButtonStyle())
+
+                Button("I already have an account") {
+                    _ = onboarding.beginAuthentication(
+                        mode: AuthenticationView.Mode.signIn.rawValue
+                    )
+                }
+                .buttonStyle(NoxaSecondaryButtonStyle())
+            }
+            .opacity(revealsDetails ? 1 : 0)
+            .offset(y: revealsDetails ? 0 : 16)
+        }
+        .padding(24)
+        .font(NoxaTheme.font(17))
+        .background(NoxaBackground())
+        .preferredColorScheme(.dark)
+        .onAppear {
+            if reduceMotion {
+                revealsDetails = true
+            } else {
+                withAnimation(.easeOut(duration: 0.7).delay(0.15)) {
+                    revealsDetails = true
+                }
+            }
+        }
+    }
+}
+
 struct OnboardingView: View {
     @EnvironmentObject private var onboarding: OnboardingService
+    @EnvironmentObject private var authentication: AuthenticationService
     @StateObject private var authorization = FamilyControlsAuthorizationService()
     @State private var page: Page
+    @State private var name: String
     @State private var goals: Set<String>
     @State private var distractions: Set<String>
+    @State private var problemTimes: Set<String>
+    @State private var motivations: Set<String>
     @State private var isRequestingAuthorization = false
+    @FocusState private var isNameFieldFocused: Bool
 
     private enum Page: Int, CaseIterable {
-        case welcome
+        case name
         case goals
         case goalInsight
         case distractions
         case distractionInsight
+        case problemTimes
+        case motivation
         case capabilities
         case pricing
     }
@@ -29,17 +108,36 @@ struct OnboardingView: View {
         "Social media",
         "Other"
     ]
+    private let problemTimeOptions = [
+        "Morning",
+        "Work or school hours",
+        "Afternoon",
+        "Evening",
+        "Before bed",
+        "Throughout the day"
+    ]
+    private let motivationOptions = [
+        "More time for myself",
+        "Better sleep",
+        "Better work or study",
+        "Less stress",
+        "Stronger relationships",
+        "Being more present"
+    ]
 
     init() {
-        _page = State(initialValue: .welcome)
+        _page = State(initialValue: .name)
+        _name = State(initialValue: "")
         _goals = State(initialValue: [])
         _distractions = State(initialValue: [])
+        _problemTimes = State(initialValue: [])
+        _motivations = State(initialValue: [])
     }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                if page != .welcome {
+                if page != .name {
                     Button {
                         moveBack()
                     } label: {
@@ -58,7 +156,7 @@ struct OnboardingView: View {
 
                 Spacer()
 
-                if page != .welcome {
+                if page != .name {
                     Color.clear
                         .frame(width: 17, height: 17)
                         .accessibilityHidden(true)
@@ -69,8 +167,8 @@ struct OnboardingView: View {
 
             Group {
                 switch page {
-                case .welcome:
-                    welcomePage
+                case .name:
+                    namePage
                 case .goals:
                     goalsPage
                 case .goalInsight:
@@ -79,6 +177,10 @@ struct OnboardingView: View {
                     distractionsPage
                 case .distractionInsight:
                     distractionInsightPage
+                case .problemTimes:
+                    problemTimesPage
+                case .motivation:
+                    motivationPage
                 case .capabilities:
                     capabilitiesPage
                 case .pricing:
@@ -94,31 +196,58 @@ struct OnboardingView: View {
         .onAppear(perform: restoreDraft)
     }
 
-    private var welcomePage: some View {
+    private var namePage: some View {
         pageLayout {
             Spacer()
 
-            Text("Take back your\nattention.")
-                .font(NoxaTheme.font(44, weight: .bold, relativeTo: .largeTitle))
-                .tracking(-1.2)
+            Text("What should we call you?")
+                .font(NoxaTheme.font(36, weight: .bold, relativeTo: .largeTitle))
+                .tracking(-0.8)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
 
-            Text("Block distractions, build better screen habits, and focus when you need to.")
+            Text("This makes Noxa feel a little more like yours.")
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
+
+            TextField("Your name", text: $name)
+                .textContentType(.name)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+                .multilineTextAlignment(.center)
+                .font(NoxaTheme.font(26, weight: .medium, relativeTo: .title2))
+                .padding(.vertical, 12)
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(isNameFieldFocused ? NoxaTheme.accent : Color.white.opacity(0.3))
+                        .frame(height: 1)
+                }
+                .focused($isNameFieldFocused)
+                .submitLabel(.continue)
+                .onSubmit(continueFromName)
+                .onChange(of: name) { value in
+                    if value.count > 50 {
+                        name = String(value.prefix(50))
+                    }
+                }
+                .padding(.horizontal, 20)
 
             Spacer()
 
             onboardingErrorView
 
-            onboardingButton("Get Started") {
-                if onboarding.markWelcomeSeen() {
-                    page = .goals
-                }
+            onboardingButton("Continue") {
+                continueFromName()
             }
+            .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+    }
+
+    private func continueFromName() {
+        isNameFieldFocused = false
+        if onboarding.saveName(name) {
+                    page = .goals
         }
     }
 
@@ -170,7 +299,43 @@ struct OnboardingView: View {
             message: "In a randomized trial of healthy students, reducing smartphone use for three weeks improved well-being, stress, sleep, and depressive symptoms.",
             source: "Pieh et al., BMC Medicine, 2025"
         ) {
-            page = .capabilities
+            page = .problemTimes
+        }
+    }
+
+    private var problemTimesPage: some View {
+        pageLayout {
+            pageHeader(
+                "When is staying focused hardest?",
+                subtitle: "Choose any times that regularly pull you off track."
+            )
+            selectionGrid(options: problemTimeOptions, selected: $problemTimes)
+            Spacer()
+            onboardingErrorView
+            onboardingButton("Continue") {
+                if onboarding.saveProblemTimes(Array(problemTimes).sorted()) {
+                    page = .motivation
+                }
+            }
+            .disabled(problemTimes.isEmpty)
+        }
+    }
+
+    private var motivationPage: some View {
+        pageLayout {
+            pageHeader(
+                "What would less phone time give you?",
+                subtitle: "Choose what you want to make more room for."
+            )
+            selectionGrid(options: motivationOptions, selected: $motivations)
+            Spacer()
+            onboardingErrorView
+            onboardingButton("Continue") {
+                if onboarding.saveMotivations(Array(motivations).sorted()) {
+                    page = .capabilities
+                }
+            }
+            .disabled(motivations.isEmpty)
         }
     }
 
@@ -283,7 +448,7 @@ struct OnboardingView: View {
 
             Spacer(minLength: 6)
             onboardingErrorView
-            onboardingButton("Create your account") {
+            onboardingButton("Continue to subscription") {
                 _ = onboarding.completePricingPreview()
             }
 
@@ -459,37 +624,56 @@ struct OnboardingView: View {
 
     private func moveBack() {
         switch page {
-        case .welcome:
+        case .name:
             break
         case .goals:
-            page = .welcome
+            page = .name
         case .goalInsight:
             page = .goals
         case .distractions:
             page = .goalInsight
         case .distractionInsight:
             page = .distractions
-        case .capabilities:
+        case .problemTimes:
             page = .distractionInsight
+        case .motivation:
+            page = .problemTimes
+        case .capabilities:
+            page = .motivation
         case .pricing:
             page = .capabilities
         }
     }
 
     private func restoreDraft() {
+        name = onboarding.progress.draftSetupConfiguration["name"]
+            ?? authentication.displayName
+            ?? ""
         goals = Set(onboarding.progress.draftPersonalizationAnswers)
         if let savedDistractions = onboarding.progress.draftSetupConfiguration["distractions"] {
             distractions = Set(savedDistractions.split(separator: "|").map(String.init))
         }
+        if let savedProblemTimes = onboarding.progress.draftSetupConfiguration["problemTimes"] {
+            problemTimes = Set(savedProblemTimes.split(separator: "|").map(String.init))
+        }
+        if let savedMotivations = onboarding.progress.draftSetupConfiguration["motivations"] {
+            motivations = Set(savedMotivations.split(separator: "|").map(String.init))
+        }
 
         if onboarding.progress.hasSeenCapabilitiesExplainer {
             page = .pricing
+        } else if onboarding.progress.hasCompletedMotivation {
+            page = .capabilities
+        } else if onboarding.progress.hasCompletedProblemTimes {
+            page = .motivation
         } else if onboarding.progress.hasCompletedDistractions {
             page = .distractionInsight
         } else if onboarding.progress.hasCompletedGoals {
             page = .goalInsight
-        } else if onboarding.progress.hasSeenWelcome {
+        } else if onboarding.progress.hasCompletedName {
             page = .goals
+        } else {
+            page = .name
         }
     }
 }
