@@ -1,5 +1,18 @@
 import Foundation
 
+struct FocusPeriodStatistics: Equatable, Sendable {
+    let focusMinutes: Int
+    let completedSessions: Int
+    let abandonedSessions: Int
+    let focusedDays: Int
+
+    var completionRate: Int {
+        let attempted = completedSessions + abandonedSessions
+        guard attempted > 0 else { return 0 }
+        return Int((Double(completedSessions) / Double(attempted) * 100).rounded())
+    }
+}
+
 struct FocusStatistics: Equatable, Sendable {
     let completedSessions: Int
     let abandonedSessions: Int
@@ -38,6 +51,35 @@ struct FocusStatistics: Equatable, Sendable {
         let streaks = Self.streaks(completedDays: completedDays, now: now, calendar: calendar)
         currentStreak = streaks.current
         longestStreak = streaks.longest
+    }
+
+    static func period(
+        history: [ActiveSessionRecord],
+        days: Int,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> FocusPeriodStatistics {
+        let today = calendar.startOfDay(for: now)
+        let lookback = max(days - 1, 0)
+        let completed = records(
+            history.filter { $0.outcome.countsTowardFocusStatistics },
+            sinceDaysAgo: lookback,
+            today: today,
+            calendar: calendar
+        )
+        let abandoned = records(
+            history.filter { [.endedEarly, .interrupted].contains($0.outcome) },
+            sinceDaysAgo: lookback,
+            today: today,
+            calendar: calendar
+        )
+
+        return FocusPeriodStatistics(
+            focusMinutes: minutes(in: completed),
+            completedSessions: completed.count,
+            abandonedSessions: abandoned.count,
+            focusedDays: Set(completed.map { calendar.startOfDay(for: $0.startedAt) }).count
+        )
     }
 
     private static func minutes(in records: [ActiveSessionRecord]) -> Int {

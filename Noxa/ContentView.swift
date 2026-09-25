@@ -15,6 +15,20 @@ struct ContentView: View {
         case account
     }
 
+    private enum StatsRange: Int, CaseIterable {
+        case week = 7
+        case month = 30
+        case year = 365
+
+        var title: String {
+            switch self {
+            case .week: "Last Week"
+            case .month: "Last Month"
+            case .year: "Last Year"
+            }
+        }
+    }
+
     @EnvironmentObject private var authentication: AuthenticationService
     @EnvironmentObject private var subscriptions: SubscriptionService
     @EnvironmentObject private var focusSession: FocusSessionService
@@ -38,6 +52,7 @@ struct ContentView: View {
     @State private var scheduleAllowedEnd = Calendar.current.date(from: DateComponents(hour: 22)) ?? Date()
     @State private var pomodoroWorkMinutes = 25
     @State private var pomodoroBreakMinutes = 5
+    @State private var isCustomPomodoro = false
     @State private var pendingPomodoroBreakMinutes: Int?
     @State private var isPaywallPresented = false
     @State private var isDeleteAccountConfirmationPresented = false
@@ -46,6 +61,7 @@ struct ContentView: View {
     @State private var isEndRitualPresented = false
     @State private var isNotificationPromptPresented = false
     @State private var selectedTab = MainTab.home
+    @State private var selectedStatsRange = StatsRange.week
     @FocusState private var isCustomDurationFieldFocused: Bool
 
     private var hasConfiguredRestrictions: Bool {
@@ -447,6 +463,14 @@ struct ContentView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .center)
+
+                    Button {
+                        commitCustomDuration()
+                        isCustomDurationFieldFocused = false
+                    } label: {
+                        Label("Done Entering Time", systemImage: "keyboard.chevron.compact.down")
+                    }
+                    .buttonStyle(NoxaSecondaryButtonStyle())
                 }
 
                 if hasFocusRestrictions {
@@ -562,62 +586,6 @@ struct ContentView: View {
                 websiteCard
                 pomodoroCard
 
-                #if DEBUG
-                VStack(alignment: .leading, spacing: 14) {
-                    Label("Validation controls", systemImage: "wrench.and.screwdriver")
-                        .font(.headline)
-
-                    Text("Use these controls to verify the Screen Time integration on a physical iPhone.")
-                        .foregroundStyle(.secondary)
-
-                    HStack {
-                        Button(restrictions.isShieldActive ? "Shield Active" : "Apply Test Shield") {
-                            restrictions.persistSelection()
-                            restrictions.applyShield(customDomains: websites.domains)
-                        }
-                        .buttonStyle(NoxaPrimaryButtonStyle())
-                        .disabled(
-                            !authorization.state.isApproved
-                                || !hasFocusRestrictions
-                                || restrictions.isShieldActive
-                                || focusSession.isActive
-                        )
-
-                        Button("Remove Shield") {
-                            restrictions.removeShield()
-                        }
-                        .buttonStyle(NoxaSecondaryButtonStyle())
-                        .disabled(!restrictions.isShieldActive || focusSession.isActive)
-                    }
-
-                    Button("Block After 1 Minute of Use") {
-                        restrictions.persistSelection()
-                        monitoring.start(selection: restrictions.selection)
-                    }
-                    .buttonStyle(NoxaSecondaryButtonStyle())
-                    .disabled(
-                        !authorization.state.isApproved
-                            || !restrictions.hasSelection
-                            || restrictions.isShieldActive
-                            || focusSession.isActive
-                            || monitoring.isMonitoring
-                    )
-
-                    if monitoring.isMonitoring {
-                        HStack {
-                            Text("Usage monitor active")
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Button("Stop") {
-                                monitoring.stop()
-                                restrictions.removeShield()
-                            }
-                            .font(.subheadline.weight(.semibold))
-                        }
-                    }
-                }
-                .noxaCard()
-                #endif
             }
             .padding()
         }
@@ -735,14 +703,47 @@ struct ContentView: View {
                     Button("\(preset.0)/\(preset.1)") {
                         pomodoroWorkMinutes = preset.0
                         pomodoroBreakMinutes = preset.1
+                        isCustomPomodoro = false
                     }
                     .buttonStyle(
                         NoxaDurationButtonStyle(
                             isSelected: pomodoroWorkMinutes == preset.0
                                 && pomodoroBreakMinutes == preset.1
+                                && !isCustomPomodoro
                         )
                     )
                 }
+
+                Button("Custom") {
+                    isCustomPomodoro = true
+                }
+                .buttonStyle(NoxaDurationButtonStyle(isSelected: isCustomPomodoro))
+            }
+
+            if isCustomPomodoro {
+                VStack(spacing: 10) {
+                    Stepper(value: $pomodoroWorkMinutes, in: 15...240, step: 5) {
+                        HStack {
+                            Text("Focus time")
+                            Spacer()
+                            Text(Self.durationLabel(minutes: pomodoroWorkMinutes))
+                                .monospacedDigit()
+                                .foregroundStyle(NoxaTheme.accent)
+                        }
+                    }
+                    Stepper(value: $pomodoroBreakMinutes, in: 5...60, step: 5) {
+                        HStack {
+                            Text("Break time")
+                            Spacer()
+                            Text(Self.durationLabel(minutes: pomodoroBreakMinutes))
+                                .monospacedDigit()
+                                .foregroundStyle(NoxaTheme.accent)
+                        }
+                    }
+                }
+                .font(.subheadline.weight(.medium))
+                .padding(14)
+                .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
 
             if hasFocusRestrictions {
@@ -1005,6 +1006,10 @@ struct ContentView: View {
 
     private var statsContent: some View {
         let statistics = FocusStatistics(history: focusSession.history)
+        let period = FocusStatistics.period(
+            history: focusSession.history,
+            days: selectedStatsRange.rawValue
+        )
         return ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(spacing: 8) {
@@ -1020,31 +1025,40 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
-                .noxaCard()
+                .noxaStatsCard()
 
-                HStack(spacing: 12) {
-                    statCard(title: "Today", value: Self.compactFocusTime(minutes: statistics.dailyFocusMinutes))
-                    statCard(title: "Last 7 days", value: Self.compactFocusTime(minutes: statistics.weeklyFocusMinutes))
+                HStack(spacing: 8) {
+                    ForEach(StatsRange.allCases, id: \.self) { range in
+                        Button(range.title) {
+                            selectedStatsRange = range
+                        }
+                        .buttonStyle(NoxaDurationButtonStyle(isSelected: selectedStatsRange == range))
+                    }
                 }
 
                 HStack(spacing: 12) {
-                    statCard(title: "Last 30 days", value: Self.compactFocusTime(minutes: statistics.monthlyFocusMinutes))
-                    statCard(title: "Last 365 days", value: Self.compactFocusTime(minutes: statistics.yearlyFocusMinutes))
+                    statCard(title: "Time protected", value: Self.compactFocusTime(minutes: period.focusMinutes))
+                    statCard(title: "Completed", value: "\(period.completedSessions)")
+                }
+
+                HStack(spacing: 12) {
+                    statCard(title: "Completion", value: "\(period.completionRate)%")
+                    statCard(title: "Days focused", value: "\(period.focusedDays)")
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
                     Label("Follow-through", systemImage: "chart.line.uptrend.xyaxis")
                         .font(.headline)
-                    Text("\(statistics.completionRate)% completion rate")
+                    Text("\(period.completionRate)% completion rate")
                         .font(.title2.weight(.semibold))
-                    Text("\(statistics.completedSessions) completed · \(statistics.abandonedSessions) ended early")
+                    Text("\(period.completedSessions) completed · \(period.abandonedSessions) ended early")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Text("\(statistics.currentStreak)-day current streak · \(statistics.longestStreak)-day best")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                .noxaCard()
+                .noxaStatsCard()
 
                 recentSessionsCard
             }
@@ -1092,7 +1106,7 @@ struct ContentView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
-        .noxaCard()
+        .noxaStatsCard()
     }
 
     private var accountContent: some View {
@@ -1314,7 +1328,7 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .noxaCard()
+        .noxaStatsCard()
     }
 
     private static func durationLabel(minutes: Int) -> String {

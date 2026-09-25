@@ -212,6 +212,41 @@ struct NoxaTests {
         #expect(statistics.completionRate == 67)
     }
 
+    @Test func focusPeriodStatisticsUseTheSelectedRollingWindow() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(secondsFromGMT: 0))
+        let now = try #require(calendar.date(from: DateComponents(
+            year: 2026, month: 9, day: 24, hour: 12
+        )))
+
+        func session(daysAgo: Int, outcome: SessionOutcome, minutes: Int) throws -> ActiveSessionRecord {
+            let start = try #require(calendar.date(byAdding: .day, value: -daysAgo, to: now))
+            return ActiveSessionRecord(
+                startedAt: start,
+                plannedEndAt: start.addingTimeInterval(TimeInterval(minutes * 60)),
+                plannedDurationSeconds: minutes * 60,
+                outcome: outcome,
+                actualDurationSeconds: minutes * 60
+            )
+        }
+
+        let history = try [
+            session(daysAgo: 2, outcome: .completed, minutes: 30),
+            session(daysAgo: 3, outcome: .endedEarly, minutes: 10),
+            session(daysAgo: 20, outcome: .completed, minutes: 60)
+        ]
+        let week = FocusStatistics.period(history: history, days: 7, now: now, calendar: calendar)
+        let month = FocusStatistics.period(history: history, days: 30, now: now, calendar: calendar)
+
+        #expect(week.focusMinutes == 30)
+        #expect(week.completedSessions == 1)
+        #expect(week.abandonedSessions == 1)
+        #expect(week.focusedDays == 1)
+        #expect(week.completionRate == 50)
+        #expect(month.focusMinutes == 90)
+        #expect(month.completedSessions == 2)
+    }
+
     @Test func restrictionSchedulesRoundTripThroughAppGroupStore() throws {
         let defaults = try #require(UserDefaults(suiteName: "NoxaTests.Schedules.\(UUID().uuidString)"))
         let store = AppGroupStore(defaults: defaults)

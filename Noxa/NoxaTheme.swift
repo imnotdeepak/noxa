@@ -111,6 +111,24 @@ struct NoxaGlassCardModifier: ViewModifier {
     }
 }
 
+struct NoxaStatsCardModifier: ViewModifier {
+    let padding: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .padding(padding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                Color.white.opacity(0.035),
+                in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(Color.white.opacity(0.075), lineWidth: 1)
+            }
+    }
+}
+
 struct NoxaPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -154,6 +172,10 @@ struct NoxaSecondaryButtonStyle: ButtonStyle {
 extension View {
     func noxaCard(padding: CGFloat = 18) -> some View {
         modifier(NoxaGlassCardModifier(padding: padding))
+    }
+
+    func noxaStatsCard(padding: CGFloat = 18) -> some View {
+        modifier(NoxaStatsCardModifier(padding: padding))
     }
 
     func noxaScreenBackground() -> some View {

@@ -101,10 +101,14 @@ struct OnboardingView: View {
             Text("Take back your\nattention.")
                 .font(NoxaTheme.font(44, weight: .bold, relativeTo: .largeTitle))
                 .tracking(-1.2)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
 
             Text("Block distractions, build better screen habits, and focus when you need to.")
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
 
             Spacer()
 
