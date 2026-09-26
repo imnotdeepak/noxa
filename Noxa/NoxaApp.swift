@@ -41,7 +41,7 @@ struct NoxaApp: App {
                                 || (subscriptions.hasLoaded && !subscriptions.hasAccess)) {
                     RestrictionRecoveryView()
                 } else if !authentication.isAuthenticated {
-                    if onboarding.progress.hasSeenWelcome {
+                    if onboarding.isAuthenticationRequested {
                         AuthenticationView(initialMode: initialAuthenticationMode)
                     } else {
                         OnboardingWelcomeView()

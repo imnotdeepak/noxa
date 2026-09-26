@@ -15,6 +15,7 @@ extension AppGroupStore: OnboardingStoring {}
 final class OnboardingService: ObservableObject {
     @Published private(set) var progress: OnboardingProgress
     @Published private(set) var errorMessage: String?
+    @Published private(set) var isAuthenticationRequested = false
 
     private let store: any OnboardingStoring
 
@@ -35,10 +36,14 @@ final class OnboardingService: ObservableObject {
 
     @discardableResult
     func beginAuthentication(mode: String) -> Bool {
-        commit {
+        let didSave = commit {
             $0.hasSeenWelcome = true
             $0.draftSetupConfiguration["authenticationMode"] = mode
         }
+        if didSave {
+            isAuthenticationRequested = true
+        }
+        return didSave
     }
 
     /// Binds device-local onboarding to the signed-in account. Older builds
@@ -163,7 +168,11 @@ final class OnboardingService: ObservableObject {
 
     @discardableResult
     func reset() -> Bool {
-        commit { $0 = OnboardingProgress() }
+        let didReset = commit { $0 = OnboardingProgress() }
+        if didReset {
+            isAuthenticationRequested = false
+        }
+        return didReset
     }
 
     private func commit(_ update: (inout OnboardingProgress) -> Void) -> Bool {
