@@ -7,7 +7,7 @@ enum NoxaTheme {
     static let subtleBorder = Color.white.opacity(0.075)
     static let primaryText = Color.white.opacity(0.96)
     static let secondaryText = Color.white.opacity(0.58)
-    static let accent = Color(red: 0.56, green: 0.95, blue: 0.72)
+    static let accent = Color(red: 138.0 / 255.0, green: 206.0 / 255.0, blue: 0)
     static let warning = Color(red: 1.0, green: 0.72, blue: 0.36)
 
     static func font(
@@ -42,21 +42,26 @@ struct NoxaBackground: View {
     }
 }
 
-/// A quieter, edge-lit variation used only throughout account creation and
-/// onboarding. The soft olive outline is drawn in SwiftUI so it stays crisp at
-/// every iPhone size and never includes branding from a visual reference.
+/// A top-lit variation used throughout account creation and onboarding. The
+/// green wash fades into the dark background near the primary input area.
 struct NoxaOnboardingBackground: View {
     var body: some View {
-        ZStack {
-            NoxaTheme.background
+        GeometryReader { geometry in
+            ZStack(alignment: .top) {
+                NoxaTheme.background
 
-            RoundedRectangle(cornerRadius: 58, style: .continuous)
-                .stroke(
-                    Color(red: 0.55, green: 0.68, blue: 0.36).opacity(0.44),
-                    lineWidth: 44
+                LinearGradient(
+                    colors: [
+                        NoxaTheme.accent.opacity(0.25),
+                        NoxaTheme.accent.opacity(0.12),
+                        .clear
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
                 )
-                .blur(radius: 30)
-                .padding(4)
+                .frame(height: geometry.size.height * 0.58)
+                .frame(maxHeight: .infinity, alignment: .top)
+            }
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
@@ -154,19 +159,26 @@ struct NoxaPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(NoxaTheme.font(17, weight: .semibold))
-            .foregroundStyle(.black.opacity(0.88))
+            .foregroundStyle(.black.opacity(0.9))
             .padding(.horizontal, 18)
-            .frame(maxWidth: .infinity, minHeight: 54)
+            .frame(maxWidth: .infinity, minHeight: 58)
             .background(
                 LinearGradient(
-                    colors: [Color.white, Color.white.opacity(0.84)],
+                    colors: [NoxaTheme.accent, NoxaTheme.accent.opacity(0.86)],
                     startPoint: .top,
                     endPoint: .bottom
                 ),
-                in: Capsule()
+                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
             )
-            .overlay { Capsule().stroke(Color.white.opacity(0.8), lineWidth: 1) }
-            .shadow(color: .white.opacity(configuration.isPressed ? 0.08 : 0.16), radius: 14, y: 5)
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(NoxaTheme.accent.opacity(0.75), lineWidth: 1)
+            }
+            .shadow(
+                color: NoxaTheme.accent.opacity(configuration.isPressed ? 0.08 : 0.22),
+                radius: 14,
+                y: 5
+            )
             .scaleEffect(configuration.isPressed ? 0.985 : 1)
             .opacity(configuration.isPressed ? 0.88 : 1)
             .animation(.easeOut(duration: 0.14), value: configuration.isPressed)
