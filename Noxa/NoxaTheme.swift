@@ -52,11 +52,11 @@ struct NoxaOnboardingBackground: View {
 
             RoundedRectangle(cornerRadius: 58, style: .continuous)
                 .stroke(
-                    Color(red: 0.55, green: 0.68, blue: 0.36).opacity(0.50),
-                    lineWidth: 16
+                    Color(red: 0.55, green: 0.68, blue: 0.36).opacity(0.44),
+                    lineWidth: 44
                 )
-                .blur(radius: 20)
-                .padding(8)
+                .blur(radius: 30)
+                .padding(4)
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
