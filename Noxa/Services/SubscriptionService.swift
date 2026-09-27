@@ -59,9 +59,15 @@ final class SubscriptionService: ObservableObject {
             products = loadedProducts.sorted { left, right in
                 Self.productIDs.firstIndex(of: left.id)! < Self.productIDs.firstIndex(of: right.id)!
             }
-            message = loadedProducts.isEmpty
-                ? "No subscription products are available yet. Add the matching IDs in App Store Connect or an Xcode StoreKit configuration file."
-                : nil
+            if loadedProducts.isEmpty {
+                #if DEBUG
+                message = "No subscription products are available yet. Add the matching IDs in App Store Connect or an Xcode StoreKit configuration file."
+                #else
+                message = "Subscriptions are temporarily unavailable. Please try again later."
+                #endif
+            } else {
+                message = nil
+            }
         } catch {
             products = []
             message = "Subscriptions are temporarily unavailable. Check your connection and try again."

@@ -156,6 +156,8 @@ struct NoxaStatsCardModifier: ViewModifier {
 }
 
 struct NoxaPrimaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(NoxaTheme.font(17, weight: .semibold))
@@ -164,7 +166,9 @@ struct NoxaPrimaryButtonStyle: ButtonStyle {
             .frame(maxWidth: .infinity, minHeight: 58)
             .background(
                 LinearGradient(
-                    colors: [NoxaTheme.accent, NoxaTheme.accent.opacity(0.86)],
+                    colors: isEnabled
+                        ? [NoxaTheme.accent, NoxaTheme.accent.opacity(0.86)]
+                        : [NoxaTheme.accent.opacity(0.34), NoxaTheme.accent.opacity(0.22)],
                     startPoint: .top,
                     endPoint: .bottom
                 ),
@@ -180,7 +184,7 @@ struct NoxaPrimaryButtonStyle: ButtonStyle {
                 y: 5
             )
             .scaleEffect(configuration.isPressed ? 0.985 : 1)
-            .opacity(configuration.isPressed ? 0.88 : 1)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.88 : 1) : 0.62)
             .animation(.easeOut(duration: 0.14), value: configuration.isPressed)
     }
 }

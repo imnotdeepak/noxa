@@ -16,6 +16,7 @@ struct PaywallView: View {
     let allowsDismissal: Bool
     let onAccessConfirmed: (() -> Void)?
     @State private var isDeleteAccountConfirmationPresented = false
+    @State private var hasCompletedOnboardingTransition = false
 
     init(allowsDismissal: Bool = true, onAccessConfirmed: (() -> Void)? = nil) {
         self.allowsDismissal = allowsDismissal
@@ -27,13 +28,11 @@ struct PaywallView: View {
             ScrollView {
                 VStack(spacing: 22) {
                     VStack(spacing: 8) {
-                        Text(subscriptions.hasAccess ? "Your Noxa subscription" : "Simple pricing. Full focus.")
+                        Text(paywallTitle)
                             .font(NoxaTheme.font(38, weight: .bold, relativeTo: .largeTitle))
                             .tracking(-1)
                             .multilineTextAlignment(.center)
-                        Text(subscriptions.hasAccess
-                             ? "An active subscription was found on this Apple Account. Continue to use it with this Noxa account."
-                             : "Every plan includes the complete Noxa experience.")
+                        Text(paywallSubtitle)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                     }
@@ -63,18 +62,24 @@ struct PaywallView: View {
                     }
 
                     if subscriptions.hasAccess {
-                        VStack(spacing: 16) {
-                            Label("Your Noxa subscription is active", systemImage: "checkmark.seal.fill")
-                                .foregroundStyle(.green)
-                                .font(.headline)
-                            if !allowsDismissal || onAccessConfirmed != nil {
-                                Button(onAccessConfirmed == nil ? "Continue with Current Subscription" : "Start with Noxa") {
-                                    confirmAccess()
+                        if isOnboarding {
+                            ProgressView("Finishing your setup…")
+                                .tint(NoxaTheme.accent)
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            VStack(spacing: 16) {
+                                Label("Your Noxa subscription is active", systemImage: "checkmark.seal.fill")
+                                    .foregroundStyle(.green)
+                                    .font(.headline)
+                                if !allowsDismissal {
+                                    Button("Continue with Current Subscription") {
+                                        confirmAccess()
+                                    }
+                                    .buttonStyle(NoxaPrimaryButtonStyle())
                                 }
-                                .buttonStyle(NoxaPrimaryButtonStyle())
                             }
+                            .frame(maxWidth: .infinity)
                         }
-                        .frame(maxWidth: .infinity)
                     } else if subscriptions.products.isEmpty {
                         VStack(spacing: 10) {
                             if subscriptions.isLoading {
@@ -97,8 +102,7 @@ struct PaywallView: View {
                                     let accountID = authentication.userID
                                     let purchased = await subscriptions.purchase(product)
                                     guard purchased, authentication.userID == accountID else { return }
-                                    subscriptions.continueWithCurrentSubscription(for: accountID)
-                                    onAccessConfirmed?()
+                                    confirmAccess()
                                 }
                             } label: {
                                 VStack(spacing: 8) {
@@ -156,25 +160,27 @@ struct PaywallView: View {
                     .foregroundStyle(.secondary)
                     .disabled(subscriptions.isLoading)
 
-                    if !allowsDismissal {
-                        Button("Sign Out") {
-                            Task { await authentication.signOut() }
+                    if !isOnboarding {
+                        if !allowsDismissal {
+                            Button("Sign Out") {
+                                Task { await authentication.signOut() }
+                            }
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .disabled(authentication.isBusy)
+                        }
+
+                        Button("Delete Account", role: .destructive) {
+                            isDeleteAccountConfirmationPresented = true
                         }
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.red)
                         .disabled(authentication.isBusy)
-                    }
 
-                    Button("Delete Account", role: .destructive) {
-                        isDeleteAccountConfirmationPresented = true
+                        Link("Manage subscriptions in Apple settings", destination: URL(string: "https://apps.apple.com/account/subscriptions")!)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.red)
-                    .disabled(authentication.isBusy)
-
-                    Link("Manage subscriptions in Apple settings", destination: URL(string: "https://apps.apple.com/account/subscriptions")!)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
 
                     if let message = subscriptions.message {
                         Text(message)
@@ -183,7 +189,9 @@ struct PaywallView: View {
                             .multilineTextAlignment(.center)
                     }
 
-                    Text("Subscriptions are billed by Apple and renew automatically until canceled. Manage or cancel them in your Apple Account settings.")
+                    Text(isOnboarding
+                         ? "Subscriptions are billed by Apple and renew automatically until canceled."
+                         : "Subscriptions are billed by Apple and renew automatically until canceled. Manage or cancel them in your Apple Account settings.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -193,6 +201,16 @@ struct PaywallView: View {
             .font(NoxaTheme.font(17))
             .background(NoxaBackground())
             .preferredColorScheme(.dark)
+            .task {
+                if isOnboarding, subscriptions.hasAccess {
+                    confirmAccess()
+                }
+            }
+            .onChange(of: subscriptions.hasAccess) { hasAccess in
+                if isOnboarding, hasAccess {
+                    confirmAccess()
+                }
+            }
             .alert("Delete your Noxa account?", isPresented: $isDeleteAccountConfirmationPresented) {
                 Button("Cancel", role: .cancel) {}
                 Button("Delete Account", role: .destructive) {
@@ -223,6 +241,26 @@ struct PaywallView: View {
         }
     }
 
+    private var isOnboarding: Bool {
+        onAccessConfirmed != nil
+    }
+
+    private var paywallTitle: String {
+        if subscriptions.hasAccess {
+            return isOnboarding ? "Purchase successful" : "Your Noxa subscription"
+        }
+        return "Simple pricing. Full focus."
+    }
+
+    private var paywallSubtitle: String {
+        if subscriptions.hasAccess {
+            return isOnboarding
+                ? "Getting your distraction setup ready."
+                : "An active subscription was found on this Apple Account. Continue to use it with this Noxa account."
+        }
+        return "Every plan includes the complete Noxa experience."
+    }
+
     private var orderedProducts: [Product] {
         subscriptions.products.sorted { left, right in
             if left.id == SubscriptionService.annualProductID { return true }
@@ -238,6 +276,10 @@ struct PaywallView: View {
 
     private func confirmAccess() {
         guard subscriptions.hasAccess else { return }
+        if isOnboarding {
+            guard !hasCompletedOnboardingTransition else { return }
+            hasCompletedOnboardingTransition = true
+        }
         subscriptions.continueWithCurrentSubscription(for: authentication.userID)
         onAccessConfirmed?()
     }

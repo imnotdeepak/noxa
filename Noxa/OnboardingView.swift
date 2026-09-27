@@ -390,7 +390,7 @@ struct OnboardingView: View {
             Spacer()
 
             if authorization.state.isApproved {
-                onboardingButton("Continue to plans") {
+                onboardingButton("See plans") {
                     _ = onboarding.completeCapabilitiesExplainer()
                 }
             } else {
@@ -428,7 +428,7 @@ struct OnboardingView: View {
                 .foregroundStyle(NoxaTheme.accent)
                 .frame(maxWidth: .infinity)
 
-            Text("Choose your distractions")
+            Text(restrictions.hasSelection ? "Your distractions are set" : "Choose your distractions")
                 .font(NoxaTheme.font(34, weight: .bold, relativeTo: .largeTitle))
                 .tracking(-0.8)
                 .multilineTextAlignment(.center)
@@ -739,31 +739,35 @@ struct OnboardingView: View {
     }
 
     private var distractionSetupMessage: String {
-        if let distraction = onboarding.progress.primaryDistraction {
-            return "You mentioned \(distraction.rawValue.lowercased()). Pick the apps, categories, and websites you want Noxa to help you stay away from."
+        let callback = onboarding.progress.primaryDistraction.map {
+            "You mentioned \($0.rawValue.lowercased()). "
+        } ?? ""
+        if restrictions.hasSelection {
+            return "\(callback)Your selection is saved and ready. You can edit it before continuing."
         }
-        return "Pick the apps, categories, and websites you want Noxa to help you stay away from."
+        return "\(callback)Pick the apps, categories, and websites you want Noxa to help you stay away from."
     }
 
     private var personalizedSuccessMessage: String {
-        let firstName = onboarding.progress.preferredName ?? name
-        let greeting = firstName.isEmpty ? "You’re ready." : "You’re ready, \(firstName)."
-        let callback: String
+        let preferredName = (onboarding.progress.preferredName ?? name)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let nameSuffix = preferredName.isEmpty ? "." : ", \(preferredName)."
+        let message: String
         switch onboarding.progress.desiredBenefit {
         case .betterWorkOrStudy:
-            callback = "Let’s give you more uninterrupted time to focus."
+            message = "Let’s give you more uninterrupted time to focus"
         case .betterSleep:
-            callback = "Let’s make more room for calmer evenings and better rest."
+            message = "Let’s make more room for calmer evenings and better rest"
         case .beingPresent, .strongerRelationships:
-            callback = "Let’s make more room to be present."
+            message = "Let’s make more room to be present"
         case .lessStress:
-            callback = "Let’s create a little more calm in your day."
+            message = "Let’s create a little more calm in your day"
         case .moreTime:
-            callback = "Let’s give more of your time back to you."
+            message = "Let’s give you more of your time back"
         case nil:
-            callback = "Your attention is yours again."
+            message = "Let’s give you more of your time back"
         }
-        return "\(greeting)\n\(callback)"
+        return message + nameSuffix
     }
 
     private var firstFocusIntention: String {

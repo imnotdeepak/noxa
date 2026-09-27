@@ -65,6 +65,13 @@ struct AuthenticationView: View {
                             .onSubmit(submitEmailForm)
                     }
 
+                    if let credentialValidationMessage {
+                        Text(credentialValidationMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
                     Button(action: submitEmailForm) {
                         HStack(spacing: 10) {
                             Spacer()
@@ -77,7 +84,7 @@ struct AuthenticationView: View {
                         }
                     }
                     .buttonStyle(NoxaPrimaryButtonStyle())
-                    .disabled(authentication.isBusy)
+                    .disabled(authentication.isBusy || !canSubmitEmailForm)
 
                     if mode == .signIn {
                         Button("Forgot password?") {
@@ -152,6 +159,10 @@ struct AuthenticationView: View {
     }
 
     private func submitEmailForm() {
+        guard canSubmitEmailForm else {
+            authentication.message = AuthenticationInputValidator.validate(email: email, password: password)
+            return
+        }
         Task {
             switch mode {
             case .signIn:
@@ -160,6 +171,15 @@ struct AuthenticationView: View {
                 await authentication.signUp(email: email, password: password)
             }
         }
+    }
+
+    private var canSubmitEmailForm: Bool {
+        AuthenticationInputValidator.validate(email: email, password: password) == nil
+    }
+
+    private var credentialValidationMessage: String? {
+        guard !email.isEmpty || !password.isEmpty else { return nil }
+        return AuthenticationInputValidator.validate(email: email, password: password)
     }
 
     private func isPositiveAuthenticationMessage(_ message: String) -> Bool {
