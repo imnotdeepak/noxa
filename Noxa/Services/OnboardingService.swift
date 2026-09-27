@@ -16,6 +16,7 @@ final class OnboardingService: ObservableObject {
     @Published private(set) var progress: OnboardingProgress
     @Published private(set) var errorMessage: String?
     @Published private(set) var isAuthenticationRequested = false
+    @Published private(set) var isPersonalizationRequested = false
 
     private let store: any OnboardingStoring
 
@@ -35,6 +36,15 @@ final class OnboardingService: ObservableObject {
     }
 
     @discardableResult
+    func beginPersonalization() -> Bool {
+        let didSave = commit { $0.hasSeenWelcome = true }
+        if didSave {
+            isPersonalizationRequested = true
+        }
+        return didSave
+    }
+
+    @discardableResult
     func beginAuthentication(mode: String) -> Bool {
         let didSave = commit {
             $0.hasSeenWelcome = true
@@ -42,6 +52,7 @@ final class OnboardingService: ObservableObject {
         }
         if didSave {
             isAuthenticationRequested = true
+            isPersonalizationRequested = false
         }
         return didSave
     }
@@ -103,6 +114,7 @@ final class OnboardingService: ObservableObject {
         }
         return commit {
             $0.draftPersonalizationAnswers = goals
+            $0.draftSetupConfiguration["primaryGoal"] = goals.first
             $0.hasCompletedGoals = true
         }
     }
@@ -115,6 +127,7 @@ final class OnboardingService: ObservableObject {
         }
         return commit {
             $0.draftSetupConfiguration["distractions"] = distractions.joined(separator: "|")
+            $0.draftSetupConfiguration["primaryDistraction"] = distractions.first
             $0.hasCompletedDistractions = true
         }
     }
@@ -127,6 +140,7 @@ final class OnboardingService: ObservableObject {
         }
         return commit {
             $0.draftSetupConfiguration["problemTimes"] = problemTimes.joined(separator: "|")
+            $0.draftSetupConfiguration["difficultFocusTime"] = problemTimes.first
             $0.hasCompletedProblemTimes = true
         }
     }
@@ -139,6 +153,7 @@ final class OnboardingService: ObservableObject {
         }
         return commit {
             $0.draftSetupConfiguration["motivations"] = motivations.joined(separator: "|")
+            $0.draftSetupConfiguration["desiredBenefit"] = motivations.first
             $0.hasCompletedMotivation = true
         }
     }
@@ -167,10 +182,29 @@ final class OnboardingService: ObservableObject {
     }
 
     @discardableResult
+    func completeInitialSetup() -> Bool {
+        guard progress.hasSeenPricingPreview else {
+            errorMessage = "Choose a subscription before finishing setup."
+            return false
+        }
+        return commit { $0.hasCompletedInitialSetup = true }
+    }
+
+    @discardableResult
+    func completeFirstSessionPrompt() -> Bool {
+        guard progress.hasCompletedInitialSetup else {
+            errorMessage = "Choose at least one distraction before starting your first focus."
+            return false
+        }
+        return commit { $0.hasSeenFirstSessionPrompt = true }
+    }
+
+    @discardableResult
     func reset() -> Bool {
         let didReset = commit { $0 = OnboardingProgress() }
         if didReset {
             isAuthenticationRequested = false
+            isPersonalizationRequested = false
         }
         return didReset
     }
@@ -202,5 +236,7 @@ final class OnboardingService: ObservableObject {
         progress.hasCompletedMotivation = true
         progress.hasSeenCapabilitiesExplainer = true
         progress.hasSeenPricingPreview = true
+        progress.hasCompletedInitialSetup = true
+        progress.hasSeenFirstSessionPrompt = true
     }
 }

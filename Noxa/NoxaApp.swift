@@ -43,6 +43,8 @@ struct NoxaApp: App {
                 } else if !authentication.isAuthenticated {
                     if onboarding.isAuthenticationRequested {
                         AuthenticationView(initialMode: initialAuthenticationMode)
+                    } else if onboarding.isPersonalizationRequested {
+                        OnboardingView()
                     } else {
                         OnboardingWelcomeView()
                     }
@@ -50,7 +52,14 @@ struct NoxaApp: App {
                     for: authentication.userID,
                     remoteCompletion: authentication.hasCompletedOnboarding
                 ) {
-                    OnboardingView()
+                    if onboarding.progress.hasSeenCapabilitiesExplainer,
+                       !onboarding.progress.hasSeenPricingPreview {
+                        PaywallView(allowsDismissal: false) {
+                            _ = onboarding.completePricingPreview()
+                        }
+                    } else {
+                        OnboardingView()
+                    }
                 } else {
                     if cloudSync.boundUserID != authentication.userID {
                         NoxaLoadingView(message: "Loading your account…")

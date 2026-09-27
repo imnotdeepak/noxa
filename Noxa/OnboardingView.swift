@@ -42,9 +42,7 @@ struct OnboardingWelcomeView: View {
 
             VStack(spacing: 12) {
                 Button("Get my life back") {
-                    _ = onboarding.beginAuthentication(
-                        mode: AuthenticationView.Mode.createAccount.rawValue
-                    )
+                    _ = onboarding.beginPersonalization()
                 }
                 .buttonStyle(NoxaPrimaryButtonStyle())
 
@@ -78,6 +76,9 @@ struct OnboardingWelcomeView: View {
 struct OnboardingView: View {
     @EnvironmentObject private var onboarding: OnboardingService
     @EnvironmentObject private var authentication: AuthenticationService
+    @EnvironmentObject private var restrictions: ScreenTimeRestrictionService
+    @EnvironmentObject private var focusSession: FocusSessionService
+    @EnvironmentObject private var websites: WebsiteBlocklistService
     @StateObject private var authorization = FamilyControlsAuthorizationService()
     @State private var page: Page
     @State private var name: String
@@ -89,45 +90,24 @@ struct OnboardingView: View {
     @FocusState private var isNameFieldFocused: Bool
 
     private enum Page: Int, CaseIterable {
-        case name
         case goals
-        case goalInsight
         case distractions
-        case distractionInsight
         case problemTimes
         case motivation
+        case goalInsight
+        case name
         case capabilities
-        case pricing
+        case distractionSetup
+        case success
     }
 
-    private let goalOptions = ["Studying", "Work", "Sleep", "Reduce screen time", "Deep focus", "Better habits"]
-    private let distractionOptions = [
-        "Short-form media",
-        "Long-form media",
-        "Web browsing",
-        "Playing games",
-        "Social media",
-        "Other"
-    ]
-    private let problemTimeOptions = [
-        "Morning",
-        "Work or school hours",
-        "Afternoon",
-        "Evening",
-        "Before bed",
-        "Throughout the day"
-    ]
-    private let motivationOptions = [
-        "More time for myself",
-        "Better sleep",
-        "Better work or study",
-        "Less stress",
-        "Stronger relationships",
-        "Being more present"
-    ]
+    private let goalOptions = OnboardingGoal.allCases.map(\.rawValue)
+    private let distractionOptions = OnboardingDistraction.allCases.map(\.rawValue)
+    private let problemTimeOptions = OnboardingFocusTime.allCases.map(\.rawValue)
+    private let motivationOptions = OnboardingBenefit.allCases.map(\.rawValue)
 
     init() {
-        _page = State(initialValue: .name)
+        _page = State(initialValue: .goals)
         _name = State(initialValue: "")
         _goals = State(initialValue: [])
         _distractions = State(initialValue: [])
@@ -138,7 +118,7 @@ struct OnboardingView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                if page != .name {
+                if canMoveBack {
                     Button {
                         moveBack()
                     } label: {
@@ -157,7 +137,7 @@ struct OnboardingView: View {
 
                 Spacer()
 
-                if page != .name {
+                if canMoveBack {
                     Color.clear
                         .frame(width: 17, height: 17)
                         .accessibilityHidden(true)
@@ -168,24 +148,24 @@ struct OnboardingView: View {
 
             Group {
                 switch page {
-                case .name:
-                    namePage
                 case .goals:
                     goalsPage
-                case .goalInsight:
-                    goalInsightPage
                 case .distractions:
                     distractionsPage
-                case .distractionInsight:
-                    distractionInsightPage
                 case .problemTimes:
                     problemTimesPage
                 case .motivation:
                     motivationPage
+                case .goalInsight:
+                    goalInsightPage
+                case .name:
+                    namePage
                 case .capabilities:
                     capabilitiesPage
-                case .pricing:
-                    pricingPage
+                case .distractionSetup:
+                    distractionSetupPage
+                case .success:
+                    successPage
                 }
             }
             .transition(.opacity)
@@ -195,6 +175,21 @@ struct OnboardingView: View {
         .preferredColorScheme(.dark)
         .animation(.easeInOut(duration: 0.2), value: page)
         .onAppear(perform: restoreDraft)
+        .sheet(isPresented: $restrictions.isPickerPresented) {
+            NavigationStack {
+                FamilyActivityPicker(selection: $restrictions.selection)
+                    .navigationTitle("Choose distractions")
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") {
+                                restrictions.persistSelection()
+                                restrictions.isPickerPresented = false
+                            }
+                        }
+                    }
+            }
+            .preferredColorScheme(.dark)
+        }
     }
 
     private var namePage: some View {
@@ -248,19 +243,29 @@ struct OnboardingView: View {
     private func continueFromName() {
         isNameFieldFocused = false
         if onboarding.saveName(name) {
-                    page = .goals
+            if authentication.isAuthenticated {
+                page = .capabilities
+            } else {
+                _ = onboarding.beginAuthentication(
+                    mode: AuthenticationView.Mode.createAccount.rawValue
+                )
+            }
         }
     }
 
     private var goalsPage: some View {
         pageLayout {
-            pageHeader("What do you want help with?", subtitle: "Choose any that fit. You can change your mind later.")
+            pageHeader(
+                "What do you want help with?",
+                subtitle: "Choose any that fit. You can change your mind later.",
+                progress: "1 of 4"
+            )
             selectionGrid(options: goalOptions, selected: $goals)
             Spacer()
             onboardingErrorView
             onboardingButton("Continue") {
                 if onboarding.saveGoals(Array(goals).sorted()) {
-                    page = .goalInsight
+                    page = .distractions
                 }
             }
             .disabled(goals.isEmpty)
@@ -274,33 +279,26 @@ struct OnboardingView: View {
             message: "More than half of U.S. adults say they spend too much time on their smartphone.",
             source: "Pew Research Center, 2026"
         ) {
-            page = .distractions
+            page = .name
         }
     }
 
     private var distractionsPage: some View {
         pageLayout {
-            pageHeader("What distracts you the most?", subtitle: "This helps us explain the right Noxa tools before setup.")
+            pageHeader(
+                "What distracts you the most?",
+                subtitle: "This helps us explain the right Noxa tools before setup.",
+                progress: "2 of 4"
+            )
             selectionGrid(options: distractionOptions, selected: $distractions)
             Spacer()
             onboardingErrorView
             onboardingButton("Continue") {
                 if onboarding.saveDistractions(Array(distractions).sorted()) {
-                    page = .distractionInsight
+                    page = .problemTimes
                 }
             }
             .disabled(distractions.isEmpty)
-        }
-    }
-
-    private var distractionInsightPage: some View {
-        insightPage(
-            statistic: "Small changes add up",
-            title: "Less screen time can help.",
-            message: "In a randomized trial of healthy students, reducing smartphone use for three weeks improved well-being, stress, sleep, and depressive symptoms.",
-            source: "Pieh et al., BMC Medicine, 2025"
-        ) {
-            page = .problemTimes
         }
     }
 
@@ -308,7 +306,8 @@ struct OnboardingView: View {
         pageLayout {
             pageHeader(
                 "When is staying focused hardest?",
-                subtitle: "Choose any times that regularly pull you off track."
+                subtitle: "Choose any times that regularly pull you off track.",
+                progress: "3 of 4"
             )
             selectionGrid(options: problemTimeOptions, selected: $problemTimes)
             Spacer()
@@ -326,14 +325,15 @@ struct OnboardingView: View {
         pageLayout {
             pageHeader(
                 "What would less phone time give you?",
-                subtitle: "Choose what you want to make more room for."
+                subtitle: "Choose what you want to make more room for.",
+                progress: "4 of 4"
             )
             selectionGrid(options: motivationOptions, selected: $motivations)
             Spacer()
             onboardingErrorView
             onboardingButton("Continue") {
                 if onboarding.saveMotivations(Array(motivations).sorted()) {
-                    page = .capabilities
+                    page = .goalInsight
                 }
             }
             .disabled(motivations.isEmpty)
@@ -371,6 +371,12 @@ struct OnboardingView: View {
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
+            } else if authorization.state == .unknown {
+                Text("Screen Time access is currently unavailable. Try again or check your device settings.")
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
             }
 
             if let errorMessage = authorization.errorMessage ?? onboarding.errorMessage {
@@ -384,13 +390,15 @@ struct OnboardingView: View {
             Spacer()
 
             if authorization.state.isApproved {
-                onboardingButton("See plans") {
-                    if onboarding.completeCapabilitiesExplainer() {
-                        page = .pricing
-                    }
+                onboardingButton("Continue to plans") {
+                    _ = onboarding.completeCapabilitiesExplainer()
                 }
             } else {
-                onboardingButton(isRequestingAuthorization ? "Requesting…" : "Allow Screen Time Access") {
+                onboardingButton(
+                    isRequestingAuthorization
+                        ? "Requesting…"
+                        : (authorization.state == .denied ? "Try Screen Time Access Again" : "Allow Screen Time Access")
+                ) {
                     guard !isRequestingAuthorization else { return }
                     isRequestingAuthorization = true
                     Task { @MainActor in
@@ -411,53 +419,112 @@ struct OnboardingView: View {
         }
     }
 
-    private var pricingPage: some View {
+    private var distractionSetupPage: some View {
         pageLayout {
-            pageHeader("Simple pricing. Full focus.", subtitle: "Choose a plan after you create your account. Both plans include every Noxa feature.")
+            Spacer()
 
-            VStack(alignment: .leading, spacing: 14) {
-                featureRow("Focused app and website blocking")
-                featureRow("Timed focus sessions and daily limits")
-                featureRow("Focus history and future improvements")
+            Image(systemName: "hand.raised.slash.fill")
+                .font(.system(size: 50))
+                .foregroundStyle(NoxaTheme.accent)
+                .frame(maxWidth: .infinity)
+
+            Text("Choose your distractions")
+                .font(NoxaTheme.font(34, weight: .bold, relativeTo: .largeTitle))
+                .tracking(-0.8)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+
+            Text(distractionSetupMessage)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
+
+            Button(restrictions.hasSelection ? "Edit distractions" : "Choose distractions") {
+                restrictions.isPickerPresented = true
             }
-            .noxaCard()
+            .buttonStyle(NoxaSecondaryButtonStyle())
 
-            VStack(spacing: 12) {
-                pricingCard(
-                    name: "Monthly",
-                    price: "$1.99",
-                    detail: "about $0.07 per day"
-                )
-                pricingCard(
-                    name: "Annual",
-                    price: "$19.99",
-                    detail: "about $1.67 per month · $0.05 per day",
-                    badge: "BEST VALUE"
-                )
-            }
+            Text(selectionCountText)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(restrictions.hasSelection ? NoxaTheme.accent : .secondary)
+                .frame(maxWidth: .infinity)
 
-            Label {
-                Text("Clear pricing, always. You’ll see the current price before purchase, and Apple will notify you before any future renewal price change.")
-            } icon: {
-                Image(systemName: "shield.checkered")
-            }
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-
-            Spacer(minLength: 6)
-            onboardingErrorView
-            onboardingButton("Continue to subscription") {
-                _ = onboarding.completePricingPreview()
+            if let errorMessage = restrictions.errorMessage ?? onboarding.errorMessage {
+                Text(errorMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
             }
 
-            Text("The App Store confirms your exact local price and handles payment securely. Subscriptions renew automatically until canceled.")
-                .font(.caption)
+            Spacer()
+
+            onboardingButton("Continue") {
+                restrictions.persistSelection()
+                guard restrictions.hasSelection, restrictions.errorMessage == nil else { return }
+                if onboarding.completeInitialSetup() {
+                    page = .success
+                }
+            }
+            .disabled(!restrictions.hasSelection)
+
+            Text("You can change these anytime from your Blocklist.")
+                .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var successPage: some View {
+        pageLayout {
+            Spacer()
+
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 58))
+                .foregroundStyle(NoxaTheme.accent)
+                .frame(maxWidth: .infinity)
+
+            Text("Noxa is ready.")
+                .font(NoxaTheme.font(36, weight: .bold, relativeTo: .largeTitle))
+                .tracking(-0.8)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+
+            Text("\(selectedDistractionSummary) will be blocked during your focus sessions.")
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+
+            Text(personalizedSuccessMessage)
+                .font(NoxaTheme.font(22, weight: .semibold, relativeTo: .title3))
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+
+            if let errorMessage = focusSession.errorMessage ?? onboarding.errorMessage {
+                Text(errorMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+            }
+
+            Spacer()
+
+            onboardingButton("Start my first 30-minute focus") {
+                restrictions.persistSelection()
+                guard restrictions.hasSelection, restrictions.errorMessage == nil else { return }
+                focusSession.start(
+                    selection: restrictions.selection,
+                    websiteDomains: websites.domains,
+                    durationMinutes: 30,
+                    intention: firstFocusIntention
+                )
+                if focusSession.isActive {
+                    _ = onboarding.completeFirstSessionPrompt()
+                }
+            }
         }
     }
 
@@ -503,42 +570,6 @@ struct OnboardingView: View {
         }
     }
 
-    private func featureRow(_ title: String) -> some View {
-        Label(title, systemImage: "checkmark")
-            .font(NoxaTheme.font(15, weight: .medium, relativeTo: .subheadline))
-    }
-
-    private func pricingCard(name: String, price: String, detail: String, badge: String? = nil) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(name)
-                    .font(NoxaTheme.font(19, weight: .semibold, relativeTo: .headline))
-                Spacer()
-                if let badge {
-                    Text(badge)
-                        .font(.caption2.weight(.bold))
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 5)
-                        .background(NoxaTheme.accent, in: Capsule())
-                        .foregroundStyle(.black)
-                }
-            }
-            Text(price)
-                .font(NoxaTheme.font(34, weight: .bold, relativeTo: .largeTitle))
-                .monospacedDigit()
-            Text(detail)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(Color.white.opacity(0.85), lineWidth: 1.25)
-        }
-    }
-
     private func pageLayout<Content: View>(@ViewBuilder content: @escaping () -> Content) -> some View {
         GeometryReader { geometry in
             ScrollView {
@@ -555,8 +586,14 @@ struct OnboardingView: View {
         }
     }
 
-    private func pageHeader(_ title: String, subtitle: String) -> some View {
+    private func pageHeader(_ title: String, subtitle: String, progress: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 8) {
+            if let progress {
+                Text(progress.uppercased())
+                    .font(.caption.weight(.semibold))
+                    .tracking(1.2)
+                    .foregroundStyle(NoxaTheme.accent)
+            }
             Text(title)
                 .font(NoxaTheme.font(32, weight: .bold, relativeTo: .largeTitle))
                 .tracking(-0.6)
@@ -626,24 +663,22 @@ struct OnboardingView: View {
 
     private func moveBack() {
         switch page {
-        case .name:
-            break
         case .goals:
-            page = .name
-        case .goalInsight:
-            page = .goals
+            break
         case .distractions:
-            page = .goalInsight
-        case .distractionInsight:
-            page = .distractions
+            page = .goals
         case .problemTimes:
-            page = .distractionInsight
+            page = .distractions
         case .motivation:
             page = .problemTimes
-        case .capabilities:
+        case .goalInsight:
             page = .motivation
-        case .pricing:
-            page = .capabilities
+        case .name:
+            page = .goalInsight
+        case .capabilities:
+            page = .name
+        case .distractionSetup, .success:
+            break
         }
     }
 
@@ -662,21 +697,77 @@ struct OnboardingView: View {
             motivations = Set(savedMotivations.split(separator: "|").map(String.init))
         }
 
-        if onboarding.progress.hasSeenCapabilitiesExplainer {
-            page = .pricing
-        } else if onboarding.progress.hasCompletedMotivation {
+        if onboarding.progress.hasCompletedInitialSetup {
+            page = .success
+        } else if onboarding.progress.hasSeenPricingPreview {
+            page = .distractionSetup
+        } else if onboarding.progress.hasSeenCapabilitiesExplainer {
             page = .capabilities
+        } else if onboarding.progress.hasCompletedName {
+            page = authentication.isAuthenticated ? .capabilities : .name
+        } else if onboarding.progress.hasCompletedMotivation {
+            page = .goalInsight
         } else if onboarding.progress.hasCompletedProblemTimes {
             page = .motivation
         } else if onboarding.progress.hasCompletedDistractions {
-            page = .distractionInsight
+            page = .problemTimes
         } else if onboarding.progress.hasCompletedGoals {
-            page = .goalInsight
-        } else if onboarding.progress.hasCompletedName {
-            page = .goals
+            page = .distractions
         } else {
-            page = .name
+            page = .goals
         }
+    }
+
+    private var canMoveBack: Bool {
+        switch page {
+        case .distractions, .problemTimes, .motivation, .goalInsight, .name, .capabilities:
+            true
+        case .goals, .distractionSetup, .success:
+            false
+        }
+    }
+
+    private var selectionCountText: String {
+        restrictions.selectedItemCount == 0
+            ? "0 selected"
+            : "\(selectedDistractionSummary) selected"
+    }
+
+    private var selectedDistractionSummary: String {
+        let count = restrictions.selectedItemCount
+        return "\(count) distraction\(count == 1 ? "" : "s")"
+    }
+
+    private var distractionSetupMessage: String {
+        if let distraction = onboarding.progress.primaryDistraction {
+            return "You mentioned \(distraction.rawValue.lowercased()). Pick the apps, categories, and websites you want Noxa to help you stay away from."
+        }
+        return "Pick the apps, categories, and websites you want Noxa to help you stay away from."
+    }
+
+    private var personalizedSuccessMessage: String {
+        let firstName = onboarding.progress.preferredName ?? name
+        let greeting = firstName.isEmpty ? "You’re ready." : "You’re ready, \(firstName)."
+        let callback: String
+        switch onboarding.progress.desiredBenefit {
+        case .betterWorkOrStudy:
+            callback = "Let’s give you more uninterrupted time to focus."
+        case .betterSleep:
+            callback = "Let’s make more room for calmer evenings and better rest."
+        case .beingPresent, .strongerRelationships:
+            callback = "Let’s make more room to be present."
+        case .lessStress:
+            callback = "Let’s create a little more calm in your day."
+        case .moreTime:
+            callback = "Let’s give more of your time back to you."
+        case nil:
+            callback = "Your attention is yours again."
+        }
+        return "\(greeting)\n\(callback)"
+    }
+
+    private var firstFocusIntention: String {
+        onboarding.progress.desiredBenefit?.rawValue ?? "My first Noxa focus"
     }
 }
 

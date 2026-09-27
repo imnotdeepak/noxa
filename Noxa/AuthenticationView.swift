@@ -29,13 +29,13 @@ struct AuthenticationView: View {
                     Text("noxa")
                         .font(NoxaTheme.font(18, weight: .medium, relativeTo: .headline))
                         .foregroundStyle(.secondary)
-                    Text(mode == .signIn ? "Welcome back." : "Create your account.")
+                    Text(mode == .signIn ? "Welcome back." : "Create your Noxa account.")
                         .font(NoxaTheme.font(40, weight: .bold, relativeTo: .largeTitle))
                         .tracking(-1)
                         .multilineTextAlignment(.center)
                     Text(mode == .signIn
                          ? "Sign in to continue to your focus tools."
-                         : "Your plan comes next. It only takes a moment.")
+                         : "Save your Noxa setup and keep your progress synced.")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }

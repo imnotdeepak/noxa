@@ -167,8 +167,47 @@ struct RestrictionScheduleConfiguration: Codable, Equatable, Identifiable, Senda
     }
 }
 
+enum OnboardingGoal: String, Codable, CaseIterable, Sendable {
+    case studying = "Studying"
+    case work = "Work"
+    case sleep = "Sleep"
+    case reduceScreenTime = "Reduce screen time"
+    case deepFocus = "Deep focus"
+    case betterHabits = "Better habits"
+}
+
+enum OnboardingDistraction: String, Codable, CaseIterable, Sendable {
+    case shortFormMedia = "Short-form media"
+    case longFormMedia = "Long-form media"
+    case webBrowsing = "Web browsing"
+    case playingGames = "Playing games"
+    case socialMedia = "Social media"
+    case other = "Other"
+}
+
+enum OnboardingFocusTime: String, Codable, CaseIterable, Sendable {
+    case morning = "Morning"
+    case workOrSchool = "Work or school hours"
+    case afternoon = "Afternoon"
+    case evening = "Evening"
+    case beforeBed = "Before bed"
+    case throughoutDay = "Throughout the day"
+}
+
+enum OnboardingBenefit: String, Codable, CaseIterable, Sendable {
+    case moreTime = "More time for myself"
+    case betterSleep = "Better sleep"
+    case betterWorkOrStudy = "Better work or study"
+    case lessStress = "Less stress"
+    case strongerRelationships = "Stronger relationships"
+    case beingPresent = "Being more present"
+}
+
 /// Progress and draft data used to resume onboarding safely after interruption.
 struct OnboardingProgress: Codable, Equatable, Sendable {
+    private static let currentFlowVersion = 2
+
+    var flowVersion = currentFlowVersion
     var ownerUserID: UUID?
     var hasSeenWelcome = false
     var hasCompletedName = false
@@ -184,10 +223,39 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
     var draftSetupConfiguration: [String: String] = [:]
 
     var isComplete: Bool {
-        hasSeenPricingPreview
+        hasCompletedInitialSetup && hasSeenFirstSessionPrompt
+    }
+
+    var preferredName: String? {
+        draftSetupConfiguration["name"].flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    var primaryGoal: OnboardingGoal? {
+        (draftSetupConfiguration["primaryGoal"]
+            .flatMap(OnboardingGoal.init(rawValue:)))
+            ?? draftPersonalizationAnswers.compactMap(OnboardingGoal.init(rawValue:)).first
+    }
+
+    var primaryDistraction: OnboardingDistraction? {
+        (draftSetupConfiguration["primaryDistraction"]
+            ?? Self.firstAnswer(for: "distractions", in: draftSetupConfiguration))
+            .flatMap(OnboardingDistraction.init(rawValue:))
+    }
+
+    var difficultFocusTime: OnboardingFocusTime? {
+        (draftSetupConfiguration["difficultFocusTime"]
+            ?? Self.firstAnswer(for: "problemTimes", in: draftSetupConfiguration))
+            .flatMap(OnboardingFocusTime.init(rawValue:))
+    }
+
+    var desiredBenefit: OnboardingBenefit? {
+        (draftSetupConfiguration["desiredBenefit"]
+            ?? Self.firstAnswer(for: "motivations", in: draftSetupConfiguration))
+            .flatMap(OnboardingBenefit.init(rawValue:))
     }
 
     private enum CodingKeys: String, CodingKey {
+        case flowVersion
         case ownerUserID
         case hasSeenWelcome
         case hasCompletedName
@@ -207,6 +275,7 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        flowVersion = try container.decodeIfPresent(Int.self, forKey: .flowVersion) ?? 1
         ownerUserID = try container.decodeIfPresent(UUID.self, forKey: .ownerUserID)
         hasSeenWelcome = try container.decodeIfPresent(Bool.self, forKey: .hasSeenWelcome) ?? false
         hasCompletedName = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedName) ?? false
@@ -220,14 +289,19 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
         // the pricing preview was introduced in Build 9.
         hasSeenPricingPreview = try container.decodeIfPresent(Bool.self, forKey: .hasSeenPricingPreview)
             ?? hasSeenCapabilitiesExplainer
-        hasCompletedInitialSetup = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedInitialSetup) ?? false
-        hasSeenFirstSessionPrompt = try container.decodeIfPresent(Bool.self, forKey: .hasSeenFirstSessionPrompt) ?? false
+        let storedInitialSetup = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedInitialSetup) ?? false
+        let storedFirstSessionPrompt = try container.decodeIfPresent(Bool.self, forKey: .hasSeenFirstSessionPrompt) ?? false
+        // Builds before flow version 2 ended onboarding at the pricing preview.
+        // Preserve those users' completed state instead of sending them backward.
+        hasCompletedInitialSetup = storedInitialSetup || (flowVersion < 2 && hasSeenPricingPreview)
+        hasSeenFirstSessionPrompt = storedFirstSessionPrompt || (flowVersion < 2 && hasSeenPricingPreview)
         draftPersonalizationAnswers = try container.decodeIfPresent([String].self, forKey: .draftPersonalizationAnswers) ?? []
         draftSetupConfiguration = try container.decodeIfPresent([String: String].self, forKey: .draftSetupConfiguration) ?? [:]
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(Self.currentFlowVersion, forKey: .flowVersion)
         try container.encodeIfPresent(ownerUserID, forKey: .ownerUserID)
         try container.encode(hasSeenWelcome, forKey: .hasSeenWelcome)
         try container.encode(hasCompletedName, forKey: .hasCompletedName)
@@ -241,6 +315,13 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
         try container.encode(hasSeenFirstSessionPrompt, forKey: .hasSeenFirstSessionPrompt)
         try container.encode(draftPersonalizationAnswers, forKey: .draftPersonalizationAnswers)
         try container.encode(draftSetupConfiguration, forKey: .draftSetupConfiguration)
+    }
+
+    private static func firstAnswer(for key: String, in configuration: [String: String]) -> String? {
+        configuration[key]?
+            .split(separator: "|")
+            .map(String.init)
+            .first
     }
 }
 

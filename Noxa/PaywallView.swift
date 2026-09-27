@@ -14,10 +14,12 @@ struct PaywallView: View {
     @EnvironmentObject private var cloudSync: CloudSyncService
     @EnvironmentObject private var onboarding: OnboardingService
     let allowsDismissal: Bool
+    let onAccessConfirmed: (() -> Void)?
     @State private var isDeleteAccountConfirmationPresented = false
 
-    init(allowsDismissal: Bool = true) {
+    init(allowsDismissal: Bool = true, onAccessConfirmed: (() -> Void)? = nil) {
         self.allowsDismissal = allowsDismissal
+        self.onAccessConfirmed = onAccessConfirmed
     }
 
     var body: some View {
@@ -25,7 +27,7 @@ struct PaywallView: View {
             ScrollView {
                 VStack(spacing: 22) {
                     VStack(spacing: 8) {
-                        Text(subscriptions.hasAccess ? "Your Noxa subscription" : "Choose your plan")
+                        Text(subscriptions.hasAccess ? "Your Noxa subscription" : "Simple pricing. Full focus.")
                             .font(NoxaTheme.font(38, weight: .bold, relativeTo: .largeTitle))
                             .tracking(-1)
                             .multilineTextAlignment(.center)
@@ -36,6 +38,16 @@ struct PaywallView: View {
                             .multilineTextAlignment(.center)
                     }
                     .frame(maxWidth: .infinity)
+
+                    if !subscriptions.hasAccess {
+                        VStack(alignment: .leading, spacing: 12) {
+                            paywallFeature("Focused app and website blocking")
+                            paywallFeature("Timed focus sessions and daily limits")
+                            paywallFeature("Focus history")
+                            paywallFeature("Future Noxa improvements")
+                        }
+                        .noxaCard()
+                    }
 
                     if subscriptions.purchasingProductID != nil {
                         HStack(spacing: 10) {
@@ -55,9 +67,9 @@ struct PaywallView: View {
                             Label("Your Noxa subscription is active", systemImage: "checkmark.seal.fill")
                                 .foregroundStyle(.green)
                                 .font(.headline)
-                            if !allowsDismissal {
-                                Button("Continue with Current Subscription") {
-                                    subscriptions.continueWithCurrentSubscription(for: authentication.userID)
+                            if !allowsDismissal || onAccessConfirmed != nil {
+                                Button(onAccessConfirmed == nil ? "Continue with Current Subscription" : "Start with Noxa") {
+                                    confirmAccess()
                                 }
                                 .buttonStyle(NoxaPrimaryButtonStyle())
                             }
@@ -79,13 +91,14 @@ struct PaywallView: View {
                         .frame(maxWidth: .infinity)
                         .noxaCard()
                     } else {
-                        ForEach(subscriptions.products) { product in
+                        ForEach(orderedProducts) { product in
                             Button {
                                 Task {
                                     let accountID = authentication.userID
                                     let purchased = await subscriptions.purchase(product)
                                     guard purchased, authentication.userID == accountID else { return }
                                     subscriptions.continueWithCurrentSubscription(for: accountID)
+                                    onAccessConfirmed?()
                                 }
                             } label: {
                                 VStack(spacing: 8) {
@@ -103,6 +116,14 @@ struct PaywallView: View {
                                     Text(subscriptionPeriodText(for: product))
                                         .font(.subheadline)
                                         .foregroundStyle(.secondary)
+                                    if product.id == SubscriptionService.annualProductID {
+                                        Text("BEST VALUE")
+                                            .font(.caption2.weight(.bold))
+                                            .foregroundStyle(.black)
+                                            .padding(.horizontal, 9)
+                                            .padding(.vertical, 5)
+                                            .background(NoxaTheme.accent, in: Capsule())
+                                    }
                                 }
                                 .frame(maxWidth: .infinity)
                             }
@@ -124,7 +145,12 @@ struct PaywallView: View {
                     LegalLinksView()
 
                     Button("Restore Purchases") {
-                        Task { await subscriptions.restorePurchases() }
+                        Task {
+                            await subscriptions.restorePurchases()
+                            if subscriptions.hasAccess {
+                                confirmAccess()
+                            }
+                        }
                     }
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -195,6 +221,25 @@ struct PaywallView: View {
                 }
             }
         }
+    }
+
+    private var orderedProducts: [Product] {
+        subscriptions.products.sorted { left, right in
+            if left.id == SubscriptionService.annualProductID { return true }
+            if right.id == SubscriptionService.annualProductID { return false }
+            return left.id < right.id
+        }
+    }
+
+    private func paywallFeature(_ title: String) -> some View {
+        Label(title, systemImage: "checkmark")
+            .font(NoxaTheme.font(15, weight: .medium, relativeTo: .subheadline))
+    }
+
+    private func confirmAccess() {
+        guard subscriptions.hasAccess else { return }
+        subscriptions.continueWithCurrentSubscription(for: authentication.userID)
+        onAccessConfirmed?()
     }
 
     private func subscriptionPeriodText(for product: Product) -> String {
