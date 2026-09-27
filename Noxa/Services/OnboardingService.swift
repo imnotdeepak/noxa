@@ -174,11 +174,20 @@ final class OnboardingService: ObservableObject {
 
     @discardableResult
     func completePricingPreview() -> Bool {
+        guard progress.hasSeenValueOverview else {
+            errorMessage = "Review how Noxa helps before choosing a subscription."
+            return false
+        }
+        return commit { $0.hasSeenPricingPreview = true }
+    }
+
+    @discardableResult
+    func completeValueOverview() -> Bool {
         guard progress.hasSeenCapabilitiesExplainer else {
             errorMessage = "Allow Screen Time access before continuing."
             return false
         }
-        return commit { $0.hasSeenPricingPreview = true }
+        return commit { $0.hasSeenValueOverview = true }
     }
 
     @discardableResult
@@ -235,6 +244,7 @@ final class OnboardingService: ObservableObject {
         progress.hasCompletedProblemTimes = true
         progress.hasCompletedMotivation = true
         progress.hasSeenCapabilitiesExplainer = true
+        progress.hasSeenValueOverview = true
         progress.hasSeenPricingPreview = true
         progress.hasCompletedInitialSetup = true
         progress.hasSeenFirstSessionPrompt = true

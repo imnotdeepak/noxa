@@ -52,7 +52,7 @@ struct NoxaApp: App {
                     for: authentication.userID,
                     remoteCompletion: authentication.hasCompletedOnboarding
                 ) {
-                    if onboarding.progress.hasSeenCapabilitiesExplainer,
+                    if onboarding.progress.hasSeenValueOverview,
                        !onboarding.progress.hasSeenPricingPreview {
                         PaywallView(allowsDismissal: false) {
                             _ = onboarding.completePricingPreview()

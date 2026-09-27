@@ -97,6 +97,7 @@ struct OnboardingView: View {
         case goalInsight
         case name
         case capabilities
+        case valueOverview
         case distractionSetup
         case success
     }
@@ -162,6 +163,8 @@ struct OnboardingView: View {
                     namePage
                 case .capabilities:
                     capabilitiesPage
+                case .valueOverview:
+                    valueOverviewPage
                 case .distractionSetup:
                     distractionSetupPage
                 case .success:
@@ -277,9 +280,9 @@ struct OnboardingView: View {
             statistic: "53%",
             title: "You’re not alone.",
             message: "More than half of U.S. adults say they spend too much time on their smartphone.",
-            source: "Pew Research Center, 2026"
+            source: "Pew Research Center · Survey conducted May–June 2026"
         ) {
-            page = .name
+            page = .problemTimes
         }
     }
 
@@ -295,7 +298,7 @@ struct OnboardingView: View {
             onboardingErrorView
             onboardingButton("Continue") {
                 if onboarding.saveDistractions(Array(distractions).sorted()) {
-                    page = .problemTimes
+                    page = .goalInsight
                 }
             }
             .disabled(distractions.isEmpty)
@@ -333,7 +336,7 @@ struct OnboardingView: View {
             onboardingErrorView
             onboardingButton("Continue") {
                 if onboarding.saveMotivations(Array(motivations).sorted()) {
-                    page = .goalInsight
+                    page = .name
                 }
             }
             .disabled(motivations.isEmpty)
@@ -390,8 +393,10 @@ struct OnboardingView: View {
             Spacer()
 
             if authorization.state.isApproved {
-                onboardingButton("See plans") {
-                    _ = onboarding.completeCapabilitiesExplainer()
+                onboardingButton("Continue") {
+                    if onboarding.completeCapabilitiesExplainer() {
+                        page = .valueOverview
+                    }
                 }
             } else {
                 onboardingButton(
@@ -417,6 +422,67 @@ struct OnboardingView: View {
                 .padding(.top, 10)
             }
         }
+    }
+
+    private var valueOverviewPage: some View {
+        pageLayout {
+            pageHeader(
+                "Here’s how Noxa helps.",
+                subtitle: "Simple tools that help you protect your attention."
+            )
+
+            VStack(spacing: 12) {
+                valueRow(
+                    icon: "hand.raised.slash",
+                    title: "Block distractions",
+                    detail: "Choose the apps and websites that pull your attention away."
+                )
+                valueRow(
+                    icon: "timer",
+                    title: "Focus intentionally",
+                    detail: "Keep distractions blocked during intentional focus sessions."
+                )
+                valueRow(
+                    icon: "hourglass",
+                    title: "Set healthy limits",
+                    detail: "Create boundaries around apps that consume too much of your time."
+                )
+                valueRow(
+                    icon: "chart.bar",
+                    title: "See your progress",
+                    detail: "Understand your focus history and the time you’ve protected."
+                )
+            }
+
+            Spacer()
+
+            onboardingErrorView
+
+            onboardingButton("Continue") {
+                _ = onboarding.completeValueOverview()
+            }
+        }
+    }
+
+    private func valueRow(icon: String, title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 19, weight: .semibold))
+                .foregroundStyle(NoxaTheme.accent)
+                .frame(width: 28)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(NoxaTheme.font(17, weight: .semibold, relativeTo: .headline))
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .noxaCard()
     }
 
     private var distractionSetupPage: some View {
@@ -668,15 +734,17 @@ struct OnboardingView: View {
         case .distractions:
             page = .goals
         case .problemTimes:
-            page = .distractions
+            page = .goalInsight
         case .motivation:
             page = .problemTimes
         case .goalInsight:
-            page = .motivation
+            page = .distractions
         case .name:
-            page = .goalInsight
+            page = .motivation
         case .capabilities:
             page = .name
+        case .valueOverview:
+            page = .capabilities
         case .distractionSetup, .success:
             break
         }
@@ -701,16 +769,18 @@ struct OnboardingView: View {
             page = .success
         } else if onboarding.progress.hasSeenPricingPreview {
             page = .distractionSetup
+        } else if onboarding.progress.hasSeenValueOverview {
+            page = .valueOverview
         } else if onboarding.progress.hasSeenCapabilitiesExplainer {
-            page = .capabilities
+            page = .valueOverview
         } else if onboarding.progress.hasCompletedName {
             page = authentication.isAuthenticated ? .capabilities : .name
         } else if onboarding.progress.hasCompletedMotivation {
-            page = .goalInsight
+            page = .name
         } else if onboarding.progress.hasCompletedProblemTimes {
             page = .motivation
         } else if onboarding.progress.hasCompletedDistractions {
-            page = .problemTimes
+            page = .goalInsight
         } else if onboarding.progress.hasCompletedGoals {
             page = .distractions
         } else {
@@ -720,7 +790,7 @@ struct OnboardingView: View {
 
     private var canMoveBack: Bool {
         switch page {
-        case .distractions, .problemTimes, .motivation, .goalInsight, .name, .capabilities:
+        case .distractions, .problemTimes, .motivation, .goalInsight, .name, .capabilities, .valueOverview:
             true
         case .goals, .distractionSetup, .success:
             false

@@ -205,7 +205,7 @@ enum OnboardingBenefit: String, Codable, CaseIterable, Sendable {
 
 /// Progress and draft data used to resume onboarding safely after interruption.
 struct OnboardingProgress: Codable, Equatable, Sendable {
-    private static let currentFlowVersion = 2
+    private static let currentFlowVersion = 3
 
     var flowVersion = currentFlowVersion
     var ownerUserID: UUID?
@@ -216,6 +216,7 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
     var hasCompletedProblemTimes = false
     var hasCompletedMotivation = false
     var hasSeenCapabilitiesExplainer = false
+    var hasSeenValueOverview = false
     var hasSeenPricingPreview = false
     var hasCompletedInitialSetup = false
     var hasSeenFirstSessionPrompt = false
@@ -264,6 +265,7 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
         case hasCompletedProblemTimes
         case hasCompletedMotivation
         case hasSeenCapabilitiesExplainer
+        case hasSeenValueOverview
         case hasSeenPricingPreview
         case hasCompletedInitialSetup
         case hasSeenFirstSessionPrompt
@@ -289,6 +291,8 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
         // the pricing preview was introduced in Build 9.
         hasSeenPricingPreview = try container.decodeIfPresent(Bool.self, forKey: .hasSeenPricingPreview)
             ?? hasSeenCapabilitiesExplainer
+        hasSeenValueOverview = try container.decodeIfPresent(Bool.self, forKey: .hasSeenValueOverview)
+            ?? (flowVersion < 3 && hasSeenPricingPreview)
         let storedInitialSetup = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedInitialSetup) ?? false
         let storedFirstSessionPrompt = try container.decodeIfPresent(Bool.self, forKey: .hasSeenFirstSessionPrompt) ?? false
         // Builds before flow version 2 ended onboarding at the pricing preview.
@@ -310,6 +314,7 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
         try container.encode(hasCompletedProblemTimes, forKey: .hasCompletedProblemTimes)
         try container.encode(hasCompletedMotivation, forKey: .hasCompletedMotivation)
         try container.encode(hasSeenCapabilitiesExplainer, forKey: .hasSeenCapabilitiesExplainer)
+        try container.encode(hasSeenValueOverview, forKey: .hasSeenValueOverview)
         try container.encode(hasSeenPricingPreview, forKey: .hasSeenPricingPreview)
         try container.encode(hasCompletedInitialSetup, forKey: .hasCompletedInitialSetup)
         try container.encode(hasSeenFirstSessionPrompt, forKey: .hasSeenFirstSessionPrompt)

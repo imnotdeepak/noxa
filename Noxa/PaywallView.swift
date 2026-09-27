@@ -38,16 +38,6 @@ struct PaywallView: View {
                     }
                     .frame(maxWidth: .infinity)
 
-                    if !subscriptions.hasAccess {
-                        VStack(alignment: .leading, spacing: 12) {
-                            paywallFeature("Focused app and website blocking")
-                            paywallFeature("Timed focus sessions and daily limits")
-                            paywallFeature("Focus history")
-                            paywallFeature("Future Noxa improvements")
-                        }
-                        .noxaCard()
-                    }
-
                     if subscriptions.purchasingProductID != nil {
                         HStack(spacing: 10) {
                             ProgressView().tint(.white)
@@ -267,11 +257,6 @@ struct PaywallView: View {
             if right.id == SubscriptionService.annualProductID { return false }
             return left.id < right.id
         }
-    }
-
-    private func paywallFeature(_ title: String) -> some View {
-        Label(title, systemImage: "checkmark")
-            .font(NoxaTheme.font(15, weight: .medium, relativeTo: .subheadline))
     }
 
     private func confirmAccess() {

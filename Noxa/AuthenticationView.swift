@@ -9,12 +9,21 @@ struct AuthenticationView: View {
         case createAccount = "Create Account"
     }
 
+    private enum CredentialField {
+        case email
+        case password
+    }
+
     @EnvironmentObject private var authentication: AuthenticationService
     @State private var mode = Mode.signIn
     @State private var email = ""
     @State private var password = ""
     @State private var currentAppleNonce: String?
     @State private var isPasswordResetPresented = false
+    @State private var hasFocusedPassword = false
+    @State private var hasEditedPassword = false
+    @State private var hasBlurredPassword = false
+    @FocusState private var focusedCredentialField: CredentialField?
 
     init(initialMode: Mode = .signIn) {
         _mode = State(initialValue: initialMode)
@@ -57,18 +66,32 @@ struct AuthenticationView: View {
                             .textContentType(.emailAddress)
                             .submitLabel(.next)
                             .noxaAuthenticationField()
+                            .focused($focusedCredentialField, equals: .email)
 
                         SecureField("Password", text: $password)
                             .textContentType(mode == .signIn ? .password : .newPassword)
                             .submitLabel(.go)
                             .noxaAuthenticationField()
+                            .focused($focusedCredentialField, equals: .password)
                             .onSubmit(submitEmailForm)
+                            .onChange(of: password) { value in
+                                if !value.isEmpty {
+                                    hasEditedPassword = true
+                                }
+                            }
                     }
 
-                    if let credentialValidationMessage {
-                        Text(credentialValidationMessage)
+                    if let emailValidationMessage {
+                        Text(emailValidationMessage)
                             .font(.footnote)
                             .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    if let passwordGuidanceText {
+                        Text(passwordGuidanceText)
+                            .font(.footnote)
+                            .foregroundStyle(shouldShowPasswordError ? .red : .secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
@@ -153,6 +176,13 @@ struct AuthenticationView: View {
         .onChange(of: mode) { _ in
             authentication.message = nil
         }
+        .onChange(of: focusedCredentialField) { field in
+            if field == .password {
+                hasFocusedPassword = true
+            } else if hasFocusedPassword, password.count < 8 {
+                hasBlurredPassword = true
+            }
+        }
         .sheet(isPresented: $isPasswordResetPresented) {
             PasswordResetRequestView(initialEmail: email)
         }
@@ -177,9 +207,24 @@ struct AuthenticationView: View {
         AuthenticationInputValidator.validate(email: email, password: password) == nil
     }
 
-    private var credentialValidationMessage: String? {
-        guard !email.isEmpty || !password.isEmpty else { return nil }
-        return AuthenticationInputValidator.validate(email: email, password: password)
+    private var emailValidationMessage: String? {
+        guard !email.isEmpty else { return nil }
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedEmail.contains("@"), normalizedEmail.contains(".") else {
+            return "Enter a valid email address."
+        }
+        return nil
+    }
+
+    private var passwordGuidanceText: String? {
+        guard password.count < 8 else { return nil }
+        return shouldShowPasswordError
+            ? "Password must contain at least 8 characters."
+            : "At least 8 characters"
+    }
+
+    private var shouldShowPasswordError: Bool {
+        hasEditedPassword || hasBlurredPassword
     }
 
     private func isPositiveAuthenticationMessage(_ message: String) -> Bool {
