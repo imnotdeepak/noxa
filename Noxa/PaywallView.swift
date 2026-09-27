@@ -1,4 +1,3 @@
-import StoreKit
 import SwiftUI
 
 struct PaywallView: View {
@@ -17,6 +16,7 @@ struct PaywallView: View {
     let onAccessConfirmed: (() -> Void)?
     @State private var isDeleteAccountConfirmationPresented = false
     @State private var hasCompletedOnboardingTransition = false
+    @State private var hasTrackedAppearance = false
 
     init(allowsDismissal: Bool = true, onAccessConfirmed: (() -> Void)? = nil) {
         self.allowsDismissal = allowsDismissal
@@ -70,7 +70,7 @@ struct PaywallView: View {
                             }
                             .frame(maxWidth: .infinity)
                         }
-                    } else if subscriptions.products.isEmpty {
+                    } else if subscriptions.plans.isEmpty {
                         VStack(spacing: 10) {
                             if subscriptions.isLoading {
                                 ProgressView("Loading plans…")
@@ -86,31 +86,31 @@ struct PaywallView: View {
                         .frame(maxWidth: .infinity)
                         .noxaCard()
                     } else {
-                        ForEach(orderedProducts) { product in
+                        ForEach(orderedPlans) { plan in
                             Button {
                                 Task {
                                     let accountID = authentication.userID
-                                    let purchased = await subscriptions.purchase(product)
+                                    let purchased = await subscriptions.purchase(plan)
                                     guard purchased, authentication.userID == accountID else { return }
                                     confirmAccess()
                                 }
                             } label: {
                                 VStack(spacing: 8) {
-                                    Text(product.displayName)
+                                    Text(plan.title)
                                         .font(NoxaTheme.font(18, weight: .semibold, relativeTo: .headline))
-                                    if subscriptions.purchasingProductID == product.id {
+                                    if subscriptions.purchasingProductID == plan.id {
                                         ProgressView()
                                             .tint(.white)
                                             .accessibilityLabel("Processing")
                                     } else {
-                                        Text(product.displayPrice)
+                                        Text(plan.displayPrice)
                                             .font(NoxaTheme.font(34, weight: .bold, relativeTo: .largeTitle))
                                             .monospacedDigit()
                                     }
-                                    Text(subscriptionPeriodText(for: product))
+                                    Text(plan.periodDescription)
                                         .font(.subheadline)
                                         .foregroundStyle(.secondary)
-                                    if product.id == SubscriptionService.annualProductID {
+                                    if plan.isAnnual {
                                         Text("BEST VALUE")
                                             .font(.caption2.weight(.bold))
                                             .foregroundStyle(.black)
@@ -124,9 +124,9 @@ struct PaywallView: View {
                             .buttonStyle(NoxaPaywallPlanButtonStyle())
                             .disabled(subscriptions.isLoading)
                             .accessibilityValue(
-                                subscriptions.purchasingProductID == product.id
+                                subscriptions.purchasingProductID == plan.id
                                     ? "Processing purchase"
-                                    : product.displayPrice
+                                    : plan.displayPrice
                             )
                         }
 
@@ -192,6 +192,12 @@ struct PaywallView: View {
             .background(NoxaBackground())
             .preferredColorScheme(.dark)
             .task {
+                if !hasTrackedAppearance {
+                    hasTrackedAppearance = true
+                    AnalyticsService.shared.capture(.paywallViewed(
+                        context: isOnboarding ? "onboarding" : "account"
+                    ))
+                }
                 if isOnboarding, subscriptions.hasAccess {
                     confirmAccess()
                 }
@@ -251,8 +257,8 @@ struct PaywallView: View {
         return "Every plan includes the complete Noxa experience."
     }
 
-    private var orderedProducts: [Product] {
-        subscriptions.products.sorted { left, right in
+    private var orderedPlans: [SubscriptionPlan] {
+        subscriptions.plans.sorted { left, right in
             if left.id == SubscriptionService.annualProductID { return true }
             if right.id == SubscriptionService.annualProductID { return false }
             return left.id < right.id
@@ -265,22 +271,7 @@ struct PaywallView: View {
             guard !hasCompletedOnboardingTransition else { return }
             hasCompletedOnboardingTransition = true
         }
-        subscriptions.continueWithCurrentSubscription(for: authentication.userID)
         onAccessConfirmed?()
-    }
-
-    private func subscriptionPeriodText(for product: Product) -> String {
-        guard let period = product.subscription?.subscriptionPeriod else {
-            return "Auto-renewing subscription"
-        }
-
-        switch period.unit {
-        case .day: return period.value == 1 ? "Billed daily" : "Billed every \(period.value) days"
-        case .week: return period.value == 1 ? "Billed weekly" : "Billed every \(period.value) weeks"
-        case .month: return period.value == 1 ? "Billed monthly" : "Billed every \(period.value) months"
-        case .year: return period.value == 1 ? "Billed annually" : "Billed every \(period.value) years"
-        @unknown default: return "Auto-renewing subscription"
-        }
     }
 }
 

@@ -33,6 +33,12 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>PostHogAPIHost</key>
+	<string>https://us.i.posthog.com</string>
+	<key>PostHogProjectToken</key>
+	<string>YOUR_POSTHOG_PROJECT_TOKEN</string>
+	<key>RevenueCatPublicSDKKey</key>
+	<string>YOUR_REVENUECAT_PUBLIC_SDK_KEY</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchScreen</key>

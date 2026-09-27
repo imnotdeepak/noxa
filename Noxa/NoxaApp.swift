@@ -10,6 +10,7 @@ import SwiftUI
 @main
 struct NoxaApp: App {
     @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var analytics = AnalyticsService.shared
     @StateObject private var authentication = AuthenticationService()
     @StateObject private var subscriptions = SubscriptionService()
     @StateObject private var focusSession = FocusSessionService()
@@ -73,6 +74,7 @@ struct NoxaApp: App {
                 }
             }
             .environmentObject(authentication)
+            .environmentObject(analytics)
             .environmentObject(subscriptions)
             .environmentObject(focusSession)
             .environmentObject(onboarding)
@@ -84,9 +86,10 @@ struct NoxaApp: App {
             .environmentObject(cloudSync)
             .environmentObject(notifications)
             .task {
+                analytics.configure()
                 await authentication.bootstrap()
+                await bindAccountServices()
                 await reconcileOnboardingAccount()
-                await subscriptions.load()
                 focusSession.reconcile()
                 schedules.rescheduleAll()
                 await syncCloudDataIfAuthenticated()
@@ -95,7 +98,7 @@ struct NoxaApp: App {
                 guard newPhase == .active else { return }
                 focusSession.reconcile()
                 Task {
-                    if subscriptions.hasLoaded {
+                    if subscriptions.boundUserID == authentication.userID {
                         await subscriptions.refreshEntitlements()
                     }
                     await reconcileOnboardingAccount()
@@ -107,9 +110,12 @@ struct NoxaApp: App {
                     // Do not let a request started for the previous account
                     // publish data after sign-out.
                     cloudSync.invalidatePendingWork()
+                    analytics.reset()
+                    Task { await subscriptions.unbind() }
                     return
                 }
                 Task {
+                    await bindAccountServices()
                     await reconcileOnboardingAccount()
                     await syncCloudDataIfAuthenticated()
                 }
@@ -119,8 +125,13 @@ struct NoxaApp: App {
                 // true. Invalidate the previous account's in-flight work and
                 // hydrate only the newly bound account.
                 cloudSync.invalidatePendingWork()
-                guard authentication.isAuthenticated else { return }
+                guard authentication.isAuthenticated else {
+                    analytics.reset()
+                    Task { await subscriptions.unbind() }
+                    return
+                }
                 Task {
+                    await bindAccountServices()
                     await reconcileOnboardingAccount()
                     await syncCloudDataIfAuthenticated()
                 }
@@ -160,6 +171,16 @@ struct NoxaApp: App {
             return .signIn
         }
         return mode
+    }
+
+    private func bindAccountServices() async {
+        guard authentication.isAuthenticated, let userID = authentication.userID else {
+            analytics.reset()
+            await subscriptions.unbind()
+            return
+        }
+        analytics.identify(userID: userID)
+        await subscriptions.bind(to: userID)
     }
 
     private func reconcileOnboardingAccount() async {

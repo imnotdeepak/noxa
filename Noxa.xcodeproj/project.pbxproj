@@ -10,6 +10,8 @@
 		00431224304F9028003BCE77 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 00431223304F9028003BCE77 /* StoreKit.framework */; };
 		00A10000000000000000000B /* NoxaMonitor.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 00A100000000000000000001 /* NoxaMonitor.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		00B100000000000000000001 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 00B100000000000000000003 /* Supabase */; };
+		00C100000000000000000001 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = 00C100000000000000000003 /* RevenueCat */; };
+		00C200000000000000000001 /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = 00C200000000000000000003 /* PostHog */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -99,6 +101,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				00C200000000000000000001 /* PostHog in Frameworks */,
+				00C100000000000000000001 /* RevenueCat in Frameworks */,
 				00B100000000000000000001 /* Supabase in Frameworks */,
 				00431224304F9028003BCE77 /* StoreKit.framework in Frameworks */,
 			);
@@ -182,6 +186,8 @@
 			name = Noxa;
 			packageProductDependencies = (
 				00B100000000000000000003 /* Supabase */,
+				00C100000000000000000003 /* RevenueCat */,
+				00C200000000000000000003 /* PostHog */,
 			);
 			productName = Noxa;
 			productReference = 004310653048CD18003BCE77 /* Noxa.app */;
@@ -292,6 +298,8 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				00B100000000000000000002 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+				00C100000000000000000002 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */,
+				00C200000000000000000002 /* XCRemoteSwiftPackageReference "posthog-ios" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 004310663048CD18003BCE77 /* Products */;
@@ -775,6 +783,22 @@
 				minimumVersion = 2.0.0;
 			};
 		};
+		00C100000000000000000002 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/RevenueCat/purchases-ios-spm.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.0.0;
+			};
+		};
+		00C200000000000000000002 /* XCRemoteSwiftPackageReference "posthog-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/PostHog/posthog-ios.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -782,6 +806,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 00B100000000000000000002 /* XCRemoteSwiftPackageReference "supabase-swift" */;
 			productName = Supabase;
+		};
+		00C100000000000000000003 /* RevenueCat */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 00C100000000000000000002 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;
+			productName = RevenueCat;
+		};
+		00C200000000000000000003 /* PostHog */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 00C200000000000000000002 /* XCRemoteSwiftPackageReference "posthog-ios" */;
+			productName = PostHog;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

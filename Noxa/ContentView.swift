@@ -30,6 +30,7 @@ struct ContentView: View {
     }
 
     @EnvironmentObject private var authentication: AuthenticationService
+    @EnvironmentObject private var analytics: AnalyticsService
     @EnvironmentObject private var subscriptions: SubscriptionService
     @EnvironmentObject private var focusSession: FocusSessionService
     @EnvironmentObject private var restrictions: ScreenTimeRestrictionService
@@ -1130,6 +1131,16 @@ struct ContentView: View {
 
                 cloudSyncStatusCard
 
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("Share usage analytics", isOn: $analytics.isEnabled)
+                        .font(.headline)
+                        .tint(NoxaTheme.accent)
+                    Text("Helps improve Noxa using feature events and coarse counts. Noxa never sends your email, name, selected apps or websites, typed intentions, or screen recordings.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .noxaCard()
+
                 Button("Sign Out") {
                     Task {
                         await authentication.signOut()
@@ -1485,6 +1496,7 @@ private extension CloudSyncService {
 #Preview {
     ContentView()
         .environmentObject(AuthenticationService())
+        .environmentObject(AnalyticsService.shared)
         .environmentObject(SubscriptionService())
         .environmentObject(FocusSessionService())
         .environmentObject(ScreenTimeRestrictionService())

@@ -113,6 +113,14 @@ final class FocusSessionService: ObservableObject {
             activeSession = activeRecord
             activeIntention = restrictionConfiguration.intention
             scheduleReconciliation(for: activeRecord)
+            let selectionCount = selection.applicationTokens.count
+                + selection.categoryTokens.count
+                + selection.webDomainTokens.count
+                + websiteDomains.count
+            AnalyticsService.shared.capture(.focusStarted(
+                durationMinutes: duration / 60,
+                selectionCount: selectionCount
+            ))
             logger.info("Started focus session \(activeRecord.id.uuidString, privacy: .public)")
         } catch {
             center.stopMonitoring([NoxaDeviceActivityConfiguration.focusActivityName])
@@ -154,6 +162,9 @@ final class FocusSessionService: ObservableObject {
             try saveSnapshot(engineState: .idle, session: endedRecord)
             self.activeSession = nil
             activeIntention = nil
+            AnalyticsService.shared.capture(.focusEndedEarly(
+                elapsedMinutes: (endedRecord.actualDurationSeconds ?? 0) / 60
+            ))
             logger.info("Ended focus session early \(endedRecord.id.uuidString, privacy: .public)")
         } catch {
             errorMessage = "Restrictions were removed, but session cleanup could not be recorded: \(error.localizedDescription)"
@@ -347,6 +358,9 @@ final class FocusSessionService: ObservableObject {
             activeSession = nil
             activeIntention = nil
             history = (try? store.loadSnapshot())?.sessionHistory ?? history
+            AnalyticsService.shared.capture(.focusCompleted(
+                durationMinutes: completedRecord.plannedDurationSeconds / 60
+            ))
             logger.info("Finished focus session \(completedRecord.id.uuidString, privacy: .public)")
         } catch {
             errorMessage = "Restrictions were removed, but session reconciliation failed: \(error.localizedDescription)"

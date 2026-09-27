@@ -1,53 +1,72 @@
 import Combine
 import Foundation
-import StoreKit
+import RevenueCat
+
+struct SubscriptionPlan: Identifiable {
+    let package: Package
+
+    var id: String { package.storeProduct.productIdentifier }
+    var title: String { package.storeProduct.localizedTitle }
+    var displayPrice: String { package.storeProduct.localizedPriceString }
+    var isAnnual: Bool { id == SubscriptionService.annualProductID }
+
+    var periodDescription: String {
+        if id == SubscriptionService.monthlyProductID { return "Billed monthly" }
+        if id == SubscriptionService.annualProductID { return "Billed annually" }
+        return "Auto-renewing subscription"
+    }
+}
 
 @MainActor
-final class SubscriptionService: ObservableObject {
-    // Keep these IDs in one place so they can be changed when the App Store Connect
-    // subscription group is created. They are intentionally not used to grant access;
-    // StoreKit's verified transactions are the authority.
+final class SubscriptionService: NSObject, ObservableObject {
     static let monthlyProductID = "com.lycheecorp.noxa.monthly"
     static let annualProductID = "com.lycheecorp.noxa.annual"
     static let productIDs = [monthlyProductID, annualProductID]
+    static let entitlementID = "noxa_access"
 
-    @Published private(set) var products: [Product] = []
+    @Published private(set) var plans: [SubscriptionPlan] = []
     @Published private(set) var hasAccess = false
     @Published private(set) var hasLoaded = false
     @Published private(set) var isLoading = false
     @Published private(set) var purchasingProductID: String?
-    @Published private(set) var reviewedAccountIDs: Set<String>
+    @Published private(set) var boundUserID: UUID?
     @Published var message: String?
 
-    private var transactionUpdatesTask: Task<Void, Never>?
     private let defaults: UserDefaults
-    private static let reviewedAccountIDsKey = "reviewedSubscriptionAccountIDs"
+    private var isConfigured = false
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        reviewedAccountIDs = Set(defaults.stringArray(forKey: Self.reviewedAccountIDsKey) ?? [])
-        transactionUpdatesTask = Task { [weak self] in
-            await self?.observeTransactionUpdates()
-        }
-    }
-
-    deinit {
-        transactionUpdatesTask?.cancel()
+        super.init()
     }
 
     func canEnterApp(for userID: UUID?) -> Bool {
         guard let userID else { return false }
-        return hasAccess && reviewedAccountIDs.contains(userID.uuidString)
+        return hasLoaded && hasAccess && boundUserID == userID
     }
 
-    func continueWithCurrentSubscription(for userID: UUID?) {
-        guard hasAccess, let userID else { return }
-        reviewedAccountIDs.insert(userID.uuidString)
-        defaults.set(reviewedAccountIDs.sorted(), forKey: Self.reviewedAccountIDsKey)
-    }
+    func bind(to userID: UUID) async {
+        guard boundUserID != userID || !hasLoaded else {
+            await refreshEntitlements()
+            return
+        }
 
-    func load() async {
-        guard !isLoading else { return }
+        hasLoaded = false
+        hasAccess = false
+        plans = []
+        message = nil
+        boundUserID = userID
+
+        guard let apiKey = AppConfiguration.revenueCatPublicSDKKey else {
+            hasLoaded = true
+            #if DEBUG
+            message = "RevenueCat is not configured. Add its public iOS SDK key to Info.plist."
+            #else
+            message = "Subscriptions are temporarily unavailable. Please try again later."
+            #endif
+            return
+        }
+
         isLoading = true
         defer {
             isLoading = false
@@ -55,115 +74,163 @@ final class SubscriptionService: ObservableObject {
         }
 
         do {
-            let loadedProducts = try await Product.products(for: Self.productIDs)
-            products = loadedProducts.sorted { left, right in
-                Self.productIDs.firstIndex(of: left.id)! < Self.productIDs.firstIndex(of: right.id)!
-            }
-            if loadedProducts.isEmpty {
-                #if DEBUG
-                message = "No subscription products are available yet. Add the matching IDs in App Store Connect or an Xcode StoreKit configuration file."
-                #else
-                message = "Subscriptions are temporarily unavailable. Please try again later."
-                #endif
-            } else {
-                message = nil
-            }
-        } catch {
-            products = []
-            message = "Subscriptions are temporarily unavailable. Check your connection and try again."
-        }
+            let accountID = userID.uuidString.lowercased()
+            let customerInfo: CustomerInfo
 
-        await refreshEntitlements()
+            if !isConfigured {
+                Purchases.configure(withAPIKey: apiKey, appUserID: accountID)
+                Purchases.shared.delegate = self
+                isConfigured = true
+                customerInfo = try await Purchases.shared.customerInfo()
+            } else if Purchases.shared.appUserID != accountID {
+                customerInfo = try await Purchases.shared.logIn(accountID).customerInfo
+            } else {
+                customerInfo = try await Purchases.shared.customerInfo()
+            }
+
+            Purchases.shared.attribution.setAttributes(["$posthogUserId": accountID])
+            apply(customerInfo)
+
+            if !defaults.bool(forKey: migrationKey(for: userID)) {
+                let synchronizedInfo = try await Purchases.shared.syncPurchases()
+                apply(synchronizedInfo)
+                defaults.set(true, forKey: migrationKey(for: userID))
+            }
+
+            try await loadOfferings()
+        } catch {
+            guard boundUserID == userID else { return }
+            message = userMessage(for: error)
+        }
+    }
+
+    func unbind() async {
+        boundUserID = nil
+        hasAccess = false
+        hasLoaded = false
+        plans = []
+        purchasingProductID = nil
+        message = nil
+
+        guard isConfigured, !Purchases.shared.isAnonymous else { return }
+        _ = try? await Purchases.shared.logOut()
+    }
+
+    func load() async {
+        guard let boundUserID else { return }
+        await bind(to: boundUserID)
     }
 
     func refreshEntitlements() async {
-        var isEntitled = false
-
-        for await verificationResult in Transaction.currentEntitlements {
-            guard case .verified(let transaction) = verificationResult else { continue }
-            guard Self.productIDs.contains(transaction.productID) else { continue }
-            guard transaction.revocationDate == nil else { continue }
-            isEntitled = true
+        guard isConfigured, let expectedUserID = boundUserID else { return }
+        do {
+            let customerInfo = try await Purchases.shared.customerInfo()
+            guard boundUserID == expectedUserID else { return }
+            apply(customerInfo)
+            if plans.isEmpty {
+                try await loadOfferings()
+            }
+        } catch {
+            guard boundUserID == expectedUserID else { return }
+            message = userMessage(for: error)
         }
-
-        hasAccess = isEntitled
     }
 
     @discardableResult
-    func purchase(_ product: Product) async -> Bool {
-        guard !isLoading else { return false }
+    func purchase(_ plan: SubscriptionPlan) async -> Bool {
+        guard isConfigured, !isLoading, boundUserID != nil else { return false }
         isLoading = true
-        purchasingProductID = product.id
+        purchasingProductID = plan.id
+        message = nil
+        AnalyticsService.shared.capture(.purchaseStarted(productID: plan.id))
         defer {
             purchasingProductID = nil
             isLoading = false
         }
 
         do {
-            let result = try await product.purchase()
-            switch result {
-            case .success(let verificationResult):
-                let transaction = try Self.checkVerified(verificationResult)
-                await transaction.finish()
-                await refreshEntitlements()
-                message = hasAccess ? "Your Noxa subscription is active on this Apple Account." : nil
-                return hasAccess
-
-            case .userCancelled:
-                message = nil
-                return false
-
-            case .pending:
-                message = "The purchase is pending approval. Noxa will unlock when Apple confirms it."
-                return false
-
-            @unknown default:
-                message = "The purchase could not be completed. Please try again."
+            let result = try await Purchases.shared.purchase(package: plan.package)
+            apply(result.customerInfo)
+            if result.userCancelled {
+                AnalyticsService.shared.capture(.purchaseCancelled(productID: plan.id))
                 return false
             }
+            if hasAccess {
+                AnalyticsService.shared.capture(.purchaseCompleted(productID: plan.id))
+                message = "Your Noxa subscription is active."
+            }
+            return hasAccess
         } catch {
-            message = "The purchase could not be completed. Please try again."
+            message = userMessage(for: error)
             return false
         }
     }
 
     func restorePurchases() async {
-        guard !isLoading else { return }
+        guard isConfigured, !isLoading, boundUserID != nil else { return }
         isLoading = true
         defer { isLoading = false }
 
         do {
-            try await AppStore.sync()
-            await refreshEntitlements()
+            let customerInfo = try await Purchases.shared.restorePurchases()
+            apply(customerInfo)
             message = hasAccess
                 ? "Your Noxa subscription has been restored."
-                : "No active Noxa subscription was found for this Apple Account."
+                : "No active Noxa subscription was found for this account."
         } catch {
-            message = "Purchases could not be restored right now. Please try again."
+            message = userMessage(for: error)
         }
     }
 
-    private func observeTransactionUpdates() async {
-        for await verificationResult in Transaction.updates {
-            guard !Task.isCancelled else { return }
-
-            do {
-                let transaction = try Self.checkVerified(verificationResult)
-                await transaction.finish()
-                await refreshEntitlements()
-            } catch {
-                // An unverified transaction never unlocks access.
-                continue
-            }
+    private func loadOfferings() async throws {
+        let offerings = try await Purchases.shared.offerings()
+        let offering = offerings.current ?? offerings.all.values.first
+        let availablePlans = offering?.availablePackages
+            .filter { Self.productIDs.contains($0.storeProduct.productIdentifier) }
+            .map(SubscriptionPlan.init(package:)) ?? []
+        plans = availablePlans.sorted {
+            (Self.productIDs.firstIndex(of: $0.id) ?? .max)
+                < (Self.productIDs.firstIndex(of: $1.id) ?? .max)
+        }
+        if plans.isEmpty {
+            #if DEBUG
+            message = "No RevenueCat offering contains Noxa's monthly and annual products."
+            #else
+            message = "Subscriptions are temporarily unavailable. Please try again later."
+            #endif
         }
     }
 
-    private static func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
-        switch result {
-        case .verified(let value):
-            return value
-        case .unverified(_, let error):
-            throw error
+    private func apply(_ customerInfo: CustomerInfo) {
+        hasAccess = customerInfo.entitlements.active[Self.entitlementID] != nil
+        if hasAccess, message?.contains("unavailable") == true {
+            message = nil
+        }
+    }
+
+    private func migrationKey(for userID: UUID) -> String {
+        "revenueCatStoreKitMigration.v1.\(userID.uuidString.lowercased())"
+    }
+
+    private func userMessage(for error: Error) -> String {
+        let code = ErrorCode(rawValue: (error as NSError).code)
+        switch code {
+        case .receiptAlreadyInUseError:
+            return "This App Store subscription is already linked to another Noxa account. Sign in to that account or contact support."
+        case .productAlreadyPurchasedError:
+            return "This subscription has already been purchased. Try Restore Purchases."
+        case .networkError, .offlineConnectionError:
+            return "Subscriptions could not be reached. Check your connection and try again."
+        default:
+            return "The subscription request could not be completed. Please try again."
+        }
+    }
+}
+
+extension SubscriptionService: PurchasesDelegate {
+    nonisolated func purchases(_ purchases: Purchases, receivedUpdated customerInfo: CustomerInfo) {
+        Task { @MainActor [weak self] in
+            self?.apply(customerInfo)
         }
     }
 }
