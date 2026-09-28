@@ -235,11 +235,13 @@ struct NoxaApp: App {
 /// Keeps a safe cleanup path available if authentication or subscription
 /// access is lost while any local restriction is still enforcing.
 private struct RestrictionRecoveryView: View {
+    @EnvironmentObject private var authentication: AuthenticationService
     @EnvironmentObject private var focusSession: FocusSessionService
     @EnvironmentObject private var restrictions: ScreenTimeRestrictionService
     @EnvironmentObject private var monitoring: DeviceActivityMonitoringService
     @EnvironmentObject private var dailyLimits: DailyLimitService
     @EnvironmentObject private var schedules: RestrictionScheduleService
+    @State private var isLoginPresented = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -252,13 +254,21 @@ private struct RestrictionRecoveryView: View {
             Text(focusSession.isActive ? "Restrictions are still active" : "Noxa restrictions are still active")
                 .font(.system(size: 30, weight: .bold, design: .rounded))
 
-            Text("Remove the active restrictions before signing in again or renewing your subscription.")
+            Text(authentication.isAuthenticated
+                 ? "Renew your subscription to return to Noxa while these protections remain active."
+                 : "Log in again to return to Noxa. Your active restrictions will stay protected.")
                 .foregroundStyle(.secondary)
 
             if focusSession.isActive, let endTime = focusSession.endTimeDescription {
                 Text("Scheduled to end at \(endTime).")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+            }
+
+            if !authentication.isAuthenticated {
+                RecoveryActionButton(title: "Log In Again") {
+                    isLoginPresented = true
+                }
             }
 
             if focusSession.isActive {
@@ -313,6 +323,17 @@ private struct RestrictionRecoveryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(NoxaTheme.background.ignoresSafeArea())
         .preferredColorScheme(.dark)
+        .fullScreenCover(isPresented: $isLoginPresented) {
+            AuthenticationView(
+                initialMode: .signIn,
+                initialEmail: authentication.rememberedUserEmail ?? ""
+            )
+        }
+        .onChange(of: authentication.isAuthenticated) { isAuthenticated in
+            if isAuthenticated {
+                isLoginPresented = false
+            }
+        }
     }
 }
 
