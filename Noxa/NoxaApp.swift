@@ -273,8 +273,14 @@ private struct RestrictionRecoveryView: View {
             }
 
             if dailyLimits.isMonitoring || dailyLimits.isShieldActive {
-                RecoveryActionButton(title: "Stop Daily Limits") {
-                    dailyLimits.stopMonitoring()
+                if dailyLimits.isHardLimitLocked {
+                    Label("Hard daily limits remain active until tomorrow", systemImage: "lock.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                } else {
+                    RecoveryActionButton(title: "Stop Daily Limits") {
+                        dailyLimits.stopMonitoring()
+                    }
                 }
             }
 

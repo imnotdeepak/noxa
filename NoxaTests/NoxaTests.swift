@@ -235,9 +235,14 @@ struct NoxaTests {
             session(daysAgo: 3, outcome: .endedEarly, minutes: 10),
             session(daysAgo: 20, outcome: .completed, minutes: 60)
         ]
+        let day = FocusStatistics.period(history: history, days: 1, now: now, calendar: calendar)
         let week = FocusStatistics.period(history: history, days: 7, now: now, calendar: calendar)
         let month = FocusStatistics.period(history: history, days: 30, now: now, calendar: calendar)
 
+        #expect(day.focusMinutes == 0)
+        #expect(day.completedSessions == 0)
+        #expect(day.abandonedSessions == 0)
+        #expect(day.focusedDays == 0)
         #expect(week.focusMinutes == 30)
         #expect(week.completedSessions == 1)
         #expect(week.abandonedSessions == 1)

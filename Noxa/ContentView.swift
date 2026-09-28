@@ -16,15 +16,17 @@ struct ContentView: View {
     }
 
     private enum StatsRange: Int, CaseIterable {
+        case day = 1
         case week = 7
         case month = 30
         case year = 365
 
         var title: String {
             switch self {
-            case .week: "Last Week"
-            case .month: "Last Month"
-            case .year: "Last Year"
+            case .day: "Today"
+            case .week: "Week"
+            case .month: "Month"
+            case .year: "Year"
             }
         }
     }
@@ -48,6 +50,7 @@ struct ContentView: View {
     @State private var isDailyLimitPickerPresented = false
     @State private var dailyLimitSelection = FamilyActivitySelection()
     @State private var selectedDailyLimitMinutes = 30
+    @State private var isHardLimitConfirmationPresented = false
     @State private var isSchedulePickerPresented = false
     @State private var scheduleSelection = FamilyActivitySelection()
     @State private var scheduleAllowedStart = Calendar.current.date(from: DateComponents(hour: 21)) ?? Date()
@@ -160,7 +163,7 @@ struct ContentView: View {
             NavigationStack {
                 FamilyActivityPicker(selection: $dailyLimitSelection)
                     .navigationTitle("Choose limit apps")
-                    .disabled(focusSession.isActive)
+                    .disabled(focusSession.isActive || dailyLimits.isHardLimitLocked)
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
                             Button("Save") {
@@ -173,7 +176,7 @@ struct ContentView: View {
                                     isDailyLimitPickerPresented = false
                                 }
                             }
-                            .disabled(focusSession.isActive)
+                            .disabled(focusSession.isActive || dailyLimits.isHardLimitLocked)
                         }
                     }
             }
@@ -781,7 +784,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("Give selected apps a daily allowance. When the allowance is reached, Noxa asks Apple’s Screen Time controls to shield them until the next day.")
+            Text("Give selected apps a hard daily allowance. Once started, the limits and app selections cannot be changed or stopped until the next day.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
@@ -796,7 +799,7 @@ struct ContentView: View {
                     .padding(.vertical, 8)
                     .background(selectedDailyLimitMinutes == minutes ? Color.white : Color.white.opacity(0.08))
                     .clipShape(Capsule())
-                    .disabled(focusSession.isActive)
+                    .disabled(focusSession.isActive || dailyLimits.isHardLimitLocked)
                 }
             }
 
@@ -808,6 +811,7 @@ struct ContentView: View {
             .disabled(
                 !authorization.state.isApproved
                     || focusSession.isActive
+                    || dailyLimits.isHardLimitLocked
                     || dailyLimits.configurations.count >= DailyLimitService.maximumConfigurations
             )
 
@@ -825,7 +829,7 @@ struct ContentView: View {
                                 .foregroundStyle(configuration.isEnabled ? .white : .secondary)
                         }
                         .buttonStyle(.plain)
-                        .disabled(focusSession.isActive)
+                        .disabled(focusSession.isActive || dailyLimits.isHardLimitLocked)
 
                         VStack(alignment: .leading, spacing: 3) {
                             ForEach(Array(configuration.selection.applicationTokens), id: \.self) { token in
@@ -846,7 +850,7 @@ struct ContentView: View {
                             }
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(NoxaTheme.accent)
-                            .disabled(focusSession.isActive)
+                            .disabled(focusSession.isActive || dailyLimits.isHardLimitLocked)
                         }
                         Spacer()
                         Button("Remove") {
@@ -854,29 +858,35 @@ struct ContentView: View {
                         }
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .disabled(focusSession.isActive)
+                        .disabled(focusSession.isActive || dailyLimits.isHardLimitLocked)
                     }
                 }
             }
 
             HStack {
-                Text(hasActiveDailyLimits ? "Daily limits active" : "Daily limits are off")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button(hasActiveDailyLimits ? "Stop" : "Start") {
-                    if hasActiveDailyLimits {
-                        dailyLimits.stopMonitoring()
-                    } else {
-                        dailyLimits.startMonitoring()
+                if dailyLimits.isHardLimitLocked {
+                    Label("Hard limits active until tomorrow", systemImage: "lock.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(NoxaTheme.accent)
+                } else {
+                    Text(hasActiveDailyLimits ? "Daily limits active" : "Daily limits are off")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button(hasActiveDailyLimits ? "Stop" : "Start Hard Limits") {
+                        if hasActiveDailyLimits {
+                            dailyLimits.stopMonitoring()
+                        } else {
+                            isHardLimitConfirmationPresented = true
+                        }
                     }
+                    .font(.subheadline.weight(.semibold))
+                    .disabled(
+                        dailyLimits.configurations.filter(\.isEnabled).isEmpty
+                            || (!hasActiveDailyLimits && !authorization.state.isApproved)
+                            || focusSession.isActive
+                    )
                 }
-                .font(.subheadline.weight(.semibold))
-                .disabled(
-                    dailyLimits.configurations.filter(\.isEnabled).isEmpty
-                        || (!hasActiveDailyLimits && !authorization.state.isApproved)
-                        || focusSession.isActive
-                )
             }
 
             if let errorMessage = dailyLimits.errorMessage {
@@ -886,6 +896,18 @@ struct ContentView: View {
             }
         }
         .noxaCard()
+        .confirmationDialog(
+            "Start hard daily limits?",
+            isPresented: $isHardLimitConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Start Hard Limits") {
+                dailyLimits.startMonitoring()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You won’t be able to change or stop these limits until tomorrow.")
+        }
     }
 
     private var scheduleCard: some View {
