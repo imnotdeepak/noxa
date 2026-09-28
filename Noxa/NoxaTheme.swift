@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum NoxaTheme {
-    static let background = Color(red: 6.0 / 255.0, green: 18.0 / 255.0, blue: 13.0 / 255.0)
+    static let background = Color(red: 7.0 / 255.0, green: 21.0 / 255.0, blue: 15.0 / 255.0)
     static let elevated = Color.white.opacity(0.075)
     static let border = Color.white.opacity(0.13)
     static let subtleBorder = Color.white.opacity(0.075)
@@ -25,15 +25,12 @@ struct NoxaBackground: View {
         ZStack {
             NoxaTheme.background
 
-            RadialGradient(
-                colors: [NoxaTheme.accent.opacity(0.12), .clear],
-                center: .topTrailing,
-                startRadius: 10,
-                endRadius: 430
-            )
-
             LinearGradient(
-                colors: [.clear, Color.black.opacity(0.42)],
+                colors: [
+                    Color(red: 11.0 / 255.0, green: 31.0 / 255.0, blue: 22.0 / 255.0),
+                    NoxaTheme.background,
+                    Color(red: 5.0 / 255.0, green: 16.0 / 255.0, blue: 11.0 / 255.0)
+                ],
                 startPoint: .top,
                 endPoint: .bottom
             )
