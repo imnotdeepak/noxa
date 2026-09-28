@@ -98,6 +98,7 @@ struct NoxaApp: App {
                 await bindAccountServices()
                 await reconcileOnboardingAccount()
                 focusSession.reconcile()
+                dailyLimits.rescheduleActiveMonitoring()
                 schedules.rescheduleAll()
                 await syncCloudDataIfAuthenticated()
             }

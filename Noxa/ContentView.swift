@@ -784,7 +784,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("Give selected apps a hard daily allowance. Once started, the limits and app selections cannot be changed or stopped until the next day.")
+            Text("Give selected apps a hard daily allowance. Usage from earlier today counts. Once started, the limits and app selections cannot be changed or stopped until the next day.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 

@@ -208,12 +208,7 @@ final class DailyLimitService: ObservableObject {
         let events = Dictionary(uniqueKeysWithValues: active.map { configuration in
             (
                 NoxaDeviceActivityConfiguration.dailyLimitEventName(for: configuration.id),
-                DeviceActivityEvent(
-                    applications: configuration.selection.applicationTokens,
-                    categories: configuration.selection.categoryTokens,
-                    webDomains: configuration.selection.webDomainTokens,
-                    threshold: DateComponents(minute: configuration.dailyLimitMinutes)
-                )
+                dailyLimitEvent(for: configuration)
             )
         })
 
@@ -292,6 +287,14 @@ final class DailyLimitService: ObservableObject {
         }
     }
 
+    /// Re-registers an existing monitor after an app update while preserving
+    /// any limits already reached today. This also upgrades older events to
+    /// include activity recorded before Noxa started monitoring.
+    func rescheduleActiveMonitoring() {
+        guard isMonitoring, configurations.contains(where: \.isEnabled) else { return }
+        startMonitoring(resetReachedState: false)
+    }
+
     private func persistAndRestartIfNeeded() {
         do {
             try store.saveDailyLimitConfigurations(configurations)
@@ -321,6 +324,25 @@ final class DailyLimitService: ObservableObject {
             return false
         }
         return true
+    }
+
+    private func dailyLimitEvent(for configuration: DailyLimitConfiguration) -> DeviceActivityEvent {
+        if #available(iOS 17.4, *) {
+            return DeviceActivityEvent(
+                applications: configuration.selection.applicationTokens,
+                categories: configuration.selection.categoryTokens,
+                webDomains: configuration.selection.webDomainTokens,
+                threshold: DateComponents(minute: configuration.dailyLimitMinutes),
+                includesPastActivity: true
+            )
+        }
+
+        return DeviceActivityEvent(
+            applications: configuration.selection.applicationTokens,
+            categories: configuration.selection.categoryTokens,
+            webDomains: configuration.selection.webDomainTokens,
+            threshold: DateComponents(minute: configuration.dailyLimitMinutes)
+        )
     }
 
     private func applyDailyLimitShields(
