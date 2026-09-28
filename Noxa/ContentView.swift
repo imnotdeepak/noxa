@@ -1157,7 +1157,7 @@ struct ContentView: View {
                     Label("Noxa subscription", systemImage: subscriptions.hasAccess ? "checkmark.seal.fill" : "creditcard")
                         .font(.headline)
                     Text(subscriptions.hasAccess
-                         ? "Your subscription is active."
+                         ? "\(subscriptions.activePlanDisplayName) is active."
                          : "A subscription is required to use Noxa.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)

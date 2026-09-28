@@ -57,18 +57,7 @@ struct PaywallView: View {
                                 .tint(NoxaTheme.accent)
                                 .frame(maxWidth: .infinity)
                         } else {
-                            VStack(spacing: 16) {
-                                Label("Your Noxa subscription is active", systemImage: "checkmark.seal.fill")
-                                    .foregroundStyle(.green)
-                                    .font(.headline)
-                                if !allowsDismissal {
-                                    Button("Continue with Current Subscription") {
-                                        confirmAccess()
-                                    }
-                                    .buttonStyle(NoxaPrimaryButtonStyle())
-                                }
-                            }
-                            .frame(maxWidth: .infinity)
+                            activeSubscriptionSection
                         }
                     } else if subscriptions.plans.isEmpty {
                         VStack(spacing: 10) {
@@ -200,6 +189,8 @@ struct PaywallView: View {
                 }
                 if isOnboarding, subscriptions.hasAccess {
                     confirmAccess()
+                } else if !isOnboarding {
+                    await subscriptions.refreshEntitlements()
                 }
             }
             .onChange(of: subscriptions.hasAccess) { hasAccess in
@@ -263,6 +254,109 @@ struct PaywallView: View {
             if right.id == SubscriptionService.annualProductID { return false }
             return left.id < right.id
         }
+    }
+
+    @ViewBuilder
+    private var activeSubscriptionSection: some View {
+        VStack(spacing: 12) {
+            Label("Your subscription is active", systemImage: "checkmark.seal.fill")
+                .foregroundStyle(NoxaTheme.accent)
+                .font(.headline)
+
+            VStack(spacing: 8) {
+                Text("CURRENT PLAN")
+                    .font(.caption2.weight(.bold))
+                    .tracking(1.2)
+                    .foregroundStyle(NoxaTheme.accent)
+
+                Text(activePlanTitle)
+                    .font(NoxaTheme.font(22, weight: .bold, relativeTo: .title2))
+
+                if let currentPlan {
+                    Text(currentPlan.displayPrice)
+                        .font(NoxaTheme.font(32, weight: .bold, relativeTo: .largeTitle))
+                        .monospacedDigit()
+                    Text(currentPlan.periodDescription)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(20)
+            .background(
+                NoxaTheme.accent.opacity(0.08),
+                in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(NoxaTheme.accent.opacity(0.55), lineWidth: 1)
+            }
+        }
+
+        if !alternativePlans.isEmpty {
+            VStack(spacing: 12) {
+                Text("Switch plans")
+                    .font(NoxaTheme.font(20, weight: .semibold, relativeTo: .title3))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                ForEach(alternativePlans) { plan in
+                    Button {
+                        Task {
+                            _ = await subscriptions.purchase(plan)
+                        }
+                    } label: {
+                        VStack(spacing: 8) {
+                            Text("Switch to \(plan.title)")
+                                .font(NoxaTheme.font(18, weight: .semibold, relativeTo: .headline))
+                            if subscriptions.purchasingProductID == plan.id {
+                                ProgressView()
+                                    .tint(.white)
+                                    .accessibilityLabel("Processing")
+                            } else {
+                                Text(plan.displayPrice)
+                                    .font(NoxaTheme.font(30, weight: .bold, relativeTo: .largeTitle))
+                                    .monospacedDigit()
+                            }
+                            Text(plan.periodDescription)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(NoxaPaywallPlanButtonStyle())
+                    .disabled(subscriptions.isLoading)
+                }
+
+                Text("Apple confirms all plan changes. A downgrade may begin at your next renewal date.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+
+        if !allowsDismissal {
+            Button("Continue with Current Subscription") {
+                confirmAccess()
+            }
+            .buttonStyle(NoxaPrimaryButtonStyle())
+        }
+    }
+
+    private var currentPlan: SubscriptionPlan? {
+        guard let activeProductID = subscriptions.activeProductID else { return nil }
+        return subscriptions.plans.first { $0.id == activeProductID }
+    }
+
+    private var alternativePlans: [SubscriptionPlan] {
+        guard let activeProductID = subscriptions.activeProductID else { return [] }
+        return orderedPlans.filter { $0.id != activeProductID }
+    }
+
+    private var activePlanTitle: String {
+        if let currentPlan {
+            return currentPlan.title
+        }
+        return subscriptions.activePlanDisplayName
     }
 
     private func confirmAccess() {

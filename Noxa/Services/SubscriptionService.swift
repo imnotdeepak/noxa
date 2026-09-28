@@ -26,6 +26,7 @@ final class SubscriptionService: NSObject, ObservableObject {
 
     @Published private(set) var plans: [SubscriptionPlan] = []
     @Published private(set) var hasAccess = false
+    @Published private(set) var activeProductID: String?
     @Published private(set) var hasLoaded = false
     @Published private(set) var isLoading = false
     @Published private(set) var purchasingProductID: String?
@@ -45,6 +46,17 @@ final class SubscriptionService: NSObject, ObservableObject {
         return hasLoaded && hasAccess && boundUserID == userID
     }
 
+    var activePlanDisplayName: String {
+        switch activeProductID {
+        case Self.monthlyProductID:
+            return "Noxa Monthly"
+        case Self.annualProductID:
+            return "Noxa Annual"
+        default:
+            return "Noxa Subscription"
+        }
+    }
+
     func bind(to userID: UUID) async {
         guard boundUserID != userID || !hasLoaded else {
             await refreshEntitlements()
@@ -53,6 +65,7 @@ final class SubscriptionService: NSObject, ObservableObject {
 
         hasLoaded = false
         hasAccess = false
+        activeProductID = nil
         plans = []
         message = nil
         boundUserID = userID
@@ -107,6 +120,7 @@ final class SubscriptionService: NSObject, ObservableObject {
     func unbind() async {
         boundUserID = nil
         hasAccess = false
+        activeProductID = nil
         hasLoaded = false
         plans = []
         purchasingProductID = nil
@@ -202,7 +216,9 @@ final class SubscriptionService: NSObject, ObservableObject {
     }
 
     private func apply(_ customerInfo: CustomerInfo) {
-        hasAccess = customerInfo.entitlements.active[Self.entitlementID] != nil
+        let activeEntitlement = customerInfo.entitlements.active[Self.entitlementID]
+        hasAccess = activeEntitlement != nil
+        activeProductID = activeEntitlement?.productIdentifier
         if hasAccess, message?.contains("unavailable") == true {
             message = nil
         }
