@@ -73,6 +73,27 @@ struct OnboardingWelcomeView: View {
     }
 }
 
+private struct OnboardingDurationButtonStyle: ButtonStyle {
+    let isSelected: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(NoxaTheme.font(15, weight: .semibold, relativeTo: .subheadline))
+            .foregroundStyle(isSelected ? .black : NoxaTheme.primaryText)
+            .frame(maxWidth: .infinity, minHeight: 46)
+            .background(
+                isSelected ? NoxaTheme.accent : NoxaTheme.elevated,
+                in: Capsule()
+            )
+            .overlay {
+                Capsule()
+                    .stroke(isSelected ? NoxaTheme.accent : NoxaTheme.border, lineWidth: 1)
+            }
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
 struct OnboardingView: View {
     @EnvironmentObject private var onboarding: OnboardingService
     @EnvironmentObject private var authentication: AuthenticationService
@@ -87,7 +108,11 @@ struct OnboardingView: View {
     @State private var problemTimes: Set<String>
     @State private var motivations: Set<String>
     @State private var isRequestingAuthorization = false
+    @State private var selectedFirstSessionDuration = 30
+    @State private var isCustomFirstSessionDuration = false
+    @State private var customFirstSessionDurationText = "30"
     @FocusState private var isNameFieldFocused: Bool
+    @FocusState private var isFirstSessionDurationFieldFocused: Bool
 
     private enum Page: Int, CaseIterable {
         case goals
@@ -568,6 +593,55 @@ struct OnboardingView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
 
+            Text("Choose your first focus length")
+                .font(NoxaTheme.font(18, weight: .semibold, relativeTo: .headline))
+                .frame(maxWidth: .infinity)
+
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: 9), count: 3),
+                spacing: 9
+            ) {
+                ForEach([15, 30, 45, 60], id: \.self) { minutes in
+                    firstSessionDurationButton(minutes: minutes)
+                }
+
+                Button("Custom") {
+                    customFirstSessionDurationText = String(selectedFirstSessionDuration)
+                    isCustomFirstSessionDuration = true
+                    isFirstSessionDurationFieldFocused = true
+                }
+                .buttonStyle(OnboardingDurationButtonStyle(isSelected: isCustomFirstSessionDuration))
+            }
+
+            if isCustomFirstSessionDuration {
+                VStack(spacing: 10) {
+                    TextField("Minutes", text: $customFirstSessionDurationText)
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.center)
+                        .font(NoxaTheme.font(22, weight: .semibold, relativeTo: .title3))
+                        .padding(.horizontal, 14)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .background(.thinMaterial, in: Capsule())
+                        .overlay { Capsule().stroke(NoxaTheme.border, lineWidth: 1) }
+                        .focused($isFirstSessionDurationFieldFocused)
+                        .onChange(of: customFirstSessionDurationText) { value in
+                            customFirstSessionDurationText = String(value.filter(\.isNumber).prefix(3))
+                        }
+
+                    Text("Enter \(NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes)–\(NoxaDeviceActivityConfiguration.maximumFocusSessionMinutes) minutes.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                    Button {
+                        commitFirstSessionDuration()
+                        isFirstSessionDurationFieldFocused = false
+                    } label: {
+                        Label("Done Entering Time", systemImage: "keyboard.chevron.compact.down")
+                    }
+                    .buttonStyle(NoxaSecondaryButtonStyle())
+                }
+            }
+
             if let errorMessage = focusSession.errorMessage ?? onboarding.errorMessage {
                 Text(errorMessage)
                     .font(.footnote)
@@ -578,20 +652,64 @@ struct OnboardingView: View {
 
             Spacer()
 
-            onboardingButton("Start my first 30-minute focus") {
+            onboardingButton("Start \(firstSessionDurationLabel) Focus") {
+                commitFirstSessionDuration()
+                isFirstSessionDurationFieldFocused = false
                 restrictions.persistSelection()
                 guard restrictions.hasSelection, restrictions.errorMessage == nil else { return }
                 focusSession.start(
                     selection: restrictions.selection,
                     websiteDomains: websites.domains,
-                    durationMinutes: 30,
+                    durationMinutes: firstSessionDurationMinutes,
                     intention: firstFocusIntention
                 )
                 if focusSession.isActive {
                     _ = onboarding.completeFirstSessionPrompt()
                 }
             }
+
+            Button("Not now") {
+                isFirstSessionDurationFieldFocused = false
+                _ = onboarding.completeFirstSessionPrompt()
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity)
         }
+    }
+
+    private var firstSessionDurationMinutes: Int {
+        guard isCustomFirstSessionDuration else { return selectedFirstSessionDuration }
+        let value = Int(customFirstSessionDurationText)
+            ?? NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes
+        return min(
+            max(value, NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes),
+            NoxaDeviceActivityConfiguration.maximumFocusSessionMinutes
+        )
+    }
+
+    private var firstSessionDurationLabel: String {
+        let minutes = firstSessionDurationMinutes
+        if minutes >= 60, minutes.isMultiple(of: 60) {
+            let hours = minutes / 60
+            return hours == 1 ? "1 Hour" : "\(hours) Hours"
+        }
+        return "\(minutes) Minutes"
+    }
+
+    private func firstSessionDurationButton(minutes: Int) -> some View {
+        Button(minutes == 60 ? "1 hour" : "\(minutes) min") {
+            selectedFirstSessionDuration = minutes
+            isCustomFirstSessionDuration = false
+            isFirstSessionDurationFieldFocused = false
+        }
+        .buttonStyle(OnboardingDurationButtonStyle(
+            isSelected: !isCustomFirstSessionDuration && selectedFirstSessionDuration == minutes
+        ))
+    }
+
+    private func commitFirstSessionDuration() {
+        customFirstSessionDurationText = String(firstSessionDurationMinutes)
     }
 
     private func insightPage(
