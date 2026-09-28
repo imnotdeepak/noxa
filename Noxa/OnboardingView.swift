@@ -29,7 +29,7 @@ struct OnboardingWelcomeView: View {
                     .font(NoxaTheme.font(28, weight: .bold, relativeTo: .title))
                     .multilineTextAlignment(.center)
 
-                Text("Block distractions, protect your time, and build a healthier relationship with your phone.")
+                Text("Your phone is built to steal your attention. People spend way too much time on their phone. Let's change that")
                     .foregroundStyle(NoxaTheme.secondaryText)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -275,7 +275,7 @@ struct OnboardingView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
 
-            TextField("Your name", text: $name)
+            TextField("What's your name?", text: $name)
                 .textContentType(.name)
                 .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
