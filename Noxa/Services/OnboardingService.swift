@@ -202,7 +202,7 @@ final class OnboardingService: ObservableObject {
     @discardableResult
     func completeFirstSessionPrompt() -> Bool {
         guard progress.hasCompletedInitialSetup else {
-            errorMessage = "Choose at least one distraction before starting your first focus."
+            errorMessage = "Complete the earlier onboarding steps before continuing."
             return false
         }
         return commit { $0.hasSeenFirstSessionPrompt = true }

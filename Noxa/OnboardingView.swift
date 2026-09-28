@@ -583,8 +583,6 @@ struct OnboardingView: View {
             Spacer()
 
             onboardingButton("Continue to Noxa") {
-                restrictions.persistSelection()
-                guard restrictions.hasSelection, restrictions.errorMessage == nil else { return }
                 _ = onboarding.completeFirstSessionPrompt()
             }
         }
