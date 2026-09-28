@@ -67,47 +67,64 @@ struct NoxaOnboardingBackground: View {
 
 struct NoxaLoadingView: View {
     let message: String
-    @State private var rotation = 0.0
-    @State private var isPulsing = false
 
     var body: some View {
         ZStack {
             NoxaBackground()
 
             VStack(spacing: 22) {
-                ZStack {
-                    Circle()
-                        .stroke(Color.white.opacity(0.1), lineWidth: 2)
-                    Circle()
-                        .trim(from: 0.08, to: 0.7)
-                        .stroke(
-                            NoxaTheme.accent,
-                            style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
-                        )
-                        .rotationEffect(.degrees(rotation))
-
-                    Text("N")
-                        .font(NoxaTheme.font(24, weight: .medium, relativeTo: .title2))
-                        .foregroundStyle(NoxaTheme.primaryText)
-                        .scaleEffect(isPulsing ? 1.04 : 0.96)
-                }
-                .frame(width: 72, height: 72)
+                NoxaThinkingOrbs()
 
                 Text(message)
                     .font(NoxaTheme.font(15, weight: .medium, relativeTo: .subheadline))
                     .foregroundStyle(NoxaTheme.secondaryText)
             }
         }
-        .onAppear {
-            withAnimation(.linear(duration: 1.15).repeatForever(autoreverses: false)) {
-                rotation = 360
-            }
-            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                isPulsing = true
-            }
-        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(message)
+    }
+}
+
+private struct NoxaThinkingOrbs: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            let time = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate
+
+            ZStack {
+                Circle()
+                    .fill(NoxaTheme.accent.opacity(0.16))
+                    .frame(width: 76, height: 76)
+                    .blur(radius: 18)
+
+                HStack(spacing: 9) {
+                    ForEach(0..<3, id: \.self) { index in
+                        let wave = sin((time * 3.2) - (Double(index) * 0.9))
+                        let progress = (wave + 1) / 2
+
+                        Circle()
+                            .fill(
+                                RadialGradient(
+                                    colors: [
+                                        Color.white.opacity(0.9),
+                                        NoxaTheme.accent.opacity(0.95 - (Double(index) * 0.12))
+                                    ],
+                                    center: .topLeading,
+                                    startRadius: 1,
+                                    endRadius: 14
+                                )
+                            )
+                            .frame(width: 18, height: 18)
+                            .scaleEffect(0.76 + (progress * 0.3))
+                            .offset(y: wave * -4)
+                            .shadow(color: NoxaTheme.accent.opacity(0.42), radius: 9)
+                    }
+                }
+            }
+            .frame(width: 88, height: 72)
+        }
+        .accessibilityHidden(true)
     }
 }
 
