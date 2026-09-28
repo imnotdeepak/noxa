@@ -129,7 +129,7 @@ struct ContentView: View {
 
             NavigationStack {
                 accountContent
-                    .navigationTitle("Account")
+                    .navigationTitle("Settings")
             }
             .tabItem {
                 Label("Account", systemImage: "person.crop.circle")
@@ -1135,7 +1135,9 @@ struct ContentView: View {
 
     private var accountContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 16) {
+                settingsSectionTitle("Account")
+
                 VStack(alignment: .leading, spacing: 12) {
                     Label("Signed in", systemImage: "checkmark.shield.fill")
                         .font(.headline)
@@ -1150,34 +1152,6 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                 }
                 .noxaCard()
-
-                cloudSyncStatusCard
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Toggle("Share usage analytics", isOn: $analytics.isEnabled)
-                        .font(.headline)
-                        .tint(NoxaTheme.accent)
-                    Text("Helps improve Noxa using feature events and coarse counts. Noxa never sends your email, name, selected apps or websites, typed intentions, or screen recordings.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                .noxaCard()
-
-                Button("Sign Out") {
-                    Task {
-                        await authentication.signOut()
-                    }
-                }
-                .buttonStyle(NoxaSecondaryButtonStyle())
-                .disabled(authentication.isBusy || focusSession.isActive)
-
-                Button("Delete Account", role: .destructive) {
-                    isDeleteAccountConfirmationPresented = true
-                }
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.red)
-                .frame(maxWidth: .infinity)
-                .disabled(authentication.isBusy)
 
                 VStack(alignment: .leading, spacing: 12) {
                     Label("Noxa subscription", systemImage: subscriptions.hasAccess ? "checkmark.seal.fill" : "creditcard")
@@ -1194,7 +1168,41 @@ struct ContentView: View {
                 }
                 .noxaCard()
 
-                LegalLinksView()
+                settingsSectionTitle("Preferences")
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("Share usage analytics", isOn: $analytics.isEnabled)
+                        .font(.headline)
+                        .tint(NoxaTheme.accent)
+                    Text("Helps improve Noxa using feature events and coarse counts. Noxa never sends your email, name, selected apps or websites, typed intentions, or screen recordings.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .noxaCard()
+
+                settingsSectionTitle("Support & Legal")
+
+                SettingsSupportLinksView()
+
+                settingsSectionTitle("Data & Sync")
+
+                cloudSyncStatusCard
+
+                Button("Sign Out") {
+                    Task {
+                        await authentication.signOut()
+                    }
+                }
+                .buttonStyle(NoxaSecondaryButtonStyle())
+                .disabled(authentication.isBusy || focusSession.isActive)
+
+                Button("Delete Account", role: .destructive) {
+                    isDeleteAccountConfirmationPresented = true
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.red)
+                .frame(maxWidth: .infinity)
+                .disabled(authentication.isBusy)
 
                 if focusSession.isActive {
                     Text("End the active focus session before signing out.")
@@ -1216,6 +1224,14 @@ struct ContentView: View {
             PaywallView()
                 .environmentObject(subscriptions)
         }
+    }
+
+    private func settingsSectionTitle(_ title: String) -> some View {
+        Text(title)
+            .font(NoxaTheme.font(18, weight: .semibold, relativeTo: .headline))
+            .foregroundStyle(NoxaTheme.primaryText)
+            .padding(.top, 8)
+            .padding(.horizontal, 4)
     }
 
     private var cloudSyncStatusCard: some View {

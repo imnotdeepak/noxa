@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum NoxaTheme {
-    static let background = Color(red: 0.025, green: 0.027, blue: 0.032)
+    static let background = Color(red: 6.0 / 255.0, green: 18.0 / 255.0, blue: 13.0 / 255.0)
     static let elevated = Color.white.opacity(0.075)
     static let border = Color.white.opacity(0.13)
     static let subtleBorder = Color.white.opacity(0.075)

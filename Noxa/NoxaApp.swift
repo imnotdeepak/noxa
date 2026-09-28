@@ -294,7 +294,7 @@ private struct RestrictionRecoveryView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .background(Color.black.ignoresSafeArea())
+        .background(NoxaTheme.background.ignoresSafeArea())
         .preferredColorScheme(.dark)
     }
 }

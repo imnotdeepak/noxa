@@ -32,7 +32,7 @@ struct FocusStartRitualView: View {
                 Spacer()
             }
             .padding(24)
-            .background(Color.black.ignoresSafeArea())
+            .background(NoxaTheme.background.ignoresSafeArea())
             .preferredColorScheme(.dark)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -96,7 +96,7 @@ struct EndSessionRitualView: View {
                 Spacer()
             }
             .padding(24)
-            .background(Color.black.ignoresSafeArea())
+            .background(NoxaTheme.background.ignoresSafeArea())
             .preferredColorScheme(.dark)
             .interactiveDismissDisabled(secondsRemaining > 0)
             .onReceive(timer) { _ in
