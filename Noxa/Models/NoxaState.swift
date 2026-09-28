@@ -142,6 +142,17 @@ struct DailyLimitConfiguration: Codable, Equatable, Identifiable, Sendable {
 
 /// A daily window during which the selected apps are available. Noxa shields
 /// them before and after this window using independent DeviceActivity stores.
+struct PendingScheduleRelaxation: Codable, Equatable, Sendable {
+    enum Action: String, Codable, Sendable {
+        case disable
+        case remove
+    }
+
+    let action: Action
+    let requestedAt: Date
+    let effectiveAt: Date
+}
+
 struct RestrictionScheduleConfiguration: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
     var selection: FamilyActivitySelection
@@ -149,6 +160,7 @@ struct RestrictionScheduleConfiguration: Codable, Equatable, Identifiable, Senda
     var allowedEndMinutes: Int
     var createdAt: Date
     var isEnabled: Bool
+    var pendingRelaxation: PendingScheduleRelaxation?
 
     init(
         id: UUID = UUID(),
@@ -156,7 +168,8 @@ struct RestrictionScheduleConfiguration: Codable, Equatable, Identifiable, Senda
         allowedStartMinutes: Int,
         allowedEndMinutes: Int,
         createdAt: Date = Date(),
-        isEnabled: Bool = true
+        isEnabled: Bool = true,
+        pendingRelaxation: PendingScheduleRelaxation? = nil
     ) {
         self.id = id
         self.selection = selection
@@ -164,6 +177,7 @@ struct RestrictionScheduleConfiguration: Codable, Equatable, Identifiable, Senda
         self.allowedEndMinutes = min(max(allowedEndMinutes, 15), 1_425)
         self.createdAt = createdAt
         self.isEnabled = isEnabled
+        self.pendingRelaxation = pendingRelaxation
     }
 }
 

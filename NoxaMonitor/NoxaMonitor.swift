@@ -15,6 +15,7 @@ private enum NoxaMonitorActivity {
     static let dailyLimitReachedEventsKey = "noxa.dailyLimitReachedEvents"
     static let dailyLimitResetDayKey = "noxa.dailyLimitResetDay"
     static let scheduleActivityPrefix = "noxa.schedule."
+    static let scheduleRelaxationActivityPrefix = "noxa.schedule.relax."
 
     static func dailyLimitEventPrefix() -> String {
         "noxa.daily.limit."
@@ -48,7 +49,19 @@ private struct PersistedRestrictionScheduleConfiguration: Codable {
     let allowedStartMinutes: Int
     let allowedEndMinutes: Int
     let createdAt: Date
-    let isEnabled: Bool
+    var isEnabled: Bool
+    var pendingRelaxation: PersistedScheduleRelaxation?
+}
+
+private struct PersistedScheduleRelaxation: Codable {
+    enum Action: String, Codable {
+        case disable
+        case remove
+    }
+
+    let action: Action
+    let requestedAt: Date
+    let effectiveAt: Date
 }
 
 /// Runs outside the Noxa process so restrictions can be enforced after the
@@ -73,6 +86,8 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
             } else {
                 logger.info("Restarted daily limit monitoring without resetting today's reached limits")
             }
+        } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleRelaxationActivityPrefix) {
+            applyPendingScheduleRelaxation(for: activity)
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleActivityPrefix) {
             applyScheduleShield(for: activity)
         } else {
@@ -100,6 +115,8 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
                 forKey: "noxa.focusSessionRestrictions"
             )
             logger.info("Removed focus shield when session ended")
+        } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleRelaxationActivityPrefix) {
+            logger.info("Pending schedule relaxation interval ended")
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleActivityPrefix) {
             ManagedSettingsStore(named: ManagedSettingsStore.Name(activity.rawValue)).clearAllSettings()
             logger.info("Removed scheduled shield for \(activity.rawValue, privacy: .public)")
@@ -228,6 +245,13 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
             return
         }
 
+        if let pending = schedule.pendingRelaxation,
+           pending.effectiveAt <= Date() {
+            clearScheduleShields(for: id)
+            logger.info("Skipped expired schedule \(activity.rawValue, privacy: .public)")
+            return
+        }
+
         let store = ManagedSettingsStore(named: ManagedSettingsStore.Name(activity.rawValue))
         store.shield.applications = schedule.selection.applicationTokens.isEmpty
             ? nil
@@ -239,5 +263,47 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
             ? nil
             : schedule.selection.webDomainTokens
         logger.info("Applied scheduled shield for \(activity.rawValue, privacy: .public)")
+    }
+
+    private func applyPendingScheduleRelaxation(for activity: DeviceActivityName) {
+        let parts = activity.rawValue.split(separator: ".")
+        guard let idText = parts.last,
+              let id = UUID(uuidString: String(idText)),
+              let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa"),
+              let data = defaults.data(forKey: "noxa.restrictionSchedules"),
+              var schedules = try? JSONDecoder().decode(
+                  [PersistedRestrictionScheduleConfiguration].self,
+                  from: data
+              ),
+              let index = schedules.firstIndex(where: { $0.id == id }),
+              let pending = schedules[index].pendingRelaxation,
+              pending.effectiveAt <= Date()
+        else {
+            logger.error("Could not apply pending relaxation for \(activity.rawValue, privacy: .public)")
+            return
+        }
+
+        switch pending.action {
+        case .remove:
+            schedules.remove(at: index)
+        case .disable:
+            schedules[index].isEnabled = false
+            schedules[index].pendingRelaxation = nil
+        }
+
+        if let updatedData = try? JSONEncoder().encode(schedules) {
+            defaults.set(updatedData, forKey: "noxa.restrictionSchedules")
+        }
+        clearScheduleShields(for: id)
+        logger.info("Applied pending schedule relaxation for \(id.uuidString, privacy: .public)")
+    }
+
+    private func clearScheduleShields(for id: UUID) {
+        for segment in ["before", "after"] {
+            let name = DeviceActivityName(
+                "\(NoxaMonitorActivity.scheduleActivityPrefix)\(segment).\(id.uuidString.lowercased())"
+            )
+            ManagedSettingsStore(named: ManagedSettingsStore.Name(name.rawValue)).clearAllSettings()
+        }
     }
 }

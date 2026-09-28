@@ -19,6 +19,7 @@ enum NoxaDeviceActivityConfiguration {
     static let dailyLimitReachedEventsKey = "noxa.dailyLimitReachedEvents"
     static let dailyLimitResetDayKey = "noxa.dailyLimitResetDay"
     static let dailyLimitHardLockDayKey = "noxa.dailyLimitHardLockDay"
+    static let scheduleRelaxationActivityPrefix = "noxa.schedule.relax"
     static let minimumFocusSessionMinutes = 15
     static let maximumFocusSessionMinutes = 480
 
@@ -28,6 +29,10 @@ enum NoxaDeviceActivityConfiguration {
 
     static func scheduleActivityName(for id: UUID, segment: String) -> DeviceActivityName {
         DeviceActivityName("\(scheduleActivityPrefix).\(segment).\(id.uuidString.lowercased())")
+    }
+
+    static func scheduleRelaxationActivityName(for id: UUID) -> DeviceActivityName {
+        DeviceActivityName("\(scheduleRelaxationActivityPrefix).\(id.uuidString.lowercased())")
     }
 
     static func dailyLimitDayStamp(for date: Date = Date(), calendar: Calendar = .autoupdatingCurrent) -> String {
@@ -380,6 +385,7 @@ final class DailyLimitService: ObservableObject {
 @MainActor
 final class RestrictionScheduleService: ObservableObject {
     static let maximumConfigurations = 8
+    static let relaxationDelay: TimeInterval = 24 * 60 * 60
 
     @Published private(set) var configurations: [RestrictionScheduleConfiguration]
     @Published private(set) var errorMessage: String?
@@ -395,6 +401,14 @@ final class RestrictionScheduleService: ObservableObject {
 
     var enabledCount: Int {
         configurations.filter(\.isEnabled).count
+    }
+
+    var enabledWithoutPendingRelaxationCount: Int {
+        configurations.filter { $0.isEnabled && $0.pendingRelaxation == nil }.count
+    }
+
+    var nextPendingRelaxationDate: Date? {
+        configurations.compactMap(\.pendingRelaxation?.effectiveAt).min()
     }
 
     func add(selection: FamilyActivitySelection, allowedStart: Date, allowedEnd: Date) {
@@ -435,7 +449,12 @@ final class RestrictionScheduleService: ObservableObject {
             return
         }
         guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
-        configurations[index].isEnabled = enabled
+        if enabled {
+            configurations[index].isEnabled = true
+            configurations[index].pendingRelaxation = nil
+        } else if configurations[index].isEnabled {
+            configurations[index].pendingRelaxation = Self.pendingRelaxation(action: .disable)
+        }
         persistAndReschedule()
     }
 
@@ -444,24 +463,74 @@ final class RestrictionScheduleService: ObservableObject {
             errorMessage = "Schedules cannot be changed during a focus session."
             return
         }
-        stop(configuration)
-        configurations.removeAll { $0.id == configuration.id }
+        guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
+        if configurations[index].isEnabled {
+            configurations[index].pendingRelaxation = Self.pendingRelaxation(action: .remove)
+        } else {
+            stop(configuration)
+            configurations.remove(at: index)
+        }
+        persistAndReschedule()
+    }
+
+    func cancelPendingRelaxation(for configuration: RestrictionScheduleConfiguration) {
+        guard !store.hasActiveFocusSession() else {
+            errorMessage = "Schedules cannot be changed during a focus session."
+            return
+        }
+        guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
+        configurations[index].pendingRelaxation = nil
+        persistAndReschedule()
+    }
+
+    func requestDisableAll() {
+        guard !store.hasActiveFocusSession() else {
+            errorMessage = "Schedules cannot be changed during a focus session."
+            return
+        }
+        let now = Date()
+        var didChange = false
+        for index in configurations.indices
+        where configurations[index].isEnabled && configurations[index].pendingRelaxation == nil {
+            configurations[index].pendingRelaxation = Self.pendingRelaxation(
+                action: .disable,
+                now: now
+            )
+            didChange = true
+        }
+        guard didChange else { return }
         persistAndReschedule()
     }
 
     func rescheduleAll() {
         errorMessage = nil
+        applyMaturedRelaxations()
+        removeOrphanedActivities()
         for configuration in configurations {
             stop(configuration)
             guard configuration.isEnabled else { continue }
             do {
                 try start(configuration)
                 applyCurrentShield(for: configuration)
+                do {
+                    try startRelaxationMonitor(for: configuration)
+                } catch {
+                    logger.error("Pending schedule change monitor failed: \(error.localizedDescription, privacy: .public)")
+                }
             } catch {
                 stop(configuration)
                 errorMessage = "Could not start a schedule: \(error.localizedDescription)"
                 logger.error("Schedule start failed: \(error.localizedDescription, privacy: .public)")
             }
+        }
+    }
+
+    func reconcile() {
+        do {
+            configurations = try store.loadRestrictionSchedules()
+            rescheduleAll()
+        } catch {
+            errorMessage = "Could not load schedules: \(error.localizedDescription)"
         }
     }
 
@@ -503,12 +572,36 @@ final class RestrictionScheduleService: ObservableObject {
                 repeats: true
             )
         )
+
+    }
+
+    private func startRelaxationMonitor(for configuration: RestrictionScheduleConfiguration) throws {
+        guard let pending = configuration.pendingRelaxation,
+              pending.effectiveAt > Date() else { return }
+        let calendar = Calendar.autoupdatingCurrent
+        let intervalEnd = calendar.date(
+            byAdding: .minute,
+            value: 15,
+            to: pending.effectiveAt
+        ) ?? pending.effectiveAt.addingTimeInterval(15 * 60)
+        let relaxationName = NoxaDeviceActivityConfiguration.scheduleRelaxationActivityName(
+            for: configuration.id
+        )
+        try center.startMonitoring(
+            relaxationName,
+            during: DeviceActivitySchedule(
+                intervalStart: Self.dateComponents(for: pending.effectiveAt, calendar: calendar),
+                intervalEnd: Self.dateComponents(for: intervalEnd, calendar: calendar),
+                repeats: false
+            )
+        )
     }
 
     private func stop(_ configuration: RestrictionScheduleConfiguration) {
         let names = [
             NoxaDeviceActivityConfiguration.scheduleActivityName(for: configuration.id, segment: "before"),
-            NoxaDeviceActivityConfiguration.scheduleActivityName(for: configuration.id, segment: "after")
+            NoxaDeviceActivityConfiguration.scheduleActivityName(for: configuration.id, segment: "after"),
+            NoxaDeviceActivityConfiguration.scheduleRelaxationActivityName(for: configuration.id)
         ]
         center.stopMonitoring(names)
         for name in names {
@@ -517,6 +610,10 @@ final class RestrictionScheduleService: ObservableObject {
     }
 
     private func applyCurrentShield(for configuration: RestrictionScheduleConfiguration) {
+        if let pending = configuration.pendingRelaxation,
+           pending.effectiveAt <= Date() {
+            return
+        }
         let now = Self.minutesSinceMidnight(Date(), calendar: .autoupdatingCurrent)
         let segment: String?
         if now < configuration.allowedStartMinutes {
@@ -545,5 +642,68 @@ final class RestrictionScheduleService: ObservableObject {
 
     private static func components(for minutes: Int) -> DateComponents {
         DateComponents(hour: minutes / 60, minute: minutes % 60)
+    }
+
+    private static func dateComponents(for date: Date, calendar: Calendar) -> DateComponents {
+        calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
+    }
+
+    private static func pendingRelaxation(
+        action: PendingScheduleRelaxation.Action,
+        now: Date = Date()
+    ) -> PendingScheduleRelaxation {
+        PendingScheduleRelaxation(
+            action: action,
+            requestedAt: now,
+            effectiveAt: now.addingTimeInterval(relaxationDelay)
+        )
+    }
+
+    private func applyMaturedRelaxations(now: Date = Date()) {
+        var changed = false
+        configurations = configurations.compactMap { configuration in
+            guard let pending = configuration.pendingRelaxation,
+                  pending.effectiveAt <= now else {
+                return configuration
+            }
+
+            changed = true
+            switch pending.action {
+            case .remove:
+                stop(configuration)
+                return nil
+            case .disable:
+                var updated = configuration
+                updated.isEnabled = false
+                updated.pendingRelaxation = nil
+                return updated
+            }
+        }
+
+        guard changed else { return }
+        do {
+            try store.saveRestrictionSchedules(configurations)
+        } catch {
+            errorMessage = "A pending schedule change could not be saved: \(error.localizedDescription)"
+        }
+    }
+
+    private func removeOrphanedActivities() {
+        let expectedNames = Set(configurations.flatMap { configuration in
+            [
+                NoxaDeviceActivityConfiguration.scheduleActivityName(for: configuration.id, segment: "before"),
+                NoxaDeviceActivityConfiguration.scheduleActivityName(for: configuration.id, segment: "after"),
+                NoxaDeviceActivityConfiguration.scheduleRelaxationActivityName(for: configuration.id)
+            ]
+        })
+        let staleNames = center.activities.filter { activity in
+            activity.rawValue.hasPrefix(NoxaDeviceActivityConfiguration.scheduleActivityPrefix)
+                && !expectedNames.contains(activity)
+        }
+        guard !staleNames.isEmpty else { return }
+        center.stopMonitoring(staleNames)
+        for name in staleNames {
+            ManagedSettingsStore(named: ManagedSettingsStore.Name(name.rawValue)).clearAllSettings()
+        }
     }
 }

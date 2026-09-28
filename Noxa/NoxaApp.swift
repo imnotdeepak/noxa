@@ -99,12 +99,13 @@ struct NoxaApp: App {
                 await reconcileOnboardingAccount()
                 focusSession.reconcile()
                 dailyLimits.rescheduleActiveMonitoring()
-                schedules.rescheduleAll()
+                schedules.reconcile()
                 await syncCloudDataIfAuthenticated()
             }
             .onChange(of: scenePhase) { newPhase in
                 guard newPhase == .active else { return }
                 focusSession.reconcile()
+                schedules.reconcile()
                 Task {
                     if subscriptions.boundUserID == authentication.userID {
                         await subscriptions.refreshEntitlements()
@@ -294,8 +295,15 @@ private struct RestrictionRecoveryView: View {
             }
 
             if schedules.enabledCount > 0 {
-                RecoveryActionButton(title: "Stop App Schedules") {
-                    schedules.clearConfigurations()
+                if schedules.enabledWithoutPendingRelaxationCount > 0 {
+                    RecoveryActionButton(title: "Request Schedule Stop") {
+                        schedules.requestDisableAll()
+                    }
+                }
+                if let effectiveAt = schedules.nextPendingRelaxationDate {
+                    Text("Schedule changes remain protected until \(effectiveAt.formatted(date: .abbreviated, time: .shortened)).")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
 

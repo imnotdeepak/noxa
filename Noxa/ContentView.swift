@@ -976,7 +976,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("Choose a daily window when selected apps are available. Noxa blocks them before and after that window—even when the app is closed.")
+            Text("Choose a daily window when selected apps are available. Noxa blocks them before and after that window—even when the app is closed. Disabling or removing an active schedule takes 24 hours.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
@@ -1026,7 +1026,7 @@ struct ContentView: View {
                                     .foregroundStyle(configuration.isEnabled ? NoxaTheme.accent : .secondary)
                             }
                             .buttonStyle(.plain)
-                            .disabled(focusSession.isActive)
+                            .disabled(focusSession.isActive || configuration.pendingRelaxation != nil)
 
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("Available \(Self.timeLabel(minutes: configuration.allowedStartMinutes))–\(Self.timeLabel(minutes: configuration.allowedEndMinutes))")
@@ -1041,10 +1041,41 @@ struct ContentView: View {
                             }
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
-                            .disabled(focusSession.isActive)
+                            .disabled(focusSession.isActive || configuration.pendingRelaxation != nil)
                         }
 
                         tokenRows(for: configuration.selection)
+
+                        if let pending = configuration.pendingRelaxation {
+                            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Label(
+                                        pending.action == .remove ? "Removal pending" : "Disable pending",
+                                        systemImage: "clock.badge.exclamationmark"
+                                    )
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(NoxaTheme.warning)
+
+                                    Text("Takes effect \(pending.effectiveAt.formatted(date: .abbreviated, time: .shortened))")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Spacer()
+
+                                Button("Cancel Change") {
+                                    schedules.cancelPendingRelaxation(for: configuration)
+                                }
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(NoxaTheme.accent)
+                                .disabled(focusSession.isActive)
+                            }
+                            .padding(12)
+                            .background(
+                                NoxaTheme.warning.opacity(0.08),
+                                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            )
+                        }
                     }
                     .padding(.vertical, 4)
                 }
