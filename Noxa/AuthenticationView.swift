@@ -25,8 +25,9 @@ struct AuthenticationView: View {
     @State private var hasBlurredPassword = false
     @FocusState private var focusedCredentialField: CredentialField?
 
-    init(initialMode: Mode = .signIn) {
+    init(initialMode: Mode = .signIn, initialEmail: String = "") {
         _mode = State(initialValue: initialMode)
+        _email = State(initialValue: initialEmail)
     }
 
     var body: some View {

@@ -44,6 +44,21 @@ final class OnboardingService: ObservableObject {
         return didSave
     }
 
+    /// Starts onboarding for a genuinely new account instead of reusing the
+    /// completed progress that may belong to the last signed-out account.
+    @discardableResult
+    func beginNewAccountPersonalization() -> Bool {
+        let didSave = commit { progress in
+            progress = OnboardingProgress()
+            progress.hasSeenWelcome = true
+        }
+        if didSave {
+            isAuthenticationRequested = false
+            isPersonalizationRequested = true
+        }
+        return didSave
+    }
+
     @discardableResult
     func beginAuthentication(mode: String) -> Bool {
         let didSave = commit {
@@ -212,10 +227,14 @@ final class OnboardingService: ObservableObject {
     func reset() -> Bool {
         let didReset = commit { $0 = OnboardingProgress() }
         if didReset {
-            isAuthenticationRequested = false
-            isPersonalizationRequested = false
+            clearTransientRoute()
         }
         return didReset
+    }
+
+    func clearTransientRoute() {
+        isAuthenticationRequested = false
+        isPersonalizationRequested = false
     }
 
     private func commit(_ update: (inout OnboardingProgress) -> Void) -> Bool {

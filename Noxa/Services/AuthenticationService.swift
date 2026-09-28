@@ -28,16 +28,31 @@ final class AuthenticationService: ObservableObject {
     @Published private(set) var userEmail: String?
     @Published private(set) var displayName: String?
     @Published private(set) var hasCompletedOnboarding = false
+    @Published private(set) var rememberedUserEmail: String?
+    @Published private(set) var rememberedDisplayName: String?
     @Published private(set) var confirmationEmail: String?
     @Published private(set) var requiresEmailConfirmation = false
     @Published var isPasswordRecoveryPresented = false
     @Published var message: String?
 
     private let client: SupabaseClient
+    private let defaults: UserDefaults
     private var authStateTask: Task<Void, Never>?
 
-    init(client: SupabaseClient? = nil) {
+    private enum RememberedAccountKey {
+        static let email = "noxa.rememberedAccount.email"
+        static let displayName = "noxa.rememberedAccount.displayName"
+    }
+
+    var hasRememberedAccount: Bool {
+        rememberedUserEmail != nil || rememberedDisplayName != nil
+    }
+
+    init(client: SupabaseClient? = nil, defaults: UserDefaults = .standard) {
         self.client = client ?? SupabaseProvider.client
+        self.defaults = defaults
+        rememberedUserEmail = defaults.string(forKey: RememberedAccountKey.email)
+        rememberedDisplayName = defaults.string(forKey: RememberedAccountKey.displayName)
         let authClient = self.client
         authStateTask = Task { [weak self] in
             for await change in authClient.auth.authStateChanges {
@@ -144,6 +159,7 @@ final class AuthenticationService: ObservableObject {
     }
 
     func signOut() async {
+        rememberCurrentAccount()
         await perform {
             try await self.client.auth.signOut()
             self.isAuthenticated = false
@@ -167,6 +183,7 @@ final class AuthenticationService: ObservableObject {
         do {
             try await client.functions.invoke("delete-account")
             try? await client.auth.signOut()
+            forgetRememberedAccount()
             isAuthenticated = false
             userID = nil
             userEmail = nil
@@ -218,6 +235,13 @@ final class AuthenticationService: ObservableObject {
             self.isPasswordRecoveryPresented = false
             self.message = nil
         }
+    }
+
+    func forgetRememberedAccount() {
+        rememberedUserEmail = nil
+        rememberedDisplayName = nil
+        defaults.removeObject(forKey: RememberedAccountKey.email)
+        defaults.removeObject(forKey: RememberedAccountKey.displayName)
     }
 
     /// Stores non-sensitive onboarding preferences in Supabase Auth metadata.
@@ -283,11 +307,32 @@ final class AuthenticationService: ObservableObject {
     private func apply(user: User) {
         displayName = user.userMetadata["full_name"]?.stringValue
         hasCompletedOnboarding = user.userMetadata["noxa_onboarding_complete"]?.boolValue ?? false
+        rememberCurrentAccount()
+    }
+
+    private func rememberCurrentAccount() {
+        if let email = userEmail?.trimmingCharacters(in: .whitespacesAndNewlines), !email.isEmpty {
+            rememberedUserEmail = email
+            defaults.set(email, forKey: RememberedAccountKey.email)
+        }
+        if let name = displayName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            rememberedDisplayName = name
+            defaults.set(name, forKey: RememberedAccountKey.displayName)
+        }
     }
 
     private func handleAuthChange(event: AuthChangeEvent, session: Session?) {
         switch event {
-        case .signedOut, .userDeleted:
+        case .signedOut:
+            isAuthenticated = false
+            userID = nil
+            userEmail = nil
+            displayName = nil
+            hasCompletedOnboarding = false
+            confirmationEmail = nil
+            requiresEmailConfirmation = false
+        case .userDeleted:
+            forgetRememberedAccount()
             isAuthenticated = false
             userID = nil
             userEmail = nil

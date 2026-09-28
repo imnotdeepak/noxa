@@ -42,7 +42,7 @@ struct OnboardingWelcomeView: View {
 
             VStack(spacing: 12) {
                 Button("Get my life back") {
-                    _ = onboarding.beginPersonalization()
+                    _ = onboarding.beginNewAccountPersonalization()
                 }
                 .buttonStyle(NoxaPrimaryButtonStyle())
 
@@ -70,6 +70,76 @@ struct OnboardingWelcomeView: View {
                 }
             }
         }
+    }
+}
+
+struct ReturningUserView: View {
+    @EnvironmentObject private var authentication: AuthenticationService
+    @EnvironmentObject private var onboarding: OnboardingService
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer()
+
+            Image("NoxaLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: 220, maxHeight: 112)
+                .accessibilityHidden(true)
+
+            VStack(spacing: 12) {
+                Text(welcomeTitle)
+                    .font(NoxaTheme.font(38, weight: .bold, relativeTo: .largeTitle))
+                    .tracking(-0.9)
+                    .multilineTextAlignment(.center)
+
+                Text("Sign in to continue where you left off. You won’t need to repeat onboarding.")
+                    .foregroundStyle(NoxaTheme.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let email = authentication.rememberedUserEmail {
+                    Text(email)
+                        .font(.subheadline)
+                        .foregroundStyle(NoxaTheme.accent)
+                }
+            }
+            .padding(.top, 28)
+
+            Spacer()
+
+            VStack(spacing: 12) {
+                Button(continueButtonTitle) {
+                    _ = onboarding.beginAuthentication(
+                        mode: AuthenticationView.Mode.signIn.rawValue
+                    )
+                }
+                .buttonStyle(NoxaPrimaryButtonStyle())
+
+                Button("Use a different account") {
+                    authentication.forgetRememberedAccount()
+                    _ = onboarding.reset()
+                }
+                .buttonStyle(NoxaSecondaryButtonStyle())
+            }
+        }
+        .padding(.horizontal, 40)
+        .padding(.vertical, 24)
+        .font(NoxaTheme.font(17))
+        .background(NoxaOnboardingBackground())
+        .preferredColorScheme(.dark)
+    }
+
+    private var welcomeTitle: String {
+        guard let name = authentication.rememberedDisplayName,
+              !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return "Welcome back."
+        }
+        return "Welcome back, \(name)."
+    }
+
+    private var continueButtonTitle: String {
+        authentication.rememberedUserEmail.map { "Continue as \($0)" } ?? "Continue"
     }
 }
 

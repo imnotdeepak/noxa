@@ -43,9 +43,16 @@ struct NoxaApp: App {
                     RestrictionRecoveryView()
                 } else if !authentication.isAuthenticated {
                     if onboarding.isAuthenticationRequested {
-                        AuthenticationView(initialMode: initialAuthenticationMode)
+                        AuthenticationView(
+                            initialMode: initialAuthenticationMode,
+                            initialEmail: initialAuthenticationMode == .signIn
+                                ? (authentication.rememberedUserEmail ?? "")
+                                : ""
+                        )
                     } else if onboarding.isPersonalizationRequested {
                         OnboardingView()
+                    } else if authentication.hasRememberedAccount {
+                        ReturningUserView()
                     } else {
                         OnboardingWelcomeView()
                     }
@@ -111,6 +118,7 @@ struct NoxaApp: App {
                     // publish data after sign-out.
                     cloudSync.invalidatePendingWork()
                     analytics.reset()
+                    onboarding.clearTransientRoute()
                     Task { await subscriptions.unbind() }
                     return
                 }
