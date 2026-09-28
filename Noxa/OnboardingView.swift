@@ -109,7 +109,7 @@ struct ReturningUserView: View {
             Spacer()
 
             VStack(spacing: 12) {
-                Button(continueButtonTitle) {
+                Button("Continue") {
                     _ = onboarding.beginAuthentication(
                         mode: AuthenticationView.Mode.signIn.rawValue
                     )
@@ -138,9 +138,6 @@ struct ReturningUserView: View {
         return "Welcome back, \(name)."
     }
 
-    private var continueButtonTitle: String {
-        authentication.rememberedUserEmail.map { "Continue as \($0)" } ?? "Continue"
-    }
 }
 
 struct OnboardingView: View {
