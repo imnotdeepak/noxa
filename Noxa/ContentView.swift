@@ -47,6 +47,7 @@ struct ContentView: View {
     @State private var selectedDurationMinutes = 30
     @State private var isRequestingAuthorization = false
     @State private var newDomain = ""
+    @State private var restrictionPickerSelection = FamilyActivitySelection()
     @State private var isDailyLimitPickerPresented = false
     @State private var isChoosingDailyLimitDuration = false
     @State private var dailyLimitSelection = FamilyActivitySelection()
@@ -145,16 +146,13 @@ struct ContentView: View {
         .background(NoxaBackground())
         .sheet(isPresented: $restrictions.isPickerPresented) {
             NavigationStack {
-                FamilyActivityPicker(selection: $restrictions.selection)
-                    .navigationTitle("Choose restrictions")
-                    .disabled(focusSession.isActive)
+                FamilyActivityPicker(selection: $restrictionPickerSelection)
+                    .navigationTitle(focusSession.isActive ? "Add restrictions" : "Choose restrictions")
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
                             Button("Done") {
-                                restrictions.isPickerPresented = false
-                                restrictions.persistSelection()
+                                finishRestrictionPicker()
                             }
-                            .disabled(focusSession.isActive)
                         }
                     }
             }
@@ -590,11 +588,10 @@ struct ContentView: View {
                 Label("Your blocklist", systemImage: "checklist")
                     .font(.headline)
                 Spacer()
-                Button("Edit") {
-                    restrictions.isPickerPresented = true
+                Button(focusSession.isActive ? "Add" : "Edit") {
+                    presentRestrictionPicker()
                 }
                 .font(.subheadline.weight(.semibold))
-                .disabled(focusSession.isActive)
             }
 
             Text(hasConfiguredRestrictions
@@ -604,10 +601,10 @@ struct ContentView: View {
 
             if !hasConfiguredRestrictions {
                 Button("Choose Apps and Websites") {
-                    restrictions.isPickerPresented = true
+                    presentRestrictionPicker()
                 }
                 .buttonStyle(NoxaSecondaryButtonStyle())
-                .disabled(!authorization.state.isApproved || focusSession.isActive)
+                .disabled(!authorization.state.isApproved)
             }
         }
         .noxaCard()
@@ -625,7 +622,7 @@ struct ContentView: View {
                 }
 
                 if focusSession.isActive {
-                    Label("Blocklist locked until this focus session ends", systemImage: "lock.fill")
+                    Label("You can add distractions now, but existing ones stay locked until the session ends", systemImage: "lock.fill")
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(.orange)
                 }
@@ -649,11 +646,11 @@ struct ContentView: View {
                         tokenRows(for: restrictions.selection, includeWebDomains: false)
                     }
 
-                    Button(restrictions.hasSelection ? "Edit Apps" : "Choose Apps") {
-                        restrictions.isPickerPresented = true
+                    Button(focusSession.isActive ? "Add Apps" : (restrictions.hasSelection ? "Edit Apps" : "Choose Apps")) {
+                        presentRestrictionPicker()
                     }
                     .buttonStyle(NoxaSecondaryButtonStyle())
-                    .disabled(!authorization.state.isApproved || focusSession.isActive)
+                    .disabled(!authorization.state.isApproved)
                 }
                 .noxaCard()
 
@@ -708,7 +705,6 @@ struct ContentView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .textFieldStyle(.roundedBorder)
-                    .disabled(focusSession.isActive)
 
                 Button("Add Website") {
                     if websites.addDomain(newDomain) {
@@ -717,7 +713,7 @@ struct ContentView: View {
                 }
                 .buttonStyle(NoxaSecondaryButtonStyle())
                 .fixedSize()
-                .disabled(focusSession.isActive || websites.domains.count >= WebsiteBlocklistService.maximumDomains)
+                .disabled(websites.domains.count >= WebsiteBlocklistService.maximumDomains)
             }
 
             if websites.domains.isEmpty {
@@ -833,7 +829,7 @@ struct ContentView: View {
                 )
             } else {
                 Button("Choose Apps and Websites First") {
-                    restrictions.isPickerPresented = true
+                    presentRestrictionPicker()
                 }
                 .buttonStyle(NoxaSecondaryButtonStyle())
                 .disabled(!authorization.state.isApproved)
@@ -1395,6 +1391,28 @@ struct ContentView: View {
             NoxaDeviceActivityConfiguration.maximumFocusSessionMinutes
         )
         customDurationText = String(adjusted)
+    }
+
+    private func presentRestrictionPicker() {
+        // During an active session the picker starts empty and acts only as an
+        // additive selection. Outside a session it remains the normal editor.
+        restrictionPickerSelection = focusSession.isActive
+            ? FamilyActivitySelection()
+            : restrictions.selection
+        restrictions.isPickerPresented = true
+    }
+
+    private func finishRestrictionPicker() {
+        if focusSession.isActive {
+            guard restrictions.addToActiveSession(restrictionPickerSelection) else { return }
+        } else {
+            restrictions.selection = restrictionPickerSelection
+            restrictions.persistSelection()
+            guard restrictions.errorMessage == nil else { return }
+        }
+
+        restrictionPickerSelection = FamilyActivitySelection()
+        restrictions.isPickerPresented = false
     }
 
     private func durationButton(title: String, minutes: Int) -> some View {

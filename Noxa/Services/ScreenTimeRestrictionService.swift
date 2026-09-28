@@ -67,6 +67,47 @@ final class ScreenTimeRestrictionService: ObservableObject {
         }
     }
 
+    /// Adds new restrictions to the immutable snapshot owned by an active
+    /// focus session. Existing tokens are always retained, so this operation
+    /// can strengthen a running session but can never weaken it.
+    @discardableResult
+    func addToActiveSession(_ additions: FamilyActivitySelection) -> Bool {
+        errorMessage = nil
+        guard isLockedForFocusSession else {
+            errorMessage = "There is no active focus session to update."
+            return false
+        }
+
+        do {
+            guard let current = try store.loadFocusSessionRestrictions() else {
+                errorMessage = "The active focus session could not be updated."
+                return false
+            }
+
+            var mergedSelection = current.selection
+            mergedSelection.applicationTokens.formUnion(additions.applicationTokens)
+            mergedSelection.categoryTokens.formUnion(additions.categoryTokens)
+            mergedSelection.webDomainTokens.formUnion(additions.webDomainTokens)
+
+            let updated = FocusSessionRestrictionConfiguration(
+                selection: mergedSelection,
+                websiteDomains: current.websiteDomains,
+                intention: current.intention
+            )
+            try store.saveFocusSessionRestrictions(updated)
+            try store.saveFamilyActivitySelection(mergedSelection)
+            selection = mergedSelection
+            applyShieldConfiguration(mergedSelection, customDomains: current.websiteDomains)
+            logger.info("Added restrictions to the active focus session")
+            return true
+        } catch {
+            restoreActiveSessionSelection()
+            errorMessage = "Could not add to the active blocklist: \(error.localizedDescription)"
+            logger.error("Active-session addition failed: \(error.localizedDescription, privacy: .public)")
+            return false
+        }
+    }
+
     /// Applies a shield immediately. This is intentionally callable from the
     /// main app for the first physical-device spike; the monitor extension
     /// applies the same shield when its callbacks arrive.
@@ -82,6 +123,14 @@ final class ScreenTimeRestrictionService: ObservableObject {
         }
 
         errorMessage = nil
+        applyShieldConfiguration(selection, customDomains: customDomains)
+        logger.info("Applied local shield for \(self.selectedItemCount) selected item(s)")
+    }
+
+    private func applyShieldConfiguration(
+        _ selection: FamilyActivitySelection,
+        customDomains: [String]
+    ) {
         settingsStore.shield.applications = selection.applicationTokens.isEmpty
             ? nil
             : selection.applicationTokens
@@ -95,7 +144,6 @@ final class ScreenTimeRestrictionService: ObservableObject {
             ? nil
             : .specific(Set(customDomains.map(WebDomain.init(domain:))))
         isShieldActive = true
-        logger.info("Applied local shield for \(self.selectedItemCount) selected item(s)")
     }
 
     func removeShield(force: Bool = false) {

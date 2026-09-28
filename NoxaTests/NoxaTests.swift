@@ -103,7 +103,7 @@ struct NoxaTests {
         #expect(try store.loadFocusSessionRestrictions() == nil)
     }
 
-    @Test @MainActor func blocklistEditsAreRejectedDuringAnActiveFocusSession() throws {
+    @Test @MainActor func activeFocusSessionAllowsAdditionsButRejectsRemovals() throws {
         let suiteName = "NoxaTests.FocusLock.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         let store = AppGroupStore(defaults: defaults)
@@ -114,11 +114,19 @@ struct NoxaTests {
             outcome: .active
         )
         try store.saveSnapshot(snapshot)
+        try store.saveFocusSessionRestrictions(
+            FocusSessionRestrictionConfiguration(selection: FamilyActivitySelection())
+        )
 
         let websites = WebsiteBlocklistService(store: store)
 
-        #expect(!websites.addDomain("reddit.com"))
-        #expect(websites.domains.isEmpty)
+        #expect(websites.addDomain("reddit.com"))
+        #expect(websites.domains == ["reddit.com"])
+        #expect(try store.loadFocusSessionRestrictions()?.websiteDomains == ["reddit.com"])
+
+        websites.removeDomain("reddit.com")
+
+        #expect(websites.domains == ["reddit.com"])
         #expect(websites.errorMessage == "Blocklist changes are locked until the focus session ends.")
     }
 

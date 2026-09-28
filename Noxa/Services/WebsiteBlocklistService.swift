@@ -33,10 +33,6 @@ final class WebsiteBlocklistService: ObservableObject {
 
     @discardableResult
     func addDomain(_ input: String) -> Bool {
-        guard !isLockedForFocusSession else {
-            errorMessage = "Blocklist changes are locked until the focus session ends."
-            return false
-        }
         guard let domain = Self.normalize(input) else {
             errorMessage = "Enter a valid domain such as reddit.com."
             return false
@@ -50,10 +46,50 @@ final class WebsiteBlocklistService: ObservableObject {
             return false
         }
 
+        if isLockedForFocusSession {
+            return addDomainToActiveSession(domain)
+        }
+
         domains.append(domain)
         domains.sort()
         persist()
         return true
+    }
+
+    /// Strengthens a running session without allowing any existing domain to
+    /// be removed. The monitor extension reads the same updated snapshot.
+    private func addDomainToActiveSession(_ domain: String) -> Bool {
+        do {
+            guard let current = try store.loadFocusSessionRestrictions() else {
+                errorMessage = "The active focus session could not be updated."
+                return false
+            }
+
+            let mergedDomains = Array(Set(current.websiteDomains + domains + [domain])).sorted()
+            guard mergedDomains.count <= Self.maximumDomains else {
+                errorMessage = "You can block up to \(Self.maximumDomains) custom domains at once."
+                return false
+            }
+
+            let updated = FocusSessionRestrictionConfiguration(
+                selection: current.selection,
+                websiteDomains: mergedDomains,
+                intention: current.intention
+            )
+            try store.saveFocusSessionRestrictions(updated)
+            try store.saveWebsiteBlocklist(mergedDomains)
+            domains = mergedDomains
+            settingsStore.webContent.blockedByFilter = .specific(
+                Set(mergedDomains.map(WebDomain.init(domain:)))
+            )
+            errorMessage = nil
+            logger.info("Added a website restriction to the active focus session")
+            return true
+        } catch {
+            errorMessage = "Could not add the website: \(error.localizedDescription)"
+            logger.error("Active website addition failed: \(error.localizedDescription, privacy: .public)")
+            return false
+        }
     }
 
     func removeDomain(_ domain: String) {
