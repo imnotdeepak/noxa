@@ -163,7 +163,7 @@ struct ContentView: View {
             NavigationStack {
                 FamilyActivityPicker(selection: $dailyLimitSelection)
                     .navigationTitle("Choose limit apps")
-                    .disabled(focusSession.isActive || dailyLimits.isHardLimitLocked)
+                    .disabled(focusSession.isActive)
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
                             Button("Save") {
@@ -176,7 +176,7 @@ struct ContentView: View {
                                     isDailyLimitPickerPresented = false
                                 }
                             }
-                            .disabled(focusSession.isActive || dailyLimits.isHardLimitLocked)
+                            .disabled(focusSession.isActive)
                         }
                     }
             }
@@ -784,7 +784,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("Give selected apps a hard daily allowance. Usage from earlier today counts. Once started, the limits and app selections cannot be changed or stopped until the next day.")
+            Text("Give selected apps a hard daily allowance. Usage from earlier today counts. Once started, existing limits cannot be changed or stopped until the next day, but you can still add new limits.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
@@ -799,7 +799,7 @@ struct ContentView: View {
                     .padding(.vertical, 8)
                     .background(selectedDailyLimitMinutes == minutes ? Color.white : Color.white.opacity(0.08))
                     .clipShape(Capsule())
-                    .disabled(focusSession.isActive || dailyLimits.isHardLimitLocked)
+                    .disabled(focusSession.isActive)
                 }
             }
 
@@ -811,7 +811,6 @@ struct ContentView: View {
             .disabled(
                 !authorization.state.isApproved
                     || focusSession.isActive
-                    || dailyLimits.isHardLimitLocked
                     || dailyLimits.configurations.count >= DailyLimitService.maximumConfigurations
             )
 
