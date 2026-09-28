@@ -336,33 +336,12 @@ struct ContentView: View {
                 .tracking(1.6)
                 .foregroundStyle(NoxaTheme.accent)
 
-            HStack(alignment: .firstTextBaseline, spacing: 7) {
-                if focusSession.completedFocusMinutes >= 60 {
-                    Text("\(focusSession.completedFocusMinutes / 60)")
-                        .font(NoxaTheme.font(62, weight: .medium, relativeTo: .largeTitle))
-                    Text("hr")
-                        .font(NoxaTheme.font(20, weight: .medium, relativeTo: .headline))
-                        .foregroundStyle(NoxaTheme.secondaryText)
+            Text("\(focusSession.completedFocusMinutes)")
+                .font(NoxaTheme.font(68, weight: .medium, relativeTo: .largeTitle))
+                .monospacedDigit()
+                .tracking(-1.5)
 
-                    if focusSession.completedFocusMinutes % 60 > 0 {
-                        Text("\(focusSession.completedFocusMinutes % 60)")
-                            .font(NoxaTheme.font(62, weight: .medium, relativeTo: .largeTitle))
-                        Text("min")
-                            .font(NoxaTheme.font(20, weight: .medium, relativeTo: .headline))
-                            .foregroundStyle(NoxaTheme.secondaryText)
-                    }
-                } else {
-                    Text("\(focusSession.completedFocusMinutes)")
-                        .font(NoxaTheme.font(68, weight: .medium, relativeTo: .largeTitle))
-                    Text(focusSession.completedFocusMinutes == 1 ? "minute" : "minutes")
-                        .font(NoxaTheme.font(20, weight: .medium, relativeTo: .headline))
-                        .foregroundStyle(NoxaTheme.secondaryText)
-                }
-            }
-            .monospacedDigit()
-            .tracking(-1.5)
-
-            Text("protected from distractions")
+            Text("\(focusSession.completedFocusMinutes == 1 ? "minute" : "minutes") protected from distractions")
                 .font(NoxaTheme.font(16, weight: .medium, relativeTo: .subheadline))
                 .foregroundStyle(NoxaTheme.secondaryText)
         }
@@ -409,14 +388,18 @@ struct ContentView: View {
     private var focusSessionCard: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: focusSession.isActive ? .leading : .center, spacing: 4) {
                     Text(focusSession.isActive ? "Stay focused" : "Start a focus")
                         .font(NoxaTheme.font(24, weight: .bold, relativeTo: .title2))
                     Text(focusSession.isActive ? "Noxa is protecting your time." : "Choose a duration and begin.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(focusSession.isActive ? .leading : .center)
                 }
-                Spacer()
+                .frame(
+                    maxWidth: .infinity,
+                    alignment: focusSession.isActive ? .leading : .center
+                )
                 if focusSession.isActive {
                     Text("LIVE")
                         .font(.caption.weight(.bold))
