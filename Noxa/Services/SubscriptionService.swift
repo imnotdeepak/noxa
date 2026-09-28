@@ -22,7 +22,7 @@ final class SubscriptionService: NSObject, ObservableObject {
     static let monthlyProductID = "com.lycheecorp.noxa.monthly"
     static let annualProductID = "com.lycheecorp.noxa.annual"
     static let productIDs = [monthlyProductID, annualProductID]
-    static let entitlementID = "noxa_access"
+    static let entitlementID = "noxa_focus_app_blocker_pro"
 
     @Published private(set) var plans: [SubscriptionPlan] = []
     @Published private(set) var hasAccess = false
