@@ -73,7 +73,13 @@ struct NoxaLoadingView: View {
             NoxaBackground()
 
             VStack(spacing: 22) {
-                NoxaThinkingOrbs()
+                ThinkingOrb(
+                    state: .searching,
+                    size: .px64,
+                    theme: .dark,
+                    displaySize: 76
+                )
+                .accessibilityHidden(true)
 
                 Text(message)
                     .font(NoxaTheme.font(15, weight: .medium, relativeTo: .subheadline))
@@ -82,49 +88,6 @@ struct NoxaLoadingView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(message)
-    }
-}
-
-private struct NoxaThinkingOrbs: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        TimelineView(.animation) { context in
-            let time = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate
-
-            ZStack {
-                Circle()
-                    .fill(NoxaTheme.accent.opacity(0.16))
-                    .frame(width: 76, height: 76)
-                    .blur(radius: 18)
-
-                HStack(spacing: 9) {
-                    ForEach(0..<3, id: \.self) { index in
-                        let wave = sin((time * 3.2) - (Double(index) * 0.9))
-                        let progress = (wave + 1) / 2
-
-                        Circle()
-                            .fill(
-                                RadialGradient(
-                                    colors: [
-                                        Color.white.opacity(0.9),
-                                        NoxaTheme.accent.opacity(0.95 - (Double(index) * 0.12))
-                                    ],
-                                    center: .topLeading,
-                                    startRadius: 1,
-                                    endRadius: 14
-                                )
-                            )
-                            .frame(width: 18, height: 18)
-                            .scaleEffect(0.76 + (progress * 0.3))
-                            .offset(y: wave * -4)
-                            .shadow(color: NoxaTheme.accent.opacity(0.42), radius: 9)
-                    }
-                }
-            }
-            .frame(width: 88, height: 72)
-        }
-        .accessibilityHidden(true)
     }
 }
 
