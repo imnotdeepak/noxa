@@ -93,6 +93,14 @@ struct ContentView: View {
         dailyLimits.isMonitoring || dailyLimits.isShieldActive
     }
 
+    private var dailyFocusMinutes: Int {
+        FocusStatistics(
+            history: focusSession.history,
+            now: statsReferenceDate,
+            calendar: .autoupdatingCurrent
+        ).dailyFocusMinutes
+    }
+
     var body: some View {
         TabView(selection: $selectedTab) {
             NavigationStack {
@@ -345,12 +353,12 @@ struct ContentView: View {
                 .tracking(1.6)
                 .foregroundStyle(NoxaTheme.accent)
 
-            Text("\(focusSession.completedFocusMinutes)")
+            Text("\(dailyFocusMinutes)")
                 .font(NoxaTheme.font(68, weight: .medium, relativeTo: .largeTitle))
                 .monospacedDigit()
                 .tracking(-1.5)
 
-            Text("\(focusSession.completedFocusMinutes == 1 ? "minute" : "minutes") protected from distractions")
+            Text("\(dailyFocusMinutes == 1 ? "minute" : "minutes") protected today")
                 .font(NoxaTheme.font(16, weight: .medium, relativeTo: .subheadline))
                 .foregroundStyle(NoxaTheme.secondaryText)
         }
