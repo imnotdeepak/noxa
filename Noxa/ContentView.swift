@@ -215,7 +215,6 @@ struct ContentView: View {
                         .noxaScreenBackground()
                     } else {
                         FamilyActivityPicker(selection: $dailyLimitSelection)
-                            .disabled(focusSession.isActive)
                     }
                 }
                 .navigationTitle(isChoosingDailyLimitDuration ? "Set Time" : "Choose App")
@@ -244,14 +243,12 @@ struct ContentView: View {
                                     isDailyLimitPickerPresented = false
                                 }
                             }
-                            .disabled(focusSession.isActive)
                         } else {
                             Button("Next") {
                                 isChoosingDailyLimitDuration = true
                             }
                             .disabled(
-                                focusSession.isActive
-                                    || dailyLimitSelection.applicationTokens.isEmpty
+                                dailyLimitSelection.applicationTokens.isEmpty
                             )
                         }
                     }
@@ -862,7 +859,6 @@ struct ContentView: View {
             .buttonStyle(NoxaSecondaryButtonStyle())
             .disabled(
                 !authorization.state.isApproved
-                    || focusSession.isActive
                     || dailyLimits.configurations.count >= DailyLimitService.maximumConfigurations
             )
 
@@ -1003,7 +999,6 @@ struct ContentView: View {
             .buttonStyle(NoxaSecondaryButtonStyle())
             .disabled(
                 !authorization.state.isApproved
-                    || focusSession.isActive
                     || schedules.configurations.count >= RestrictionScheduleService.maximumConfigurations
             )
 

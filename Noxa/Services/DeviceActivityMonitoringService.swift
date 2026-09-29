@@ -156,10 +156,6 @@ final class DailyLimitService: ObservableObject {
 
     func add(selection: FamilyActivitySelection, minutes: Int) {
         errorMessage = nil
-        guard !isLockedForFocusSession else {
-            errorMessage = "Daily limits cannot be changed during a focus session."
-            return
-        }
         guard !selection.applicationTokens.isEmpty else {
             errorMessage = "Select at least one app for a daily limit."
             return
@@ -442,10 +438,7 @@ final class RestrictionScheduleService: ObservableObject {
     }
 
     func add(selection: FamilyActivitySelection, allowedStart: Date, allowedEnd: Date) {
-        guard !store.hasActiveFocusSession() else {
-            errorMessage = "Schedules cannot be changed during a focus session."
-            return
-        }
+        errorMessage = nil
         guard !selection.applicationTokens.isEmpty else {
             errorMessage = "Select at least one app for this schedule."
             return
