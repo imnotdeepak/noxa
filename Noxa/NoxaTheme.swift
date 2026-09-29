@@ -67,6 +67,7 @@ struct NoxaOnboardingBackground: View {
 
 struct NoxaLoadingView: View {
     let message: String
+    @State private var isOrbRotating = false
 
     var body: some View {
         ZStack {
@@ -79,6 +80,14 @@ struct NoxaLoadingView: View {
                     theme: .dark,
                     displaySize: 76
                 )
+                .rotationEffect(.degrees(isOrbRotating ? 360 : 0))
+                .animation(
+                    .linear(duration: 2.2).repeatForever(autoreverses: false),
+                    value: isOrbRotating
+                )
+                .onAppear {
+                    isOrbRotating = true
+                }
                 .accessibilityHidden(true)
 
                 Text(message)

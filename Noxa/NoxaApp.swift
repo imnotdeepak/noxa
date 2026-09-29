@@ -72,7 +72,7 @@ struct NoxaApp: App {
                     if cloudSync.boundUserID != authentication.userID {
                         NoxaLoadingView(message: "Loading your account…")
                     } else if !subscriptions.hasLoaded {
-                        NoxaLoadingView(message: "Checking subscription…")
+                        NoxaLoadingView(message: "Loading")
                     } else if subscriptions.canEnterApp(for: authentication.userID) {
                         ContentView()
                     } else {
