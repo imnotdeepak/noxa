@@ -38,6 +38,15 @@ enum SessionOutcome: String, Codable, Equatable, Sendable {
             return false
         }
     }
+
+    var countsTowardProtectedTime: Bool {
+        switch self {
+        case .completed, .recoveredStale, .endedEarly:
+            return true
+        case .startPending, .active, .failedToStart, .interrupted:
+            return false
+        }
+    }
 }
 
 /// The small amount of session metadata that must survive process termination.
