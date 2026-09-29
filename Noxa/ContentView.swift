@@ -7,6 +7,7 @@ import FamilyControls
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
     private enum MainTab: Hashable {
         case dailyLimits
         case blocklist
@@ -69,6 +70,7 @@ struct ContentView: View {
     @State private var isNotificationPromptPresented = false
     @State private var selectedTab = MainTab.home
     @State private var selectedStatsRange = StatsRange.week
+    @State private var statsReferenceDate = Date()
     @FocusState private var isCustomDurationFieldFocused: Bool
 
     private var hasConfiguredRestrictions: Bool {
@@ -281,6 +283,13 @@ struct ContentView: View {
         }
         .task {
             authorization.refresh()
+        }
+        .onChange(of: scenePhase) { newPhase in
+            guard newPhase == .active else { return }
+            statsReferenceDate = Date()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+            statsReferenceDate = Date()
         }
         .alert("Delete your Noxa account?", isPresented: $isDeleteAccountConfirmationPresented) {
             Button("Cancel", role: .cancel) {}
@@ -1094,10 +1103,16 @@ struct ContentView: View {
     }
 
     private var statsContent: some View {
-        let statistics = FocusStatistics(history: focusSession.history)
+        let statistics = FocusStatistics(
+            history: focusSession.history,
+            now: statsReferenceDate,
+            calendar: .autoupdatingCurrent
+        )
         let period = FocusStatistics.period(
             history: focusSession.history,
-            days: selectedStatsRange.rawValue
+            days: selectedStatsRange.rawValue,
+            now: statsReferenceDate,
+            calendar: .autoupdatingCurrent
         )
         return ScrollView {
             VStack(alignment: .leading, spacing: 24) {

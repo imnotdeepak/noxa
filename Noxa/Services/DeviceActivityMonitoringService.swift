@@ -136,6 +136,7 @@ final class DailyLimitService: ObservableObject {
         isShieldActive = settingsStore.shield.applications != nil
             || settingsStore.shield.applicationCategories != nil
             || settingsStore.shield.webDomains != nil
+        reconcileDayBoundary()
     }
 
     var enabledCount: Int {
@@ -198,10 +199,10 @@ final class DailyLimitService: ObservableObject {
 
     func startMonitoring() {
         guard canModifyLimits() else { return }
-        startMonitoring(resetReachedState: true)
+        startMonitoring(resetReachedState: true, lockForToday: true)
     }
 
-    private func startMonitoring(resetReachedState: Bool) {
+    private func startMonitoring(resetReachedState: Bool, lockForToday: Bool) {
         let active = configurations.filter(\.isEnabled)
         guard !active.isEmpty else {
             errorMessage = "Add a daily limit before starting the monitor."
@@ -258,7 +259,9 @@ final class DailyLimitService: ObservableObject {
                 during: schedule,
                 events: events
             )
-            defaults?.set(today, forKey: NoxaDeviceActivityConfiguration.dailyLimitHardLockDayKey)
+            if lockForToday {
+                defaults?.set(today, forKey: NoxaDeviceActivityConfiguration.dailyLimitHardLockDayKey)
+            }
             isMonitoring = true
             errorMessage = nil
             logger.info("Started daily limit monitor for \(active.count) configuration(s)")
@@ -299,8 +302,35 @@ final class DailyLimitService: ObservableObject {
     /// any limits already reached today. This also upgrades older events to
     /// include activity recorded before Noxa started monitoring.
     func rescheduleActiveMonitoring() {
+        reconcileDayBoundary()
         guard isMonitoring, configurations.contains(where: \.isEnabled) else { return }
-        startMonitoring(resetReachedState: false)
+        // Re-registering an already-running monitor is maintenance, not a new
+        // user commitment. Do not renew yesterday's hard lock on app launch.
+        startMonitoring(resetReachedState: false, lockForToday: false)
+    }
+
+    /// Clears yesterday's reached-limit state when the app crosses local
+    /// midnight. The repeating DeviceActivity monitor remains registered, so
+    /// today's usage begins counting again without relocking configuration.
+    func reconcileDayBoundary(now: Date = Date()) {
+        guard isMonitoring else { return }
+
+        let defaults = UserDefaults(suiteName: AppGroupStore.suiteName)
+        let today = NoxaDeviceActivityConfiguration.dailyLimitDayStamp(for: now)
+        guard defaults?.string(
+            forKey: NoxaDeviceActivityConfiguration.dailyLimitResetDayKey
+        ) != today else {
+            isShieldActive = settingsStore.shield.applications != nil
+                || settingsStore.shield.applicationCategories != nil
+                || settingsStore.shield.webDomains != nil
+            return
+        }
+
+        settingsStore.clearAllSettings()
+        defaults?.removeObject(forKey: NoxaDeviceActivityConfiguration.dailyLimitReachedEventsKey)
+        defaults?.set(today, forKey: NoxaDeviceActivityConfiguration.dailyLimitResetDayKey)
+        isShieldActive = false
+        logger.info("Reset daily limit state at the local day boundary")
     }
 
     private func persistAndRestartIfNeeded() {
@@ -311,7 +341,7 @@ final class DailyLimitService: ObservableObject {
             try store.saveSnapshot(snapshot)
             if isMonitoring {
                 if configurations.contains(where: \.isEnabled) {
-                    startMonitoring(resetReachedState: false)
+                    startMonitoring(resetReachedState: false, lockForToday: true)
                 } else {
                     stopMonitoring()
                 }

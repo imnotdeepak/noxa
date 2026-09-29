@@ -105,6 +105,7 @@ struct NoxaApp: App {
             .onChange(of: scenePhase) { newPhase in
                 guard newPhase == .active else { return }
                 focusSession.reconcile()
+                dailyLimits.reconcileDayBoundary()
                 schedules.reconcile()
                 Task {
                     if subscriptions.boundUserID == authentication.userID {
@@ -113,6 +114,9 @@ struct NoxaApp: App {
                     await reconcileOnboardingAccount()
                     await syncCloudDataIfAuthenticated()
                 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+                dailyLimits.reconcileDayBoundary()
             }
             .onChange(of: authentication.isAuthenticated) { isAuthenticated in
                 guard isAuthenticated else {
