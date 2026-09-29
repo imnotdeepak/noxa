@@ -71,11 +71,8 @@ struct ContentView: View {
     @State private var selectedTab = MainTab.home
     @State private var selectedStatsRange = StatsRange.week
     @State private var statsReferenceDate = Date()
+    @State private var isHomeBlocklistExpanded = false
     @FocusState private var isCustomDurationFieldFocused: Bool
-
-    private var hasConfiguredRestrictions: Bool {
-        restrictions.hasSelection || !websites.domains.isEmpty || dailyLimits.enabledCount > 0
-    }
 
     private var hasFocusRestrictions: Bool {
         restrictions.hasSelection || !websites.domains.isEmpty
@@ -85,8 +82,29 @@ struct ContentView: View {
         restrictions.selectedItemCount + websites.domains.count
     }
 
-    private var configuredRestrictionCount: Int {
-        restrictions.selectedItemCount + websites.domains.count + dailyLimits.enabledCount
+    private var existingDailyLimitSelection: FamilyActivitySelection {
+        combinedSelection(from: dailyLimits.configurations.map(\.selection))
+    }
+
+    private var newDailyLimitSelection: FamilyActivitySelection {
+        dailyLimitSelection.removing(existingDailyLimitSelection)
+    }
+
+    private var newDailyLimitAppCount: Int {
+        newDailyLimitSelection.applicationTokens.count
+    }
+
+    private var newDailyLimitSelectionDescription: String {
+        let noun = newDailyLimitAppCount == 1 ? "app" : "apps"
+        return "\(newDailyLimitAppCount) new \(noun) selected"
+    }
+
+    private var existingScheduleSelection: FamilyActivitySelection {
+        combinedSelection(from: schedules.configurations.map(\.selection))
+    }
+
+    private var newScheduleSelection: FamilyActivitySelection {
+        scheduleSelection.removing(existingScheduleSelection)
     }
 
     private var hasActiveDailyLimits: Bool {
@@ -155,128 +173,13 @@ struct ContentView: View {
         .toolbarBackground(.visible, for: .tabBar)
         .background(NoxaBackground())
         .sheet(isPresented: $restrictions.isPickerPresented) {
-            NavigationStack {
-                FamilyActivityPicker(selection: $restrictionPickerSelection)
-                    .navigationTitle(focusSession.isActive ? "Add restrictions" : "Choose restrictions")
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") {
-                                finishRestrictionPicker()
-                            }
-                        }
-                    }
-            }
-            .preferredColorScheme(.dark)
+            restrictionPickerSheet
         }
         .sheet(isPresented: $isDailyLimitPickerPresented) {
-            NavigationStack {
-                Group {
-                    if isChoosingDailyLimitDuration {
-                        VStack(alignment: .leading, spacing: 22) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Choose a daily allowance")
-                                    .font(NoxaTheme.font(28, weight: .bold, relativeTo: .title))
-                                Text("The selected app will be blocked after this much total use today.")
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            LazyVGrid(
-                                columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2),
-                                spacing: 10
-                            ) {
-                                ForEach([15, 30, 45, 60, 120], id: \.self) { minutes in
-                                    Button(Self.durationLabel(minutes: minutes)) {
-                                        selectedDailyLimitMinutes = minutes
-                                    }
-                                    .buttonStyle(
-                                        NoxaDurationButtonStyle(
-                                            isSelected: selectedDailyLimitMinutes == minutes
-                                        )
-                                    )
-                                }
-                            }
-
-                            Label(
-                                "\(dailyLimitSelection.applicationTokens.count) app\(dailyLimitSelection.applicationTokens.count == 1 ? "" : "s") selected",
-                                systemImage: "app.badge.checkmark"
-                            )
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(NoxaTheme.accent)
-
-                            if let errorMessage = dailyLimits.errorMessage {
-                                Text(errorMessage)
-                                    .font(.footnote)
-                                    .foregroundStyle(.red)
-                            }
-
-                            Spacer()
-                        }
-                        .padding(20)
-                        .noxaScreenBackground()
-                    } else {
-                        FamilyActivityPicker(selection: $dailyLimitSelection)
-                    }
-                }
-                .navigationTitle(isChoosingDailyLimitDuration ? "Set Time" : "Choose App")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button(isChoosingDailyLimitDuration ? "Back" : "Cancel") {
-                            if isChoosingDailyLimitDuration {
-                                isChoosingDailyLimitDuration = false
-                            } else {
-                                isDailyLimitPickerPresented = false
-                            }
-                        }
-                    }
-
-                    ToolbarItem(placement: .confirmationAction) {
-                        if isChoosingDailyLimitDuration {
-                            Button("Add Limit") {
-                                dailyLimits.add(
-                                    selection: dailyLimitSelection,
-                                    minutes: selectedDailyLimitMinutes
-                                )
-                                if dailyLimits.errorMessage == nil {
-                                    dailyLimitSelection = FamilyActivitySelection()
-                                    isChoosingDailyLimitDuration = false
-                                    isDailyLimitPickerPresented = false
-                                }
-                            }
-                        } else {
-                            Button("Next") {
-                                isChoosingDailyLimitDuration = true
-                            }
-                            .disabled(
-                                dailyLimitSelection.applicationTokens.isEmpty
-                            )
-                        }
-                    }
-                }
-            }
-            .preferredColorScheme(.dark)
+            dailyLimitPickerSheet
         }
         .sheet(isPresented: $isSchedulePickerPresented) {
-            NavigationStack {
-                FamilyActivityPicker(selection: $scheduleSelection)
-                    .navigationTitle("Choose schedule apps")
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Save") {
-                                schedules.add(
-                                    selection: scheduleSelection,
-                                    allowedStart: scheduleAllowedStart,
-                                    allowedEnd: scheduleAllowedEnd
-                                )
-                                if schedules.errorMessage == nil {
-                                    scheduleSelection = FamilyActivitySelection()
-                                    isSchedulePickerPresented = false
-                                }
-                            }
-                        }
-                    }
-            }
-            .preferredColorScheme(.dark)
+            schedulePickerSheet
         }
         .fullScreenCover(isPresented: $isEndRitualPresented) {
             EndSessionRitualView {
@@ -323,6 +226,145 @@ struct ContentView: View {
                 }
             }
         }
+    }
+
+    private var restrictionPickerSheet: some View {
+        NavigationStack {
+            FamilyActivityPicker(
+                selection: focusSession.isActive
+                    ? selectionBinding($restrictionPickerSelection, keeping: restrictions.selection)
+                    : $restrictionPickerSelection
+            )
+            .navigationTitle(focusSession.isActive ? "Add restrictions" : "Choose restrictions")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        finishRestrictionPicker()
+                    }
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private var dailyLimitPickerSheet: some View {
+        NavigationStack {
+            Group {
+                if isChoosingDailyLimitDuration {
+                    dailyLimitDurationStep
+                } else {
+                    FamilyActivityPicker(
+                        selection: selectionBinding(
+                            $dailyLimitSelection,
+                            keeping: existingDailyLimitSelection
+                        )
+                    )
+                }
+            }
+            .navigationTitle(isChoosingDailyLimitDuration ? "Set Time" : "Choose App")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(isChoosingDailyLimitDuration ? "Back" : "Cancel") {
+                        if isChoosingDailyLimitDuration {
+                            isChoosingDailyLimitDuration = false
+                        } else {
+                            isDailyLimitPickerPresented = false
+                        }
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    if isChoosingDailyLimitDuration {
+                        Button("Add Limit") {
+                            dailyLimits.add(
+                                selection: newDailyLimitSelection,
+                                minutes: selectedDailyLimitMinutes
+                            )
+                            if dailyLimits.errorMessage == nil {
+                                dailyLimitSelection = FamilyActivitySelection()
+                                isChoosingDailyLimitDuration = false
+                                isDailyLimitPickerPresented = false
+                            }
+                        }
+                    } else {
+                        Button("Next") {
+                            isChoosingDailyLimitDuration = true
+                        }
+                        .disabled(newDailyLimitSelection.applicationTokens.isEmpty)
+                    }
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private var dailyLimitDurationStep: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Choose a daily allowance")
+                    .font(NoxaTheme.font(28, weight: .bold, relativeTo: .title))
+                Text("The selected app will be blocked after this much total use today.")
+                    .foregroundStyle(.secondary)
+            }
+
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2),
+                spacing: 10
+            ) {
+                ForEach([15, 30, 45, 60, 120], id: \.self) { minutes in
+                    Button(Self.durationLabel(minutes: minutes)) {
+                        selectedDailyLimitMinutes = minutes
+                    }
+                    .buttonStyle(
+                        NoxaDurationButtonStyle(isSelected: selectedDailyLimitMinutes == minutes)
+                    )
+                }
+            }
+
+            Label(newDailyLimitSelectionDescription, systemImage: "app.badge.checkmark")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(NoxaTheme.accent)
+
+            if let errorMessage = dailyLimits.errorMessage {
+                Text(errorMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
+
+            Spacer()
+        }
+        .padding(20)
+        .noxaScreenBackground()
+    }
+
+    private var schedulePickerSheet: some View {
+        NavigationStack {
+            FamilyActivityPicker(
+                selection: selectionBinding(
+                    $scheduleSelection,
+                    keeping: existingScheduleSelection
+                )
+            )
+            .navigationTitle("Choose schedule apps")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        schedules.add(
+                            selection: newScheduleSelection,
+                            allowedStart: scheduleAllowedStart,
+                            allowedEnd: scheduleAllowedEnd
+                        )
+                        if schedules.errorMessage == nil {
+                            scheduleSelection = FamilyActivitySelection()
+                            isSchedulePickerPresented = false
+                        }
+                    }
+                    .disabled(newScheduleSelection.applicationTokens.isEmpty)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
     }
 
     private var homeContent: some View {
@@ -582,21 +624,50 @@ struct ContentView: View {
     private var quickSetupCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Label("Your blocklist", systemImage: "checklist")
-                    .font(.headline)
-                Spacer()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isHomeBlocklistExpanded.toggle()
+                    }
+                } label: {
+                    HStack {
+                        Label("Your blocklist", systemImage: "checklist")
+                            .font(.headline)
+                        Spacer()
+                        Text("\(focusRestrictionCount)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                        Image(systemName: "chevron.down")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(isHomeBlocklistExpanded ? 180 : 0))
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
                 Button(focusSession.isActive ? "Add" : "Edit") {
                     presentRestrictionPicker()
                 }
                 .font(.subheadline.weight(.semibold))
             }
 
-            Text(hasConfiguredRestrictions
-                 ? "\(configuredRestrictionCount) private selection\(configuredRestrictionCount == 1 ? "" : "s") saved on this device."
+            Text(hasFocusRestrictions
+                 ? "\(focusRestrictionCount) private selection\(focusRestrictionCount == 1 ? "" : "s") saved on this device."
                  : "Nothing selected yet.")
                 .foregroundStyle(.secondary)
 
-            if !hasConfiguredRestrictions {
+            if isHomeBlocklistExpanded && hasFocusRestrictions {
+                Divider()
+
+                tokenRows(for: restrictions.selection)
+
+                ForEach(websites.domains, id: \.self) { domain in
+                    Label(domain, systemImage: "globe")
+                        .font(.subheadline)
+                }
+            }
+
+            if !hasFocusRestrictions {
                 Button("Choose Apps and Websites") {
                     presentRestrictionPicker()
                 }
@@ -851,7 +922,7 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
 
             Button("Add App Limit") {
-                dailyLimitSelection = FamilyActivitySelection()
+                dailyLimitSelection = existingDailyLimitSelection
                 selectedDailyLimitMinutes = 30
                 isChoosingDailyLimitDuration = false
                 isDailyLimitPickerPresented = true
@@ -993,7 +1064,7 @@ struct ContentView: View {
             }
 
             Button("Add App Schedule") {
-                scheduleSelection = FamilyActivitySelection()
+                scheduleSelection = existingScheduleSelection
                 isSchedulePickerPresented = true
             }
             .buttonStyle(NoxaSecondaryButtonStyle())
@@ -1395,11 +1466,9 @@ struct ContentView: View {
     }
 
     private func presentRestrictionPicker() {
-        // During an active session the picker starts empty and acts only as an
-        // additive selection. Outside a session it remains the normal editor.
-        restrictionPickerSelection = focusSession.isActive
-            ? FamilyActivitySelection()
-            : restrictions.selection
+        // Existing choices stay visibly checked. During an active session the
+        // binding below also prevents those locked choices from being removed.
+        restrictionPickerSelection = restrictions.selection
         restrictions.isPickerPresented = true
     }
 
@@ -1414,6 +1483,32 @@ struct ContentView: View {
 
         restrictionPickerSelection = FamilyActivitySelection()
         restrictions.isPickerPresented = false
+    }
+
+    private func combinedSelection(
+        from selections: [FamilyActivitySelection]
+    ) -> FamilyActivitySelection {
+        selections.reduce(into: FamilyActivitySelection()) { combined, selection in
+            combined.applicationTokens.formUnion(selection.applicationTokens)
+            combined.categoryTokens.formUnion(selection.categoryTokens)
+            combined.webDomainTokens.formUnion(selection.webDomainTokens)
+        }
+    }
+
+    private func selectionBinding(
+        _ selection: Binding<FamilyActivitySelection>,
+        keeping lockedSelection: FamilyActivitySelection
+    ) -> Binding<FamilyActivitySelection> {
+        Binding(
+            get: { selection.wrappedValue },
+            set: { updatedSelection in
+                var mergedSelection = updatedSelection
+                mergedSelection.applicationTokens.formUnion(lockedSelection.applicationTokens)
+                mergedSelection.categoryTokens.formUnion(lockedSelection.categoryTokens)
+                mergedSelection.webDomainTokens.formUnion(lockedSelection.webDomainTokens)
+                selection.wrappedValue = mergedSelection
+            }
+        )
     }
 
     private func durationButton(title: String, minutes: Int) -> some View {
@@ -1565,6 +1660,16 @@ private extension FamilyControlsAuthorizationService {
 private extension ScreenTimeAuthorizationState {
     var isApproved: Bool {
         self == .approved || self == .approvedWithDataAccess
+    }
+}
+
+private extension FamilyActivitySelection {
+    func removing(_ existingSelection: FamilyActivitySelection) -> FamilyActivitySelection {
+        var result = self
+        result.applicationTokens.subtract(existingSelection.applicationTokens)
+        result.categoryTokens.subtract(existingSelection.categoryTokens)
+        result.webDomainTokens.subtract(existingSelection.webDomainTokens)
+        return result
     }
 }
 

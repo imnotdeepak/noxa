@@ -160,6 +160,17 @@ final class DailyLimitService: ObservableObject {
             errorMessage = "Select at least one app for a daily limit."
             return
         }
+        let existingSelection = configurations.reduce(into: FamilyActivitySelection()) { combined, configuration in
+            combined.applicationTokens.formUnion(configuration.selection.applicationTokens)
+            combined.categoryTokens.formUnion(configuration.selection.categoryTokens)
+            combined.webDomainTokens.formUnion(configuration.selection.webDomainTokens)
+        }
+        guard selection.applicationTokens.isDisjoint(with: existingSelection.applicationTokens),
+              selection.categoryTokens.isDisjoint(with: existingSelection.categoryTokens),
+              selection.webDomainTokens.isDisjoint(with: existingSelection.webDomainTokens) else {
+            errorMessage = "One or more selected apps already has a daily limit."
+            return
+        }
         guard configurations.count < Self.maximumConfigurations else {
             errorMessage = "You can configure up to \(Self.maximumConfigurations) daily limits."
             return
@@ -441,6 +452,17 @@ final class RestrictionScheduleService: ObservableObject {
         errorMessage = nil
         guard !selection.applicationTokens.isEmpty else {
             errorMessage = "Select at least one app for this schedule."
+            return
+        }
+        let existingSelection = configurations.reduce(into: FamilyActivitySelection()) { combined, configuration in
+            combined.applicationTokens.formUnion(configuration.selection.applicationTokens)
+            combined.categoryTokens.formUnion(configuration.selection.categoryTokens)
+            combined.webDomainTokens.formUnion(configuration.selection.webDomainTokens)
+        }
+        guard selection.applicationTokens.isDisjoint(with: existingSelection.applicationTokens),
+              selection.categoryTokens.isDisjoint(with: existingSelection.categoryTokens),
+              selection.webDomainTokens.isDisjoint(with: existingSelection.webDomainTokens) else {
+            errorMessage = "One or more selected apps already has an allowed schedule."
             return
         }
         guard configurations.count < Self.maximumConfigurations else {
