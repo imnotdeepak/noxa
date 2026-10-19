@@ -1,6 +1,6 @@
 # Enforcement inventory and first implementation slice
 
-Status: Initial code inventory, October 19, 2026. This describes current write paths, not physical-device proof of enforcement. The approved behavior is in `NOXA_PRODUCT_ROADMAP.md` and `product-roadmap-decisions.md`.
+Status: Initial code inventory and pure rule evaluation, October 19, 2026. This describes current write paths, not physical-device proof of enforcement. The approved behavior is in `NOXA_PRODUCT_ROADMAP.md` and `product-roadmap-decisions.md`.
 
 ## Current owners and stores
 
@@ -24,8 +24,8 @@ The focus, explicit-shield, and custom-domain services share `noxa.validation`. 
 
 ## First engineering slice
 
-1. Keep the current app behavior intact while introducing a versioned, device-local rule model and a pure evaluator that returns required targets and contributing rule IDs.
-2. Test the approved **any active block wins** rule with focus, daily-limit, and allowed/blocked schedule combinations. Include a Pomodoro break as a later rule source.
+1. Keep the current app behavior intact while introducing a versioned, device-local rule model and a pure evaluator that returns required targets and contributing rule IDs. The pure `RestrictionRuleEvaluator` and source-specific rule IDs are now present; persistence and the versioned format remain to be added.
+2. Test the approved **any active block wins** rule with focus, daily-limit, and allowed/blocked schedule combinations. The new tests cover overlapping focus and daily-limit blocks, an allowed schedule window, and repeated callbacks. A Pomodoro break remains a later rule source.
 3. Add a reconciliation adapter that compares desired restrictions with each Noxa-owned store and updates only the owning store. Make repeated callbacks and cleanup safe.
 4. Define and test migration of existing schedules, including pending 24-hour disable/remove records, before writing a new schedule format.
 5. Validate each enforcement transition on physical iPhones. Simulator tests verify local logic and UI, not Screen Time behavior.
@@ -34,5 +34,5 @@ The focus, explicit-shield, and custom-domain services share `noxa.validation`. 
 
 - Environment: Xcode 27.0, iPhone 17 simulator on iOS 26.5. The active command-line developer directory points to Command Line Tools, so project commands use `/Applications/Xcode.app/Contents/Developer` explicitly.
 - The first test attempt exposed stale subscription test calls. After that test was updated, the next run exposed an onboarding test that skipped the required value-overview milestone. Both test expectations were brought into line with the current services.
-- All 31 unit tests passed in the subsequent unit-only run. This confirms the app and unit-test targets build in the selected simulator environment.
+- All 34 unit tests passed after the evaluator was added. This confirms the app and unit-test targets build in the selected simulator environment.
 - A full-suite rerun did not complete because the simulator UI-test runner timed out while loading Accessibility. An earlier full run executed UI tests, but failed on the onboarding test before that expectation was fixed. A clean UI-test result remains to be obtained; this is separate from physical-device Screen Time validation.
