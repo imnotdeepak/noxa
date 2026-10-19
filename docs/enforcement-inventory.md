@@ -24,13 +24,15 @@ The migration cannot always infer whether an old web-content filter came from a 
 - Creation requires at least one app, rejects overlapping selections, and requires a same-day window of at least 15 minutes.
 - Disabling or removing an enabled schedule is delayed 24 hours.
 - Each schedule uses before/after monitor names and named stores. This is a useful foundation for the approved migration, but is not yet the new weekday/overnight/blocked-hours model.
+- A versioned `ScheduleRule` archive and migration reader now convert legacy rules into named, every-day allowed-hour rules while retaining IDs, targets, enabled state, and pending 24-hour changes. The pure local-time evaluator covers weekdays and overnight windows. The live schedule service and monitor still use the legacy format; the new rule model is not yet enforced or shown in the app.
+- Daily limits can now be edited, disabled, removed, or stopped immediately, including during focus. Their independent Managed Settings store keeps a focus block in force when a daily limit changes.
 
 ## First engineering slice
 
-1. Keep the current app behavior intact while introducing a versioned, device-local rule model and a pure evaluator that returns required targets and contributing rule IDs. The pure `RestrictionRuleEvaluator` and source-specific rule IDs are now present; persistence and the versioned format remain to be added.
+1. Keep the current app behavior intact while introducing a versioned, device-local rule model and a pure evaluator that returns required targets and contributing rule IDs. The pure `RestrictionRuleEvaluator` and source-specific rule IDs are present. A versioned archive is present for schedules, while a unified persisted rule format remains to be added.
 2. Test the approved **any active block wins** rule with focus, daily-limit, and allowed/blocked schedule combinations. The new tests cover overlapping focus and daily-limit blocks, an allowed schedule window, and repeated callbacks. A Pomodoro break remains a later rule source.
 3. Add a reconciliation adapter that compares desired restrictions with each Noxa-owned store and updates only the owning store. The first part is complete: focus/manual/website stores are isolated and reconciled from their own saved state. A unified adapter across schedules, daily limits, and Pomodoro remains to be built.
-4. Define and test migration of existing schedules, including pending 24-hour disable/remove records, before writing a new schedule format.
+4. Define and test migration of existing schedules, including pending 24-hour disable/remove records, before writing a new schedule format. The migration reader and tests are present; switching live scheduling and extension callbacks to that format remains.
 5. Validate each enforcement transition on physical iPhones. Simulator tests verify local logic and UI, not Screen Time behavior.
 
 ## Baseline test finding

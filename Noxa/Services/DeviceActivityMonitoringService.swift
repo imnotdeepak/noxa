@@ -19,7 +19,6 @@ enum NoxaDeviceActivityConfiguration {
     static let scheduleActivityPrefix = "noxa.schedule"
     static let dailyLimitReachedEventsKey = "noxa.dailyLimitReachedEvents"
     static let dailyLimitResetDayKey = "noxa.dailyLimitResetDay"
-    static let dailyLimitHardLockDayKey = "noxa.dailyLimitHardLockDay"
     static let scheduleRelaxationActivityPrefix = "noxa.schedule.relax"
     static let minimumFocusSessionMinutes = 15
     static let maximumFocusSessionMinutes = 480
@@ -150,17 +149,6 @@ final class DailyLimitService: ObservableObject {
         configurations.filter(\.isEnabled).count
     }
 
-    var isLockedForFocusSession: Bool {
-        store.hasActiveFocusSession()
-    }
-
-    var isHardLimitLocked: Bool {
-        guard isMonitoring else { return false }
-        let defaults = UserDefaults(suiteName: AppGroupStore.suiteName)
-        return defaults?.string(forKey: NoxaDeviceActivityConfiguration.dailyLimitHardLockDayKey)
-            == NoxaDeviceActivityConfiguration.dailyLimitDayStamp()
-    }
-
     func add(selection: FamilyActivitySelection, minutes: Int) {
         errorMessage = nil
         guard !selection.applicationTokens.isEmpty else {
@@ -192,31 +180,27 @@ final class DailyLimitService: ObservableObject {
     }
 
     func remove(_ configuration: DailyLimitConfiguration) {
-        guard canModifyLimits() else { return }
         configurations.removeAll { $0.id == configuration.id }
         persistAndRestartIfNeeded()
     }
 
     func setEnabled(_ enabled: Bool, for configuration: DailyLimitConfiguration) {
-        guard canModifyLimits() else { return }
         guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
         configurations[index].isEnabled = enabled
         persistAndRestartIfNeeded()
     }
 
     func updateMinutes(_ minutes: Int, for configuration: DailyLimitConfiguration) {
-        guard canModifyLimits() else { return }
         guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
         configurations[index].dailyLimitMinutes = min(max(minutes, 5), 240)
         persistAndRestartIfNeeded()
     }
 
     func startMonitoring() {
-        guard canModifyLimits() else { return }
-        startMonitoring(resetReachedState: true, lockForToday: true)
+        startMonitoring(resetReachedState: true)
     }
 
-    private func startMonitoring(resetReachedState: Bool, lockForToday: Bool) {
+    private func startMonitoring(resetReachedState: Bool) {
         let active = configurations.filter(\.isEnabled)
         guard !active.isEmpty else {
             errorMessage = "Add a daily limit before starting the monitor."
@@ -273,9 +257,6 @@ final class DailyLimitService: ObservableObject {
                 during: schedule,
                 events: events
             )
-            if lockForToday {
-                defaults?.set(today, forKey: NoxaDeviceActivityConfiguration.dailyLimitHardLockDayKey)
-            }
             isMonitoring = true
             errorMessage = nil
             logger.info("Started daily limit monitor for \(active.count) configuration(s)")
@@ -286,16 +267,12 @@ final class DailyLimitService: ObservableObject {
         }
     }
 
-    func stopMonitoring(force: Bool = false) {
-        if !force {
-            guard canModifyLimits() else { return }
-        }
+    func stopMonitoring() {
         center.stopMonitoring([NoxaDeviceActivityConfiguration.dailyLimitActivityName])
         settingsStore.clearAllSettings()
         let defaults = UserDefaults(suiteName: AppGroupStore.suiteName)
         defaults?.removeObject(forKey: NoxaDeviceActivityConfiguration.dailyLimitReachedEventsKey)
         defaults?.removeObject(forKey: NoxaDeviceActivityConfiguration.dailyLimitResetDayKey)
-        defaults?.removeObject(forKey: NoxaDeviceActivityConfiguration.dailyLimitHardLockDayKey)
         isMonitoring = false
         isShieldActive = false
         errorMessage = nil
@@ -303,7 +280,7 @@ final class DailyLimitService: ObservableObject {
     }
 
     func clearConfigurations() {
-        stopMonitoring(force: true)
+        stopMonitoring()
         configurations = []
         store.clearDailyLimitConfigurations()
         if var snapshot = try? store.loadSnapshot() {
@@ -320,7 +297,7 @@ final class DailyLimitService: ObservableObject {
         guard isMonitoring, configurations.contains(where: \.isEnabled) else { return }
         // Re-registering an already-running monitor is maintenance, not a new
         // user commitment. Do not renew yesterday's hard lock on app launch.
-        startMonitoring(resetReachedState: false, lockForToday: false)
+        startMonitoring(resetReachedState: false)
     }
 
     /// Clears yesterday's reached-limit state when the app crosses local
@@ -355,7 +332,7 @@ final class DailyLimitService: ObservableObject {
             try store.saveSnapshot(snapshot)
             if isMonitoring {
                 if configurations.contains(where: \.isEnabled) {
-                    startMonitoring(resetReachedState: false, lockForToday: true)
+                    startMonitoring(resetReachedState: false)
                 } else {
                     stopMonitoring()
                 }
@@ -364,18 +341,6 @@ final class DailyLimitService: ObservableObject {
             errorMessage = "Could not save daily limits: \(error.localizedDescription)"
             logger.error("Daily limit persistence failed: \(error.localizedDescription, privacy: .public)")
         }
-    }
-
-    private func canModifyLimits() -> Bool {
-        if isLockedForFocusSession {
-            errorMessage = "Daily limits cannot be changed during a focus session."
-            return false
-        }
-        if isHardLimitLocked {
-            errorMessage = "Hard daily limits are locked until tomorrow."
-            return false
-        }
-        return true
     }
 
     private func dailyLimitEvent(for configuration: DailyLimitConfiguration) -> DeviceActivityEvent {

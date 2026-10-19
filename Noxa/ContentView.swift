@@ -53,7 +53,6 @@ struct ContentView: View {
     @State private var isChoosingDailyLimitDuration = false
     @State private var dailyLimitSelection = FamilyActivitySelection()
     @State private var selectedDailyLimitMinutes = 30
-    @State private var isHardLimitConfirmationPresented = false
     @State private var isSchedulePickerPresented = false
     @State private var scheduleSelection = FamilyActivitySelection()
     @State private var scheduleAllowedStart = Calendar.current.date(from: DateComponents(hour: 21)) ?? Date()
@@ -1038,7 +1037,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("Give selected apps a hard daily allowance. Usage from earlier today counts. Once started, existing limits cannot be changed or stopped until the next day, but you can still add new limits.")
+            Text("Give selected apps a daily allowance. Usage from earlier today counts. You can edit or stop limits at any time; other active blocks still apply.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
@@ -1068,7 +1067,6 @@ struct ContentView: View {
                                 .foregroundStyle(configuration.isEnabled ? .white : .secondary)
                         }
                         .buttonStyle(.plain)
-                        .disabled(focusSession.isActive || dailyLimits.isHardLimitLocked)
 
                         VStack(alignment: .leading, spacing: 3) {
                             ForEach(Array(configuration.selection.applicationTokens), id: \.self) { token in
@@ -1089,7 +1087,6 @@ struct ContentView: View {
                             }
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(NoxaTheme.accent)
-                            .disabled(focusSession.isActive || dailyLimits.isHardLimitLocked)
                         }
                         Spacer()
                         Button("Remove") {
@@ -1097,35 +1094,27 @@ struct ContentView: View {
                         }
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .disabled(focusSession.isActive || dailyLimits.isHardLimitLocked)
                     }
                 }
             }
 
             HStack {
-                if dailyLimits.isHardLimitLocked {
-                    Label("Hard limits active until tomorrow", systemImage: "lock.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(NoxaTheme.accent)
-                } else {
-                    Text(hasActiveDailyLimits ? "Daily limits active" : "Daily limits are off")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button(hasActiveDailyLimits ? "Stop" : "Start Hard Limits") {
-                        if hasActiveDailyLimits {
-                            dailyLimits.stopMonitoring()
-                        } else {
-                            isHardLimitConfirmationPresented = true
-                        }
+                Text(hasActiveDailyLimits ? "Daily limits active" : "Daily limits are off")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(hasActiveDailyLimits ? "Stop" : "Start Limits") {
+                    if hasActiveDailyLimits {
+                        dailyLimits.stopMonitoring()
+                    } else {
+                        dailyLimits.startMonitoring()
                     }
-                    .font(.subheadline.weight(.semibold))
-                    .disabled(
-                        dailyLimits.configurations.filter(\.isEnabled).isEmpty
-                            || (!hasActiveDailyLimits && !authorization.state.isApproved)
-                            || focusSession.isActive
-                    )
                 }
+                .font(.subheadline.weight(.semibold))
+                .disabled(
+                    dailyLimits.configurations.filter(\.isEnabled).isEmpty
+                        || (!hasActiveDailyLimits && !authorization.state.isApproved)
+                )
             }
 
             if let errorMessage = dailyLimits.errorMessage {
@@ -1135,18 +1124,6 @@ struct ContentView: View {
             }
         }
         .noxaCard()
-        .confirmationDialog(
-            "Start hard daily limits?",
-            isPresented: $isHardLimitConfirmationPresented,
-            titleVisibility: .visible
-        ) {
-            Button("Start Hard Limits") {
-                dailyLimits.startMonitoring()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("You won’t be able to change or stop these limits until tomorrow.")
-        }
     }
 
     private var scheduleCard: some View {

@@ -32,6 +32,7 @@ final class AppGroupStore {
         static let websiteBlocklist = "noxa.websiteBlocklist"
         static let dailyLimits = "noxa.dailyLimits"
         static let restrictionSchedules = "noxa.restrictionSchedules"
+        static let scheduleRules = "noxa.scheduleRules.v2"
         static let pomodoroCycle = "noxa.pomodoroCycle"
         static let pendingPomodoroCompletion = "noxa.pendingPomodoroCompletion"
         static let cloudSyncState = "noxa.cloudSyncState"
@@ -199,6 +200,25 @@ final class AppGroupStore {
 
     func clearRestrictionSchedules() {
         defaults.removeObject(forKey: Key.restrictionSchedules)
+        defaults.removeObject(forKey: Key.scheduleRules)
+    }
+
+    func loadScheduleRules() throws -> [ScheduleRule] {
+        if let data = defaults.data(forKey: Key.scheduleRules) {
+            let archive = try JSONDecoder().decode(ScheduleRuleArchive.self, from: data)
+            guard archive.version == 2 else { throw ScheduleRuleArchiveError.unsupportedVersion }
+            return archive.rules
+        }
+        return try loadRestrictionSchedules().map(ScheduleRule.init(legacy:))
+    }
+
+    func saveScheduleRules(_ rules: [ScheduleRule]) throws {
+        let archive = ScheduleRuleArchive(version: 2, rules: rules)
+        defaults.set(try JSONEncoder().encode(archive), forKey: Key.scheduleRules)
+    }
+
+    func clearScheduleRules() {
+        defaults.removeObject(forKey: Key.scheduleRules)
     }
 
     func loadPomodoroCycle() throws -> PomodoroCycleRecord? {
