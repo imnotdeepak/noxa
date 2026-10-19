@@ -419,6 +419,14 @@ struct NoxaTests {
         #expect(service.completeValueOverview())
         #expect(service.completePricingPreview())
         #expect(service.progress.hasSeenPricingPreview)
+        #expect(!service.completeInitialSetup())
+        #expect(service.completeNotificationExplainer())
+        #expect(service.progress.hasSeenNotificationExplainer)
+        #expect(service.completeInitialSetup())
+        #expect(service.completeFirstSessionPrompt())
+        #expect(!service.progress.hasSeenFirstFocusReview)
+        #expect(service.markFirstFocusReviewPresented())
+        #expect(service.progress.hasSeenFirstFocusReview)
         store.clearSnapshot()
     }
 
@@ -471,6 +479,22 @@ struct NoxaTests {
         let progress = try JSONDecoder().decode(OnboardingProgress.self, from: Data(legacyJSON.utf8))
 
         #expect(progress.hasSeenPricingPreview)
+        #expect(!progress.hasSeenNotificationExplainer)
+    }
+
+    @Test func completedExistingOnboardingIsNotReopenedForNotificationEducation() throws {
+        let legacyJSON = """
+        {
+          "flowVersion": 3,
+          "hasSeenPricingPreview": true,
+          "hasCompletedInitialSetup": true,
+          "hasSeenFirstSessionPrompt": true
+        }
+        """
+        let progress = try JSONDecoder().decode(OnboardingProgress.self, from: Data(legacyJSON.utf8))
+        #expect(progress.isComplete)
+        #expect(!progress.hasSeenNotificationExplainer)
+        #expect(progress.hasSeenFirstFocusReview)
     }
 
     @Test @MainActor func failedOnboardingSaveDoesNotAdvanceInMemoryProgress() {

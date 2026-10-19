@@ -15,6 +15,8 @@ private enum NoxaMonitorActivity {
     static let dailyLimitReachedEventsKey = "noxa.dailyLimitReachedEvents"
     static let dailyLimitResetDayKey = "noxa.dailyLimitResetDay"
     static let scheduleActivityPrefix = "noxa.schedule."
+    static let scheduleV2WakePrefix = "noxa.schedule.v2.wake."
+    static let scheduleV2ShieldPrefix = "noxa.schedule.v2.shield."
     static let scheduleRelaxationActivityPrefix = "noxa.schedule.relax."
     static let pomodoroWorkActivityPrefix = "noxa.pomodoro.work."
 
@@ -84,6 +86,54 @@ private struct PersistedRestrictionScheduleConfiguration: Codable {
     var pendingRelaxation: PersistedScheduleRelaxation?
 }
 
+private struct PersistedScheduleRuleArchive: Codable {
+    let version: Int
+    let rules: [PersistedScheduleRule]
+}
+
+private struct PersistedScheduleRule: Codable {
+    enum Mode: String, Codable {
+        case blockedHours
+        case allowedHours
+    }
+
+    let id: UUID
+    let mode: Mode
+    let selection: FamilyActivitySelection
+    let websiteDomains: [String]
+    let weekdays: Set<Int>
+    let startMinutes: Int
+    let endMinutes: Int
+    let isEnabled: Bool
+    let pendingLegacyRelaxation: PersistedScheduleRelaxation?
+
+    func isBlocking(at date: Date, calendar: Calendar) -> Bool {
+        guard isEnabled, weekdays.contains(where: { (1...7).contains($0) }),
+              (0..<1_440).contains(startMinutes),
+              (0..<1_440).contains(endMinutes),
+              startMinutes != endMinutes else { return false }
+        if let pendingLegacyRelaxation, pendingLegacyRelaxation.effectiveAt <= date {
+            return false
+        }
+
+        let weekday = calendar.component(.weekday, from: date)
+        let minutes = calendar.component(.hour, from: date) * 60
+            + calendar.component(.minute, from: date)
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: date)
+            .map { calendar.component(.weekday, from: $0) }
+        let startsToday = weekdays.contains(weekday)
+        let startsYesterday = yesterday.map(weekdays.contains) ?? false
+        let withinWindow: Bool
+        if endMinutes < startMinutes {
+            withinWindow = (startsToday && minutes >= startMinutes)
+                || (startsYesterday && minutes < endMinutes)
+        } else {
+            withinWindow = startsToday && minutes >= startMinutes && minutes < endMinutes
+        }
+        return mode == .blockedHours ? withinWindow : (startsToday && !withinWindow)
+    }
+}
+
 private struct PersistedScheduleRelaxation: Codable {
     enum Action: String, Codable {
         case disable
@@ -120,6 +170,8 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
             } else {
                 logger.info("Restarted daily limit monitoring without resetting today's reached limits")
             }
+        } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleV2WakePrefix) {
+            applyV2ScheduleShield(for: activity)
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleRelaxationActivityPrefix) {
             applyPendingScheduleRelaxation(for: activity)
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleActivityPrefix) {
@@ -161,6 +213,8 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
             logger.info("Removed focus shield when session ended")
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.pomodoroWorkActivityPrefix) {
             reconcilePomodoroShield(for: activity)
+        } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleV2WakePrefix) {
+            applyV2ScheduleShield(for: activity)
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleRelaxationActivityPrefix) {
             logger.info("Pending schedule relaxation interval ended")
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleActivityPrefix) {
@@ -375,6 +429,32 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
             ? nil
             : schedule.selection.webDomainTokens
         logger.info("Applied scheduled shield for \(activity.rawValue, privacy: .public)")
+    }
+
+    private func applyV2ScheduleShield(for activity: DeviceActivityName) {
+        guard let idText = activity.rawValue.split(separator: ".").last,
+              let id = UUID(uuidString: String(idText)) else { return }
+        let name = "\(NoxaMonitorActivity.scheduleV2ShieldPrefix)\(id.uuidString.lowercased())"
+        let ruleStore = ManagedSettingsStore(named: ManagedSettingsStore.Name(name))
+        guard let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa"),
+              let data = defaults.data(forKey: "noxa.scheduleRules.v2"),
+              let archive = try? JSONDecoder().decode(PersistedScheduleRuleArchive.self, from: data),
+              archive.version == 2,
+              let rule = archive.rules.first(where: { $0.id == id }) else {
+            ruleStore.clearAllSettings()
+            logger.error("Missing v2 schedule for \(activity.rawValue, privacy: .public)")
+            return
+        }
+        if rule.isBlocking(at: Date(), calendar: .autoupdatingCurrent) {
+            applyShield(
+                selection: rule.selection,
+                websiteDomains: rule.websiteDomains,
+                reason: "schedule \(id.uuidString)",
+                to: ruleStore
+            )
+        } else {
+            ruleStore.clearAllSettings()
+        }
     }
 
     private func applyPendingScheduleRelaxation(for activity: DeviceActivityName) {

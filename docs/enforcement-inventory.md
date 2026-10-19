@@ -28,6 +28,7 @@ The migration cannot always infer whether an old web-content filter came from a 
 - Each schedule uses before/after monitor names and named stores. This is a useful foundation for the approved migration, but is not yet the new weekday/overnight/blocked-hours model.
 - A versioned `ScheduleRule` archive and migration reader now convert legacy rules into named, every-day allowed-hour rules while retaining IDs, targets, enabled state, and pending 24-hour changes. The pure local-time evaluator covers weekdays and overnight windows. The live schedule service and monitor still use the legacy format; the new rule model is not yet enforced or shown in the app.
 - The intended live transition uses one named shield store per rule and daily local-time wake points at the rule's start/end, plus midnight for allowed-hour rules. Each callback must reevaluate the current weekday and time before changing only that rule's store. The old before/after activity stores should be cleared only after the new store has the correct current shield. Physical-device testing must verify repeating wake points across sleep, DST, and timezone changes before enabling this path.
+- The v2 wake/store naming and the extension's callback reader are staged in code. The current app service still registers legacy before/after monitors; the v2 callback has no live activities until the service migration is wired in.
 - Daily limits can now be edited, disabled, removed, or stopped immediately, including during focus. Their independent Managed Settings store keeps a focus block in force when a daily limit changes.
 
 ## First engineering slice
@@ -59,3 +60,11 @@ The migration cannot always infer whether an old web-content filter came from a 
 - Every callback recalculates the current phase before touching the focus store. A late callback from an earlier interval therefore cannot release a newer work interval. Completed work is recorded in focus history only when a shield-application stamp exists for that round.
 - `FocusNotificationService` schedules halfway and one-minute-left break reminders, work-end notices, next-round notices, and a four-round completion prompt. The cycle runs without notification permission.
 - During a break, the user can stop the cycle; future monitors and pending cycle notifications are cancelled. Strict work intervals retain the no-early-end rule. The full transition matrix is in `physical-device-restriction-checks.md`.
+
+## Paid onboarding progress
+
+- The existing payment gate still comes before distraction selection and use of blocking features.
+- A notification education page now appears after payment and before target selection. It offers a clear enable or Not Now choice. Declining notifications does not stop focus or Pomodoro enforcement.
+- Every normal focus start now opens a review of selected targets, duration, expected end time, and Strict status before the final Start action. After paid setup, Noxa opens that review once with a 30-minute default, after the one-time Strict offer. Existing completed users do not reenter it.
+- The target picker now shows a suggestion based on the user's goal and distraction answer; the user still chooses the actual opaque Screen Time targets.
+- Confirmed activation state and a one-time schedule prompt after completion remain to be implemented.

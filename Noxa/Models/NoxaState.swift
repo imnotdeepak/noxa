@@ -273,7 +273,7 @@ enum OnboardingBenefit: String, Codable, CaseIterable, Sendable {
 
 /// Progress and draft data used to resume onboarding safely after interruption.
 struct OnboardingProgress: Codable, Equatable, Sendable {
-    private static let currentFlowVersion = 3
+    private static let currentFlowVersion = 5
 
     var flowVersion = currentFlowVersion
     var ownerUserID: UUID?
@@ -286,8 +286,10 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
     var hasSeenCapabilitiesExplainer = false
     var hasSeenValueOverview = false
     var hasSeenPricingPreview = false
+    var hasSeenNotificationExplainer = false
     var hasCompletedInitialSetup = false
     var hasSeenFirstSessionPrompt = false
+    var hasSeenFirstFocusReview = false
     var draftPersonalizationAnswers: [String] = []
     var draftSetupConfiguration: [String: String] = [:]
 
@@ -335,8 +337,10 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
         case hasSeenCapabilitiesExplainer
         case hasSeenValueOverview
         case hasSeenPricingPreview
+        case hasSeenNotificationExplainer
         case hasCompletedInitialSetup
         case hasSeenFirstSessionPrompt
+        case hasSeenFirstFocusReview
         case draftPersonalizationAnswers
         case draftSetupConfiguration
     }
@@ -361,12 +365,18 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
             ?? hasSeenCapabilitiesExplainer
         hasSeenValueOverview = try container.decodeIfPresent(Bool.self, forKey: .hasSeenValueOverview)
             ?? (flowVersion < 3 && hasSeenPricingPreview)
+        hasSeenNotificationExplainer = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .hasSeenNotificationExplainer
+        ) ?? false
         let storedInitialSetup = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedInitialSetup) ?? false
         let storedFirstSessionPrompt = try container.decodeIfPresent(Bool.self, forKey: .hasSeenFirstSessionPrompt) ?? false
         // Builds before flow version 2 ended onboarding at the pricing preview.
         // Preserve those users' completed state instead of sending them backward.
         hasCompletedInitialSetup = storedInitialSetup || (flowVersion < 2 && hasSeenPricingPreview)
         hasSeenFirstSessionPrompt = storedFirstSessionPrompt || (flowVersion < 2 && hasSeenPricingPreview)
+        hasSeenFirstFocusReview = try container.decodeIfPresent(Bool.self, forKey: .hasSeenFirstFocusReview)
+            ?? (flowVersion < 5 && hasSeenFirstSessionPrompt)
         draftPersonalizationAnswers = try container.decodeIfPresent([String].self, forKey: .draftPersonalizationAnswers) ?? []
         draftSetupConfiguration = try container.decodeIfPresent([String: String].self, forKey: .draftSetupConfiguration) ?? [:]
     }
@@ -384,8 +394,10 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
         try container.encode(hasSeenCapabilitiesExplainer, forKey: .hasSeenCapabilitiesExplainer)
         try container.encode(hasSeenValueOverview, forKey: .hasSeenValueOverview)
         try container.encode(hasSeenPricingPreview, forKey: .hasSeenPricingPreview)
+        try container.encode(hasSeenNotificationExplainer, forKey: .hasSeenNotificationExplainer)
         try container.encode(hasCompletedInitialSetup, forKey: .hasCompletedInitialSetup)
         try container.encode(hasSeenFirstSessionPrompt, forKey: .hasSeenFirstSessionPrompt)
+        try container.encode(hasSeenFirstFocusReview, forKey: .hasSeenFirstFocusReview)
         try container.encode(draftPersonalizationAnswers, forKey: .draftPersonalizationAnswers)
         try container.encode(draftSetupConfiguration, forKey: .draftSetupConfiguration)
     }

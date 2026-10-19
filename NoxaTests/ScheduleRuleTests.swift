@@ -128,6 +128,21 @@ struct ScheduleRuleTests {
         #expect(!ScheduleRuleEvaluator.isBlocking(rule, at: instant, calendar: calendar))
     }
 
+    @Test func allowedRulesWakeAtMidnightWhenWeekdayEligibilityCanChange() {
+        let allowed = ScheduleRule(
+            name: "Evenings",
+            mode: .allowedHours,
+            selection: FamilyActivitySelection(),
+            weekdays: [2],
+            startMinutes: 22 * 60,
+            endMinutes: 7 * 60
+        )
+        var blocked = allowed
+        blocked.mode = .blockedHours
+        #expect(ScheduleRuleEvaluator.dailyWakeMinutes(for: allowed) == [0, 7 * 60, 22 * 60])
+        #expect(ScheduleRuleEvaluator.dailyWakeMinutes(for: blocked) == [7 * 60, 22 * 60])
+    }
+
     @Test @MainActor func dailyLimitEditsIgnoreAnOldHardLock() throws {
         let defaults = try #require(UserDefaults(suiteName: "NoxaTests.DailyLimitEdit.\(UUID())"))
         let store = AppGroupStore(defaults: defaults)

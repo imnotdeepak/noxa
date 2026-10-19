@@ -206,9 +206,19 @@ final class OnboardingService: ObservableObject {
     }
 
     @discardableResult
-    func completeInitialSetup() -> Bool {
+    func completeNotificationExplainer() -> Bool {
         guard progress.hasSeenPricingPreview else {
-            errorMessage = "Choose a subscription before finishing setup."
+            errorMessage = "Choose a subscription before setting up notifications."
+            return false
+        }
+        return commit { $0.hasSeenNotificationExplainer = true }
+    }
+
+    @discardableResult
+    func completeInitialSetup() -> Bool {
+        guard progress.hasSeenPricingPreview,
+              progress.hasSeenNotificationExplainer else {
+            errorMessage = "Finish the notification choice before setup."
             return false
         }
         return commit { $0.hasCompletedInitialSetup = true }
@@ -221,6 +231,12 @@ final class OnboardingService: ObservableObject {
             return false
         }
         return commit { $0.hasSeenFirstSessionPrompt = true }
+    }
+
+    @discardableResult
+    func markFirstFocusReviewPresented() -> Bool {
+        guard progress.isComplete else { return false }
+        return commit { $0.hasSeenFirstFocusReview = true }
     }
 
     @discardableResult
@@ -265,7 +281,9 @@ final class OnboardingService: ObservableObject {
         progress.hasSeenCapabilitiesExplainer = true
         progress.hasSeenValueOverview = true
         progress.hasSeenPricingPreview = true
+        progress.hasSeenNotificationExplainer = true
         progress.hasCompletedInitialSetup = true
         progress.hasSeenFirstSessionPrompt = true
+        progress.hasSeenFirstFocusReview = true
     }
 }

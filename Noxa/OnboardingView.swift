@@ -1,6 +1,7 @@
 import FamilyControls
 import SwiftUI
 import UIKit
+import UserNotifications
 
 struct OnboardingWelcomeView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -144,6 +145,7 @@ struct OnboardingView: View {
     @EnvironmentObject private var onboarding: OnboardingService
     @EnvironmentObject private var authentication: AuthenticationService
     @EnvironmentObject private var restrictions: ScreenTimeRestrictionService
+    @EnvironmentObject private var notifications: FocusNotificationService
     @StateObject private var authorization = FamilyControlsAuthorizationService()
     @State private var page: Page
     @State private var name: String
@@ -163,6 +165,7 @@ struct OnboardingView: View {
         case name
         case capabilities
         case valueOverview
+        case notifications
         case distractionSetup
         case success
     }
@@ -230,6 +233,8 @@ struct OnboardingView: View {
                     capabilitiesPage
                 case .valueOverview:
                     valueOverviewPage
+                case .notifications:
+                    notificationsPage
                 case .distractionSetup:
                     distractionSetupPage
                 case .success:
@@ -529,6 +534,77 @@ struct OnboardingView: View {
         }
     }
 
+    private var notificationsPage: some View {
+        pageLayout {
+            Spacer()
+
+            Image(systemName: "bell.badge.fill")
+                .font(.system(size: 52))
+                .foregroundStyle(NoxaTheme.accent)
+                .frame(maxWidth: .infinity)
+
+            Text("Know when your focus time changes")
+                .font(NoxaTheme.font(34, weight: .bold, relativeTo: .largeTitle))
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+
+            Text("Notifications can remind you when a focus session ends, when a Pomodoro break is halfway through, and one minute before the next work interval. Your blocks still work if you choose not to allow notifications.")
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
+
+            if notifications.canSchedule {
+                Label("Notifications are enabled", systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(NoxaTheme.accent)
+                    .frame(maxWidth: .infinity)
+            } else if notifications.authorizationStatus == .denied {
+                Text("Notifications are off. You can turn them on in Settings later.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+            }
+
+            Spacer()
+
+            onboardingErrorView
+
+            onboardingButton(
+                notifications.authorizationStatus == .notDetermined
+                    ? "Enable Notifications" : "Continue"
+            ) {
+                Task { @MainActor in
+                    if notifications.authorizationStatus == .notDetermined {
+                        _ = await notifications.requestAuthorization()
+                    }
+                    if onboarding.completeNotificationExplainer() {
+                        page = .distractionSetup
+                    }
+                }
+            }
+
+            if notifications.authorizationStatus == .notDetermined {
+                Button("Not Now") {
+                    if onboarding.completeNotificationExplainer() {
+                        page = .distractionSetup
+                    }
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+            } else if notifications.authorizationStatus == .denied {
+                Button("Open Settings") {
+                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                    UIApplication.shared.open(url)
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
     private func valueRow(icon: String, title: String, detail: String) -> some View {
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: icon)
@@ -570,6 +646,12 @@ struct OnboardingView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
+
+            Label(targetSuggestionMessage, systemImage: "sparkle.magnifyingglass")
+                .font(.subheadline)
+                .foregroundStyle(NoxaTheme.accent)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             Button(restrictions.hasSelection ? "Edit distractions" : "Choose distractions") {
                 restrictions.isPickerPresented = true
@@ -633,7 +715,7 @@ struct OnboardingView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
 
-            Text("Set your focus length, daily limits, and routines when you’re ready. Noxa will guide you as you go.")
+            Text("Start with a 30-minute focus session using the distractions you chose. You can review the targets and change the duration before starting.")
                 .font(NoxaTheme.font(17, relativeTo: .body))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -649,7 +731,7 @@ struct OnboardingView: View {
 
             Spacer()
 
-            onboardingButton("Continue to Noxa") {
+            onboardingButton("Review Your First Focus") {
                 _ = onboarding.completeFirstSessionPrompt()
             }
         }
@@ -806,7 +888,7 @@ struct OnboardingView: View {
             page = .name
         case .valueOverview:
             page = .capabilities
-        case .distractionSetup, .success:
+        case .notifications, .distractionSetup, .success:
             break
         }
     }
@@ -829,7 +911,8 @@ struct OnboardingView: View {
         if onboarding.progress.hasCompletedInitialSetup {
             page = .success
         } else if onboarding.progress.hasSeenPricingPreview {
-            page = .distractionSetup
+            page = onboarding.progress.hasSeenNotificationExplainer
+                ? .distractionSetup : .notifications
         } else if onboarding.progress.hasSeenValueOverview {
             page = .valueOverview
         } else if onboarding.progress.hasSeenCapabilitiesExplainer {
@@ -853,7 +936,7 @@ struct OnboardingView: View {
         switch page {
         case .distractions, .problemTimes, .motivation, .goalInsight, .name, .capabilities, .valueOverview:
             true
-        case .goals, .distractionSetup, .success:
+        case .goals, .notifications, .distractionSetup, .success:
             false
         }
     }
@@ -877,6 +960,37 @@ struct OnboardingView: View {
             return "\(callback)Your selection is saved and ready. You can edit it before continuing."
         }
         return "\(callback)Pick the apps, categories, and websites you want Noxa to help you stay away from."
+    }
+
+    private var targetSuggestionMessage: String {
+        let context: String
+        switch onboarding.progress.primaryGoal {
+        case .studying:
+            context = "For study time,"
+        case .work:
+            context = "For work time,"
+        case .sleep:
+            context = "For bedtime,"
+        default:
+            context = "To protect your attention,"
+        }
+
+        let targets: String
+        switch onboarding.progress.primaryDistraction {
+        case .shortFormMedia:
+            targets = "short-video apps and sites"
+        case .longFormMedia:
+            targets = "video and streaming apps or sites"
+        case .webBrowsing:
+            targets = "websites you tend to browse without a plan"
+        case .playingGames:
+            targets = "games or game categories"
+        case .socialMedia:
+            targets = "social apps and sites"
+        case .other, .none:
+            targets = "the apps, categories, or sites that pull you away"
+        }
+        return "\(context) consider selecting \(targets). You decide what Noxa blocks."
     }
 
     private var personalizedSuccessMessage: String {

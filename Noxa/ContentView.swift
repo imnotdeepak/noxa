@@ -54,6 +54,8 @@ struct ContentView: View {
     @State private var dailyLimitSelection = FamilyActivitySelection()
     @State private var selectedDailyLimitMinutes = 30
     @State private var isSchedulePickerPresented = false
+    @State private var isFocusStartReviewPresented = false
+    @State private var firstFocusReviewPending = false
     @State private var scheduleName = ""
     @State private var scheduleToRename: RestrictionScheduleConfiguration?
     @State private var renamedScheduleName = ""
@@ -133,6 +135,9 @@ struct ContentView: View {
         .sheet(isPresented: $isSchedulePickerPresented) {
             schedulePickerSheet
         }
+        .sheet(isPresented: $isFocusStartReviewPresented) {
+            focusStartReviewSheet
+        }
         .fullScreenCover(isPresented: $isEndRitualPresented) {
             EndSessionRitualView {
                 guard !focusSession.isActiveSessionStrict else { return }
@@ -155,6 +160,12 @@ struct ContentView: View {
                 focusSession.markStrictModeOffered()
                 isStrictModeIntroductionPresented = true
             }
+            firstFocusReviewPending = onboarding.progress.isComplete
+                && !onboarding.progress.hasSeenFirstFocusReview
+            presentFirstFocusReviewIfReady()
+        }
+        .onChange(of: isStrictModeIntroductionPresented) { isPresented in
+            if !isPresented { presentFirstFocusReviewIfReady() }
         }
         .onChange(of: scenePhase) { newPhase in
             guard newPhase == .active else { return }
@@ -451,6 +462,64 @@ struct ContentView: View {
         }
         .scrollIndicators(.hidden)
         .noxaScreenBackground()
+    }
+
+    private var focusStartReviewSheet: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Label("Ready to focus?", systemImage: "checkmark.shield.fill")
+                        .font(NoxaTheme.font(27, weight: .bold, relativeTo: .title))
+
+                    Text("Noxa will block these selected distractions for \(Self.durationLabel(minutes: chosenDurationMinutes)).")
+                        .foregroundStyle(.secondary)
+
+                    tokenRows(for: restrictions.selection)
+                    ForEach(websites.domains, id: \.self) { domain in
+                        Label(domain, systemImage: "globe")
+                            .font(.subheadline)
+                    }
+
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        Label(
+                            "Ends at \(context.date.addingTimeInterval(TimeInterval(chosenDurationMinutes * 60)).formatted(date: .abbreviated, time: .shortened))",
+                            systemImage: "clock"
+                        )
+                        .font(.subheadline.weight(.semibold))
+                    }
+
+                    if focusSession.strictModeEnabled {
+                        Label(
+                            "Strict Mode is on. You cannot end this session early in Noxa. It lasts at most four hours.",
+                            systemImage: "lock.fill"
+                        )
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(NoxaTheme.warning)
+                    }
+
+                    Button("Start Focus") {
+                        isFocusStartReviewPresented = false
+                        beginFocusSession(intention: "")
+                    }
+                    .buttonStyle(NoxaPrimaryButtonStyle())
+                    .disabled(
+                        !authorization.state.isApproved
+                            || !hasFocusRestrictions
+                            || focusSession.isActive
+                            || !subscriptions.canEnterApp(for: authentication.userID)
+                    )
+                }
+                .padding(24)
+            }
+            .navigationTitle("Review Focus")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { isFocusStartReviewPresented = false }
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
     }
 
     private var hero: some View {
@@ -771,12 +840,7 @@ struct ContentView: View {
                 Button("Start \(Self.durationLabel(minutes: chosenDurationMinutes)) Focus") {
                     commitCustomDuration()
                     isCustomDurationFieldFocused = false
-                    if focusSession.strictModeEnabled {
-                        strictStartIsPomodoro = false
-                        isStrictStartConfirmationPresented = true
-                    } else {
-                        beginFocusSession(intention: "")
-                    }
+                    isFocusStartReviewPresented = true
                 }
                 .buttonStyle(NoxaPrimaryButtonStyle())
                 .disabled(
@@ -1760,6 +1824,20 @@ struct ContentView: View {
                 isNotificationPromptPresented = true
             }
         }
+    }
+
+    private func presentFirstFocusReviewIfReady() {
+        guard firstFocusReviewPending,
+              !isStrictModeIntroductionPresented,
+              !focusSession.isActive,
+              hasFocusRestrictions,
+              subscriptions.canEnterApp(for: authentication.userID) else { return }
+        guard onboarding.markFirstFocusReviewPresented() else { return }
+        firstFocusReviewPending = false
+        selectedDurationMinutes = 30
+        isCustomDuration = false
+        selectedTab = .home
+        isFocusStartReviewPresented = true
     }
 
     private func beginPomodoro() {
