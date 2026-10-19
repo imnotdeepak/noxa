@@ -106,6 +106,7 @@ final class DeviceActivityMonitoringService: ObservableObject {
 
     func stop() {
         center.stopMonitoring([NoxaDeviceActivityConfiguration.activityName])
+        ManagedSettingsStore(named: RestrictionStoreNames.legacy).clearAllSettings()
         isMonitoring = false
         errorMessage = nil
         logger.info("Stopped DeviceActivity validation monitor")

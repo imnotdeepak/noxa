@@ -125,6 +125,14 @@ struct FocusSessionRestrictionConfiguration: Codable, Equatable, Sendable {
     }
 }
 
+/// The explicit shield is separate from the editable selection. Saving this
+/// snapshot lets reconciliation preserve a manually enabled block after a
+/// focus session or process restart.
+struct ManualShieldConfiguration: Codable, Equatable, Sendable {
+    let selection: FamilyActivitySelection
+    let websiteDomains: [String]
+}
+
 /// A daily allowance associated with an opaque Screen Time selection. The
 /// selection is kept local and is never converted to bundle identifiers.
 struct DailyLimitConfiguration: Codable, Equatable, Identifiable, Sendable {

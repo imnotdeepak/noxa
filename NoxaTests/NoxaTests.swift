@@ -13,6 +13,50 @@ import Testing
 
 struct NoxaTests {
 
+    @Test @MainActor func manualShieldSnapshotPersistsSeparatelyFromEditableSelection() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.ManualShield.\(UUID().uuidString)"))
+        let store = AppGroupStore(defaults: defaults)
+        let configuration = ManualShieldConfiguration(
+            selection: FamilyActivitySelection(),
+            websiteDomains: ["reddit.com"]
+        )
+
+        try store.saveManualShield(configuration)
+        try store.saveFamilyActivitySelection(FamilyActivitySelection())
+        #expect(try store.loadManualShield() == configuration)
+
+        store.clearManualShield()
+        #expect(try store.loadManualShield() == nil)
+        #expect(try store.loadFamilyActivitySelection() != nil)
+    }
+
+    @Test @MainActor func manualShieldActivationAndRemovalUpdateDurableState() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.ManualActivation.\(UUID().uuidString)"))
+        let store = AppGroupStore(defaults: defaults)
+        let service = ScreenTimeRestrictionService(store: store)
+
+        service.applyShield(customDomains: ["reddit.com"])
+        #expect(try store.loadManualShield()?.websiteDomains == ["reddit.com"])
+
+        service.removeShield()
+        #expect(try store.loadManualShield() == nil)
+    }
+
+    @Test @MainActor func websiteBlocklistActivationSurvivesServiceRecreation() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.WebsiteActivation.\(UUID().uuidString)"))
+        let store = AppGroupStore(defaults: defaults)
+        let first = WebsiteBlocklistService(store: store)
+        #expect(first.addDomain("reddit.com"))
+        first.applyBlocklist()
+
+        let second = WebsiteBlocklistService(store: store)
+        #expect(second.isBlocklistActive)
+        #expect(store.isWebsiteShieldActive)
+
+        second.clearBlocklist()
+        #expect(!store.isWebsiteShieldActive)
+    }
+
     @Test @MainActor func localSnapshotRoundTripsThroughAppGroupStore() throws {
         let suiteName = "NoxaTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

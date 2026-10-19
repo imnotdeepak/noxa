@@ -23,7 +23,7 @@ final class FocusSessionService: ObservableObject {
     private let store: AppGroupStore
     private let center = DeviceActivityCenter()
     private let authorizationCenter = AuthorizationCenter.shared
-    private let settingsStore = ManagedSettingsStore(named: ManagedSettingsStore.Name("noxa.validation"))
+    private let settingsStore = ManagedSettingsStore(named: RestrictionStoreNames.focus)
     private let logger = Logger(subsystem: "LycheeCorp.Noxa", category: "session")
     private var reconciliationTask: Task<Void, Never>?
 

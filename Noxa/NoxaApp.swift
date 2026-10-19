@@ -26,6 +26,7 @@ struct NoxaApp: App {
     private var hasActiveRestrictions: Bool {
         focusSession.isActive
             || restrictions.isShieldActive
+            || websites.isBlocklistActive
             || monitoring.isMonitoring
             || dailyLimits.isMonitoring
             || dailyLimits.isShieldActive
@@ -93,11 +94,16 @@ struct NoxaApp: App {
             .environmentObject(cloudSync)
             .environmentObject(notifications)
             .task {
+                RestrictionStoreMigration.migrateIfNeeded()
+                restrictions.reconcile()
+                websites.reconcile()
                 analytics.configure()
                 await authentication.bootstrap()
                 await bindAccountServices()
                 await reconcileOnboardingAccount()
                 focusSession.reconcile()
+                restrictions.reconcile()
+                websites.reconcile()
                 dailyLimits.rescheduleActiveMonitoring()
                 schedules.reconcile()
                 await syncCloudDataIfAuthenticated()
@@ -105,6 +111,8 @@ struct NoxaApp: App {
             .onChange(of: scenePhase) { newPhase in
                 guard newPhase == .active else { return }
                 focusSession.reconcile()
+                restrictions.reconcile()
+                websites.reconcile()
                 dailyLimits.reconcileDayBoundary()
                 schedules.reconcile()
                 Task {
@@ -242,6 +250,7 @@ private struct RestrictionRecoveryView: View {
     @EnvironmentObject private var authentication: AuthenticationService
     @EnvironmentObject private var focusSession: FocusSessionService
     @EnvironmentObject private var restrictions: ScreenTimeRestrictionService
+    @EnvironmentObject private var websites: WebsiteBlocklistService
     @EnvironmentObject private var monitoring: DeviceActivityMonitoringService
     @EnvironmentObject private var dailyLimits: DailyLimitService
     @EnvironmentObject private var schedules: RestrictionScheduleService
@@ -287,12 +296,15 @@ private struct RestrictionRecoveryView: View {
                 }
             }
 
+            if websites.isBlocklistActive && !focusSession.isActive {
+                RecoveryActionButton(title: "Remove Website Blocklist") {
+                    websites.clearBlocklist()
+                }
+            }
+
             if monitoring.isMonitoring {
                 RecoveryActionButton(title: "Stop Usage Monitor") {
                     monitoring.stop()
-                    if !focusSession.isActive {
-                        restrictions.removeShield()
-                    }
                 }
             }
 

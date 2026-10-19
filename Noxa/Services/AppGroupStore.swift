@@ -24,6 +24,9 @@ final class AppGroupStore {
         static let localSnapshot = "noxa.localSnapshot"
         static let familyActivitySelection = "noxa.familyActivitySelection"
         static let focusSessionRestrictions = "noxa.focusSessionRestrictions"
+        static let manualShield = "noxa.manualShield"
+        static let websiteShieldActive = "noxa.websiteShieldActive"
+        static let restrictionStoresMigrated = "noxa.restrictionStoresMigrated"
         static let websiteBlocklist = "noxa.websiteBlocklist"
         static let dailyLimits = "noxa.dailyLimits"
         static let restrictionSchedules = "noxa.restrictionSchedules"
@@ -101,6 +104,29 @@ final class AppGroupStore {
 
     func clearFocusSessionRestrictions() {
         defaults.removeObject(forKey: Key.focusSessionRestrictions)
+    }
+
+    func loadManualShield() throws -> ManualShieldConfiguration? {
+        guard let data = defaults.data(forKey: Key.manualShield) else { return nil }
+        return try JSONDecoder().decode(ManualShieldConfiguration.self, from: data)
+    }
+
+    func saveManualShield(_ configuration: ManualShieldConfiguration) throws {
+        defaults.set(try JSONEncoder().encode(configuration), forKey: Key.manualShield)
+    }
+
+    func clearManualShield() {
+        defaults.removeObject(forKey: Key.manualShield)
+    }
+
+    var isWebsiteShieldActive: Bool {
+        get { defaults.bool(forKey: Key.websiteShieldActive) }
+        set { defaults.set(newValue, forKey: Key.websiteShieldActive) }
+    }
+
+    var hasMigratedRestrictionStores: Bool {
+        get { defaults.bool(forKey: Key.restrictionStoresMigrated) }
+        set { defaults.set(newValue, forKey: Key.restrictionStoresMigrated) }
     }
 
     /// Returns whether a focus session is in a start-pending or active state.

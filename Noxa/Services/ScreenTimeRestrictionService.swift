@@ -22,7 +22,8 @@ final class ScreenTimeRestrictionService: ObservableObject {
     @Published private(set) var errorMessage: String?
 
     private let store: AppGroupStore
-    private let settingsStore = ManagedSettingsStore(named: ManagedSettingsStore.Name("noxa.validation"))
+    private let settingsStore = ManagedSettingsStore(named: RestrictionStoreNames.manual)
+    private let focusSettingsStore = ManagedSettingsStore(named: RestrictionStoreNames.focus)
     private let logger = Logger(subsystem: "LycheeCorp.Noxa", category: "shielding")
 
     init(store: AppGroupStore? = nil) {
@@ -97,7 +98,11 @@ final class ScreenTimeRestrictionService: ObservableObject {
             try store.saveFocusSessionRestrictions(updated)
             try store.saveFamilyActivitySelection(mergedSelection)
             selection = mergedSelection
-            applyShieldConfiguration(mergedSelection, customDomains: current.websiteDomains)
+            applyShieldConfiguration(
+                mergedSelection,
+                customDomains: current.websiteDomains,
+                to: focusSettingsStore
+            )
             logger.info("Added restrictions to the active focus session")
             return true
         } catch {
@@ -123,27 +128,52 @@ final class ScreenTimeRestrictionService: ObservableObject {
         }
 
         errorMessage = nil
+        do {
+            try store.saveManualShield(ManualShieldConfiguration(
+                selection: selection,
+                websiteDomains: customDomains
+            ))
+        } catch {
+            errorMessage = "Could not save the active shield: \(error.localizedDescription)"
+            return
+        }
         applyShieldConfiguration(selection, customDomains: customDomains)
         logger.info("Applied local shield for \(self.selectedItemCount) selected item(s)")
     }
 
     private func applyShieldConfiguration(
         _ selection: FamilyActivitySelection,
-        customDomains: [String]
+        customDomains: [String],
+        to targetStore: ManagedSettingsStore? = nil
     ) {
-        settingsStore.shield.applications = selection.applicationTokens.isEmpty
+        let targetStore = targetStore ?? settingsStore
+        targetStore.shield.applications = selection.applicationTokens.isEmpty
             ? nil
             : selection.applicationTokens
-        settingsStore.shield.applicationCategories = selection.categoryTokens.isEmpty
+        targetStore.shield.applicationCategories = selection.categoryTokens.isEmpty
             ? nil
             : .specific(selection.categoryTokens)
-        settingsStore.shield.webDomains = selection.webDomainTokens.isEmpty
+        targetStore.shield.webDomains = selection.webDomainTokens.isEmpty
             ? nil
             : selection.webDomainTokens
-        settingsStore.webContent.blockedByFilter = customDomains.isEmpty
+        targetStore.webContent.blockedByFilter = customDomains.isEmpty
             ? nil
             : .specific(Set(customDomains.map(WebDomain.init(domain:))))
-        isShieldActive = true
+        if targetStore === settingsStore { isShieldActive = true }
+    }
+
+    func reconcile() {
+        if let configuration = (try? store.loadManualShield()) ?? nil {
+            applyShieldConfiguration(
+                configuration.selection,
+                customDomains: configuration.websiteDomains
+            )
+        } else {
+            isShieldActive = settingsStore.shield.applications != nil
+                || settingsStore.shield.applicationCategories != nil
+                || settingsStore.shield.webDomains != nil
+                || settingsStore.webContent.blockedByFilter != nil
+        }
     }
 
     func removeShield(force: Bool = false) {
@@ -153,6 +183,7 @@ final class ScreenTimeRestrictionService: ObservableObject {
         }
         errorMessage = nil
         settingsStore.clearAllSettings()
+        store.clearManualShield()
         isShieldActive = false
         logger.info("Removed all local Managed Settings restrictions")
     }

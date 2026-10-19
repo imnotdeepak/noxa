@@ -68,6 +68,7 @@ private struct PersistedScheduleRelaxation: Codable {
 /// app is backgrounded or terminated by the operating system.
 final class NoxaMonitorExtension: DeviceActivityMonitor {
     private let settingsStore = ManagedSettingsStore(named: ManagedSettingsStore.Name("noxa.validation"))
+    private let focusSettingsStore = ManagedSettingsStore(named: ManagedSettingsStore.Name("noxa.focus"))
     private let dailyLimitSettingsStore = ManagedSettingsStore(named: ManagedSettingsStore.Name("noxa.daily-limits"))
     private let logger = Logger(subsystem: "LycheeCorp.Noxa", category: "monitoring")
 
@@ -110,7 +111,11 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
     override func intervalDidEnd(for activity: DeviceActivityName) {
         super.intervalDidEnd(for: activity)
         if activity == NoxaMonitorActivity.focusActivityName {
-            settingsStore.clearAllSettings()
+            focusSettingsStore.clearAllSettings()
+            let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa")
+            if defaults?.bool(forKey: "noxa.restrictionStoresMigrated") != true {
+                settingsStore.clearAllSettings()
+            }
             UserDefaults(suiteName: "group.LycheeCorp.Noxa")?.removeObject(
                 forKey: "noxa.focusSessionRestrictions"
             )
@@ -138,7 +143,8 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         applyShield(
             selection: configuration.selection,
             websiteDomains: configuration.websiteDomains,
-            reason: reason
+            reason: reason,
+            to: focusSettingsStore
         )
     }
 
@@ -169,23 +175,25 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
     private func applyShield(
         selection: FamilyActivitySelection,
         websiteDomains: [String],
-        reason: String
+        reason: String,
+        to targetStore: ManagedSettingsStore? = nil
     ) {
-        settingsStore.shield.applications = selection.applicationTokens.isEmpty
+        let targetStore = targetStore ?? settingsStore
+        targetStore.shield.applications = selection.applicationTokens.isEmpty
             ? nil
             : selection.applicationTokens
-        settingsStore.shield.applicationCategories = selection.categoryTokens.isEmpty
+        targetStore.shield.applicationCategories = selection.categoryTokens.isEmpty
             ? nil
             : .specific(selection.categoryTokens)
-        settingsStore.shield.webDomains = selection.webDomainTokens.isEmpty
+        targetStore.shield.webDomains = selection.webDomainTokens.isEmpty
             ? nil
             : selection.webDomainTokens
         if !websiteDomains.isEmpty {
-            settingsStore.webContent.blockedByFilter = .specific(
+            targetStore.webContent.blockedByFilter = .specific(
                 Set(websiteDomains.map(WebDomain.init(domain:)))
             )
         } else {
-            settingsStore.webContent.blockedByFilter = nil
+            targetStore.webContent.blockedByFilter = nil
         }
         logger.info("Applied monitor shield: \(reason, privacy: .public)")
     }

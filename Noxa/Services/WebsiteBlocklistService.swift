@@ -16,15 +16,18 @@ final class WebsiteBlocklistService: ObservableObject {
     static let maximumDomains = 50
 
     @Published private(set) var domains: [String]
+    @Published private(set) var isBlocklistActive: Bool
     @Published private(set) var errorMessage: String?
 
     private let store: AppGroupStore
-    private let settingsStore = ManagedSettingsStore(named: ManagedSettingsStore.Name("noxa.validation"))
+    private let settingsStore = ManagedSettingsStore(named: RestrictionStoreNames.websites)
+    private let focusSettingsStore = ManagedSettingsStore(named: RestrictionStoreNames.focus)
     private let logger = Logger(subsystem: "LycheeCorp.Noxa", category: "websites")
 
     init(store: AppGroupStore? = nil) {
         self.store = store ?? AppGroupStore.shared
         self.domains = (try? self.store.loadWebsiteBlocklist()) ?? []
+        self.isBlocklistActive = self.store.isWebsiteShieldActive
     }
 
     var isLockedForFocusSession: Bool {
@@ -79,7 +82,7 @@ final class WebsiteBlocklistService: ObservableObject {
             try store.saveFocusSessionRestrictions(updated)
             try store.saveWebsiteBlocklist(mergedDomains)
             domains = mergedDomains
-            settingsStore.webContent.blockedByFilter = .specific(
+            focusSettingsStore.webContent.blockedByFilter = .specific(
                 Set(mergedDomains.map(WebDomain.init(domain:)))
             )
             errorMessage = nil
@@ -119,6 +122,7 @@ final class WebsiteBlocklistService: ObservableObject {
         errorMessage = nil
         do {
             try store.saveWebsiteBlocklist(domains)
+            if isBlocklistActive { reconcile() }
         } catch {
             errorMessage = "Could not save the website list: \(error.localizedDescription)"
             logger.error("Website persistence failed: \(error.localizedDescription, privacy: .public)")
@@ -132,8 +136,12 @@ final class WebsiteBlocklistService: ObservableObject {
         }
         guard !domains.isEmpty else {
             settingsStore.webContent.blockedByFilter = nil
+            store.isWebsiteShieldActive = false
+            isBlocklistActive = false
             return
         }
+        store.isWebsiteShieldActive = true
+        isBlocklistActive = true
         settingsStore.webContent.blockedByFilter = .specific(Set(domains.map(WebDomain.init(domain:))))
         logger.info("Applied \(self.domains.count) custom website restriction(s)")
     }
@@ -144,6 +152,16 @@ final class WebsiteBlocklistService: ObservableObject {
             return
         }
         settingsStore.webContent.blockedByFilter = nil
+        store.isWebsiteShieldActive = false
+        isBlocklistActive = false
+    }
+
+    func reconcile() {
+        if domains.isEmpty { store.isWebsiteShieldActive = false }
+        isBlocklistActive = store.isWebsiteShieldActive
+        settingsStore.webContent.blockedByFilter = isBlocklistActive && !domains.isEmpty
+            ? .specific(Set(domains.map(WebDomain.init(domain:))))
+            : nil
     }
 
     func removeAllDomains(force: Bool = false) {
