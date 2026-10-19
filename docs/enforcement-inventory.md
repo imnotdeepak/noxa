@@ -15,6 +15,8 @@ Status: Initial code inventory and pure rule evaluation, October 19, 2026. This 
 
 The focus, explicit-shield, and custom-domain services share `noxa.validation`. A `clearAllSettings()` there clears every setting in that store; overlapping uses therefore need an explicit ownership and reconciliation policy. Separate daily-limit and schedule stores already provide some isolation, but do not provide one explanation of all currently active blocking reasons.
 
+The monitor extension also writes focus and validation shields into `noxa.validation`. The current persisted selection and domain list do not record whether an explicit shield was switched on. Moving owners to separate named stores without a persisted activation state could either drop an intentional block or leave an old shield behind after an app update. The next integration step must first define that state and a one-time legacy-store migration, then update the app and extension together.
+
 ## Current schedule constraints
 
 - A schedule is an allowed window every day; selected apps are blocked before and after it.
