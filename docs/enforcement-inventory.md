@@ -21,8 +21,8 @@ The migration cannot always infer whether an old web-content filter came from a 
 ## Current schedule constraints
 
 - A schedule is an allowed window every day; selected apps are blocked before and after it.
-- Creation requires at least one app, rejects overlapping selections, and requires a same-day window of at least 15 minutes.
-- Disabling or removing an enabled schedule is delayed 24 hours.
+- Creation accepts app, category, or website tokens, permits overlap with other schedules, and requires a same-day window of at least 15 minutes.
+- Disabling or removing a schedule takes effect immediately, including during focus. Existing pending 24-hour changes retain their original date until the user explicitly changes the schedule; an explicit change clears that pending record.
 - Each schedule uses before/after monitor names and named stores. This is a useful foundation for the approved migration, but is not yet the new weekday/overnight/blocked-hours model.
 - A versioned `ScheduleRule` archive and migration reader now convert legacy rules into named, every-day allowed-hour rules while retaining IDs, targets, enabled state, and pending 24-hour changes. The pure local-time evaluator covers weekdays and overnight windows. The live schedule service and monitor still use the legacy format; the new rule model is not yet enforced or shown in the app.
 - Daily limits can now be edited, disabled, removed, or stopped immediately, including during focus. Their independent Managed Settings store keeps a focus block in force when a daily limit changes.

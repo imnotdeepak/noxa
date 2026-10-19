@@ -329,10 +329,8 @@ private struct RestrictionRecoveryView: View {
             }
 
             if schedules.enabledCount > 0 {
-                if schedules.enabledWithoutPendingRelaxationCount > 0 {
-                    RecoveryActionButton(title: "Request Schedule Stop") {
-                        schedules.requestDisableAll()
-                    }
+                RecoveryActionButton(title: "Stop Schedules") {
+                    schedules.requestDisableAll()
                 }
                 if let effectiveAt = schedules.nextPendingRelaxationDate {
                     Text("Schedule changes remain protected until \(effectiveAt.formatted(date: .abbreviated, time: .shortened)).")

@@ -1,6 +1,6 @@
 # Physical-device restriction checks
 
-Status: Ready for a signed build on a paired iPhone. Simulator results do not prove that Screen Time shields appear or release correctly. Run with test apps/sites and short sessions before shipping.
+Status: A signed build was installed and launched on the paired iPhone “iphony 5x” on October 19, 2026. Screen Time permission, subscription access, target selection, actual shield behavior, and release behavior remain unverified. iPhone Mirroring is unavailable on this Mac because iCloud is signed out; device-side setup or another observation path is needed. Simulator results do not prove Screen Time enforcement.
 
 ## Setup
 

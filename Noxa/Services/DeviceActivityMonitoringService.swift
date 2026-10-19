@@ -394,7 +394,6 @@ final class DailyLimitService: ObservableObject {
 @MainActor
 final class RestrictionScheduleService: ObservableObject {
     static let maximumConfigurations = 8
-    static let relaxationDelay: TimeInterval = 24 * 60 * 60
 
     @Published private(set) var configurations: [RestrictionScheduleConfiguration]
     @Published private(set) var errorMessage: String?
@@ -412,29 +411,16 @@ final class RestrictionScheduleService: ObservableObject {
         configurations.filter(\.isEnabled).count
     }
 
-    var enabledWithoutPendingRelaxationCount: Int {
-        configurations.filter { $0.isEnabled && $0.pendingRelaxation == nil }.count
-    }
-
     var nextPendingRelaxationDate: Date? {
         configurations.compactMap(\.pendingRelaxation?.effectiveAt).min()
     }
 
     func add(selection: FamilyActivitySelection, allowedStart: Date, allowedEnd: Date) {
         errorMessage = nil
-        guard !selection.applicationTokens.isEmpty else {
-            errorMessage = "Select at least one app for this schedule."
-            return
-        }
-        let existingSelection = configurations.reduce(into: FamilyActivitySelection()) { combined, configuration in
-            combined.applicationTokens.formUnion(configuration.selection.applicationTokens)
-            combined.categoryTokens.formUnion(configuration.selection.categoryTokens)
-            combined.webDomainTokens.formUnion(configuration.selection.webDomainTokens)
-        }
-        guard selection.applicationTokens.isDisjoint(with: existingSelection.applicationTokens),
-              selection.categoryTokens.isDisjoint(with: existingSelection.categoryTokens),
-              selection.webDomainTokens.isDisjoint(with: existingSelection.webDomainTokens) else {
-            errorMessage = "One or more selected apps already has an allowed schedule."
+        guard !selection.applicationTokens.isEmpty
+                || !selection.categoryTokens.isEmpty
+                || !selection.webDomainTokens.isEmpty else {
+            errorMessage = "Select an app, category, or website for this schedule."
             return
         }
         guard configurations.count < Self.maximumConfigurations else {
@@ -461,58 +447,31 @@ final class RestrictionScheduleService: ObservableObject {
     }
 
     func setEnabled(_ enabled: Bool, for configuration: RestrictionScheduleConfiguration) {
-        guard !store.hasActiveFocusSession() else {
-            errorMessage = "Schedules cannot be changed during a focus session."
-            return
-        }
         guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
-        if enabled {
-            configurations[index].isEnabled = true
-            configurations[index].pendingRelaxation = nil
-        } else if configurations[index].isEnabled {
-            configurations[index].pendingRelaxation = Self.pendingRelaxation(action: .disable)
-        }
+        configurations[index].isEnabled = enabled
+        configurations[index].pendingRelaxation = nil
         persistAndReschedule()
     }
 
     func remove(_ configuration: RestrictionScheduleConfiguration) {
-        guard !store.hasActiveFocusSession() else {
-            errorMessage = "Schedules cannot be changed during a focus session."
-            return
-        }
         guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
-        if configurations[index].isEnabled {
-            configurations[index].pendingRelaxation = Self.pendingRelaxation(action: .remove)
-        } else {
-            stop(configuration)
-            configurations.remove(at: index)
-        }
+        stop(configuration)
+        configurations.remove(at: index)
         persistAndReschedule()
     }
 
     func cancelPendingRelaxation(for configuration: RestrictionScheduleConfiguration) {
-        guard !store.hasActiveFocusSession() else {
-            errorMessage = "Schedules cannot be changed during a focus session."
-            return
-        }
         guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
         configurations[index].pendingRelaxation = nil
         persistAndReschedule()
     }
 
     func requestDisableAll() {
-        guard !store.hasActiveFocusSession() else {
-            errorMessage = "Schedules cannot be changed during a focus session."
-            return
-        }
-        let now = Date()
         var didChange = false
         for index in configurations.indices
-        where configurations[index].isEnabled && configurations[index].pendingRelaxation == nil {
-            configurations[index].pendingRelaxation = Self.pendingRelaxation(
-                action: .disable,
-                now: now
-            )
+        where configurations[index].isEnabled {
+            configurations[index].isEnabled = false
+            configurations[index].pendingRelaxation = nil
             didChange = true
         }
         guard didChange else { return }
@@ -663,17 +622,6 @@ final class RestrictionScheduleService: ObservableObject {
 
     private static func dateComponents(for date: Date, calendar: Calendar) -> DateComponents {
         calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
-    }
-
-    private static func pendingRelaxation(
-        action: PendingScheduleRelaxation.Action,
-        now: Date = Date()
-    ) -> PendingScheduleRelaxation {
-        PendingScheduleRelaxation(
-            action: action,
-            requestedAt: now,
-            effectiveAt: now.addingTimeInterval(relaxationDelay)
-        )
     }
 
     private func applyMaturedRelaxations(now: Date = Date()) {

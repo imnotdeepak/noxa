@@ -101,14 +101,6 @@ struct ContentView: View {
         return "\(newDailyLimitAppCount) new \(noun) selected"
     }
 
-    private var existingScheduleSelection: FamilyActivitySelection {
-        combinedSelection(from: schedules.configurations.map(\.selection))
-    }
-
-    private var newScheduleSelection: FamilyActivitySelection {
-        scheduleSelection.removing(existingScheduleSelection)
-    }
-
     private var hasActiveDailyLimits: Bool {
         dailyLimits.isMonitoring || dailyLimits.isShieldActive
     }
@@ -397,18 +389,13 @@ struct ContentView: View {
 
     private var schedulePickerSheet: some View {
         NavigationStack {
-            FamilyActivityPicker(
-                selection: selectionBinding(
-                    $scheduleSelection,
-                    keeping: existingScheduleSelection
-                )
-            )
-            .navigationTitle("Choose schedule apps")
+            FamilyActivityPicker(selection: $scheduleSelection)
+            .navigationTitle("Choose schedule targets")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         schedules.add(
-                            selection: newScheduleSelection,
+                            selection: scheduleSelection,
                             allowedStart: scheduleAllowedStart,
                             allowedEnd: scheduleAllowedEnd
                         )
@@ -417,7 +404,11 @@ struct ContentView: View {
                             isSchedulePickerPresented = false
                         }
                     }
-                    .disabled(newScheduleSelection.applicationTokens.isEmpty)
+                    .disabled(
+                        scheduleSelection.applicationTokens.isEmpty
+                            && scheduleSelection.categoryTokens.isEmpty
+                            && scheduleSelection.webDomainTokens.isEmpty
+                    )
                 }
             }
         }
@@ -1137,7 +1128,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("Choose a daily window when selected apps are available. Noxa blocks them before and after that window—even when the app is closed. Disabling or removing an active schedule takes 24 hours.")
+            Text("Choose a daily window when selected apps, categories, or websites are available. Noxa blocks them before and after that window—even when the app is closed. Changes take effect immediately.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
@@ -1161,8 +1152,8 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            Button("Add App Schedule") {
-                scheduleSelection = existingScheduleSelection
+            Button("Add Schedule") {
+                scheduleSelection = FamilyActivitySelection()
                 isSchedulePickerPresented = true
             }
             .buttonStyle(NoxaSecondaryButtonStyle())
@@ -1172,7 +1163,7 @@ struct ContentView: View {
             )
 
             if schedules.configurations.isEmpty {
-                Text("No app schedules configured.")
+                Text("No schedules configured.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             } else {
@@ -1186,7 +1177,6 @@ struct ContentView: View {
                                     .foregroundStyle(configuration.isEnabled ? NoxaTheme.accent : .secondary)
                             }
                             .buttonStyle(.plain)
-                            .disabled(focusSession.isActive || configuration.pendingRelaxation != nil)
 
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("Available \(Self.timeLabel(minutes: configuration.allowedStartMinutes))–\(Self.timeLabel(minutes: configuration.allowedEndMinutes))")
@@ -1201,7 +1191,6 @@ struct ContentView: View {
                             }
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
-                            .disabled(focusSession.isActive || configuration.pendingRelaxation != nil)
                         }
 
                         tokenRows(for: configuration.selection)
@@ -1228,7 +1217,6 @@ struct ContentView: View {
                                 }
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(NoxaTheme.accent)
-                                .disabled(focusSession.isActive)
                             }
                             .padding(12)
                             .background(

@@ -98,4 +98,27 @@ struct ScheduleRuleTests {
         service.remove(limit)
         #expect(service.configurations.isEmpty)
     }
+
+    @Test @MainActor func scheduleCanBeDisabledImmediatelyDespitePendingLegacyChange() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.ScheduleEdit.\(UUID())"))
+        let store = AppGroupStore(defaults: defaults)
+        let pending = PendingScheduleRelaxation(
+            action: .remove,
+            requestedAt: Date(),
+            effectiveAt: Date().addingTimeInterval(86_400)
+        )
+        let schedule = RestrictionScheduleConfiguration(
+            selection: FamilyActivitySelection(),
+            allowedStartMinutes: 9 * 60,
+            allowedEndMinutes: 17 * 60,
+            pendingRelaxation: pending
+        )
+        try store.saveRestrictionSchedules([schedule])
+
+        let service = RestrictionScheduleService(store: store)
+        service.setEnabled(false, for: schedule)
+        let updated = try #require(store.loadRestrictionSchedules().first)
+        #expect(!updated.isEnabled)
+        #expect(updated.pendingRelaxation == nil)
+    }
 }
