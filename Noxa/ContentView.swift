@@ -67,6 +67,9 @@ struct ContentView: View {
     @State private var isCustomDuration = false
     @State private var customDurationText = "30"
     @State private var isEndRitualPresented = false
+    @State private var isStrictModeIntroductionPresented = false
+    @State private var isStrictStartConfirmationPresented = false
+    @State private var strictStartIsPomodoro = false
     @State private var isNotificationPromptPresented = false
     @State private var selectedTab = MainTab.home
     @State private var selectedStatsRange = StatsRange.week
@@ -183,6 +186,7 @@ struct ContentView: View {
         }
         .fullScreenCover(isPresented: $isEndRitualPresented) {
             EndSessionRitualView {
+                guard !focusSession.isActiveSessionStrict else { return }
                 if let sessionID = focusSession.activeSession?.id {
                     notifications.cancel(for: sessionID)
                 }
@@ -191,6 +195,10 @@ struct ContentView: View {
         }
         .task {
             authorization.refresh()
+            if !focusSession.hasOfferedStrictMode {
+                focusSession.markStrictModeOffered()
+                isStrictModeIntroductionPresented = true
+            }
         }
         .onChange(of: scenePhase) { newPhase in
             guard newPhase == .active else { return }
@@ -216,6 +224,27 @@ struct ContentView: View {
             }
         } message: {
             Text("Noxa can notify you when focus sessions and Pomodoro breaks are complete.")
+        }
+        .alert("Try Strict Mode?", isPresented: $isStrictModeIntroductionPresented) {
+            Button("Keep Off", role: .cancel) {}
+            Button("Turn On") { focusSession.setStrictModeEnabled(true) }
+        } message: {
+            Text("Strict Mode makes future focus work sessions impossible to end early in Noxa. You can turn it off in Settings for future sessions. Strict sessions last at most 4 hours.")
+        }
+        .alert("Start Strict Focus?", isPresented: $isStrictStartConfirmationPresented) {
+            Button("Cancel", role: .cancel) {}
+            Button("Start Strict Session") {
+                if strictStartIsPomodoro {
+                    beginPomodoro()
+                } else {
+                    beginFocusSession(intention: "")
+                }
+            }
+        } message: {
+            let minutes = strictStartIsPomodoro ? pomodoroWorkMinutes : chosenDurationMinutes
+            let endTime = Date().addingTimeInterval(TimeInterval(minutes * 60))
+                .formatted(date: .omitted, time: .shortened)
+            Text("If you start now, this work session ends at \(endTime). You cannot end it early in Noxa. During a Pomodoro break, you can stop before the next work session.")
         }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -506,10 +535,16 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity)
                 }
 
-                Button("End Session Early") {
-                    isEndRitualPresented = true
+                if activeSession.isStrict {
+                    Label("Strict Focus · Ends at \(activeSession.plannedEndAt.formatted(date: .omitted, time: .shortened))", systemImage: "lock.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                } else {
+                    Button("End Session Early") {
+                        isEndRitualPresented = true
+                    }
+                    .buttonStyle(NoxaSecondaryButtonStyle())
                 }
-                .buttonStyle(NoxaSecondaryButtonStyle())
             } else {
                 VStack(spacing: 2) {
                     Text(Self.durationLabel(minutes: chosenDurationMinutes))
@@ -570,7 +605,7 @@ struct ContentView: View {
                         .background(.thinMaterial, in: Circle())
                     }
 
-                    Text("Enter \(NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes)–\(NoxaDeviceActivityConfiguration.maximumFocusSessionMinutes) minutes.")
+                    Text("Enter \(NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes)–\(maximumFocusMinutes) minutes.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -601,7 +636,12 @@ struct ContentView: View {
                 Button("Start \(Self.durationLabel(minutes: chosenDurationMinutes)) Focus") {
                     commitCustomDuration()
                     isCustomDurationFieldFocused = false
-                    beginFocusSession(intention: "")
+                    if focusSession.strictModeEnabled {
+                        strictStartIsPomodoro = false
+                        isStrictStartConfirmationPresented = true
+                    } else {
+                        beginFocusSession(intention: "")
+                    }
                 }
                 .buttonStyle(NoxaPrimaryButtonStyle())
                 .disabled(
@@ -886,7 +926,12 @@ struct ContentView: View {
 
             if hasFocusRestrictions {
                 Button("Start \(pomodoroWorkMinutes)-minute Pomodoro") {
-                    beginPomodoro()
+                    if focusSession.strictModeEnabled {
+                        strictStartIsPomodoro = true
+                        isStrictStartConfirmationPresented = true
+                    } else {
+                        beginPomodoro()
+                    }
                 }
                 .buttonStyle(NoxaPrimaryButtonStyle())
                 .disabled(
@@ -1325,6 +1370,16 @@ struct ContentView: View {
                 settingsSectionTitle("Preferences")
 
                 VStack(alignment: .leading, spacing: 12) {
+                    Toggle("Strict Mode", isOn: Binding(
+                        get: { focusSession.strictModeEnabled },
+                        set: { focusSession.setStrictModeEnabled($0) }
+                    ))
+                        .font(.headline)
+                        .tint(NoxaTheme.accent)
+                    Text("Applies only to future focus sessions. Strict work sessions cannot be ended early in Noxa and are limited to 4 hours. Pomodoro sessions can be stopped during breaks.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Divider()
                     Toggle("Share usage analytics", isOn: $analytics.isEnabled)
                         .font(.headline)
                         .tint(NoxaTheme.accent)
@@ -1356,10 +1411,10 @@ struct ContentView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.red)
                 .frame(maxWidth: .infinity)
-                .disabled(authentication.isBusy)
+                .disabled(authentication.isBusy || focusSession.isActive)
 
                 if focusSession.isActive {
-                    Text("End the active focus session before signing out.")
+                    Text("Wait until the active focus session ends before signing out or deleting your account.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -1426,6 +1481,7 @@ struct ContentView: View {
     }
 
     private func deleteAccountAndLocalData() async {
+        guard !focusSession.isActive else { return }
         guard await authentication.deleteAccount() else { return }
         LocalDataCleanupService.clear(
             focusSession: focusSession,
@@ -1440,15 +1496,21 @@ struct ContentView: View {
     }
 
     private var chosenDurationMinutes: Int {
-        guard isCustomDuration else { return selectedDurationMinutes }
+        guard isCustomDuration else { return min(selectedDurationMinutes, maximumFocusMinutes) }
         return normalizedCustomDuration
+    }
+
+    private var maximumFocusMinutes: Int {
+        focusSession.strictModeEnabled
+            ? NoxaDeviceActivityConfiguration.maximumStrictFocusSessionMinutes
+            : NoxaDeviceActivityConfiguration.maximumFocusSessionMinutes
     }
 
     private var normalizedCustomDuration: Int {
         let value = Int(customDurationText) ?? NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes
         return min(
             max(value, NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes),
-            NoxaDeviceActivityConfiguration.maximumFocusSessionMinutes
+            maximumFocusMinutes
         )
     }
 
@@ -1460,7 +1522,7 @@ struct ContentView: View {
         let current = Int(customDurationText) ?? selectedDurationMinutes
         let adjusted = min(
             max(current + amount, NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes),
-            NoxaDeviceActivityConfiguration.maximumFocusSessionMinutes
+            maximumFocusMinutes
         )
         customDurationText = String(adjusted)
     }

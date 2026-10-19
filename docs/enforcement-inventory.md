@@ -39,3 +39,10 @@ The migration cannot always infer whether an old web-content filter came from a 
 - The first test attempt exposed stale subscription test calls. After that test was updated, the next run exposed an onboarding test that skipped the required value-overview milestone. Both test expectations were brought into line with the current services.
 - All 40 unit tests passed after the initial store migration changes, including saved manual and website activation state. Simulator Managed Settings stores read back as empty even after accepting a write, so physical-device testing is required for actual enforcement and migration.
 - A full-suite rerun did not complete because the simulator UI-test runner timed out while loading Accessibility. An earlier full run executed UI tests, but failed on the onboarding test before that expectation was fixed. A clean UI-test result remains to be obtained; this is separate from physical-device Screen Time validation.
+
+## Strict Mode first slice
+
+- A device-local Settings toggle defaults off and is offered once on first entry to the paid app. Its value is copied into each new session record; changing the toggle does not rewrite an active session.
+- Strict starts show the expected end time and an in-app no-early-end warning. The service enforces a four-hour cap and rejects early-end calls for strict records; normal sessions retain the existing early-end flow and eight-hour cap.
+- Account sign-out and deletion controls remain unavailable during any active focus session. Strict sessions show their scheduled end instead of an early-end action, including in the subscription recovery view.
+- Pomodoro work intervals use the same strict policy. Automatic work/break transitions and the approved break notifications are still pending, so the complete four-round Pomodoro behavior is not yet implemented.

@@ -22,6 +22,7 @@ enum NoxaDeviceActivityConfiguration {
     static let scheduleRelaxationActivityPrefix = "noxa.schedule.relax"
     static let minimumFocusSessionMinutes = 15
     static let maximumFocusSessionMinutes = 480
+    static let maximumStrictFocusSessionMinutes = 240
 
     static func dailyLimitEventName(for id: UUID) -> DeviceActivityEvent.Name {
         DeviceActivityEvent.Name("noxa.daily.limit.\(id.uuidString.lowercased())")

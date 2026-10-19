@@ -19,6 +19,8 @@ final class FocusSessionService: ObservableObject {
     @Published private(set) var history: [ActiveSessionRecord]
     @Published private(set) var errorMessage: String?
     @Published private(set) var activeIntention: String?
+    @Published private(set) var strictModeEnabled: Bool
+    @Published private(set) var hasOfferedStrictMode: Bool
 
     private let store: AppGroupStore
     private let center = DeviceActivityCenter()
@@ -29,6 +31,8 @@ final class FocusSessionService: ObservableObject {
 
     init(store: AppGroupStore? = nil) {
         self.store = store ?? AppGroupStore.shared
+        strictModeEnabled = self.store.isStrictModeEnabled
+        hasOfferedStrictMode = self.store.hasOfferedStrictMode
         let snapshot = try? self.store.loadSnapshot()
         activeSession = snapshot?.activeSession
         history = snapshot?.sessionHistory ?? []
@@ -41,6 +45,20 @@ final class FocusSessionService: ObservableObject {
 
     var isActive: Bool {
         activeSession != nil
+    }
+
+    var isActiveSessionStrict: Bool {
+        activeSession?.isStrict == true
+    }
+
+    func setStrictModeEnabled(_ enabled: Bool) {
+        store.isStrictModeEnabled = enabled
+        strictModeEnabled = enabled
+    }
+
+    func markStrictModeOffered() {
+        store.hasOfferedStrictMode = true
+        hasOfferedStrictMode = true
     }
 
     var completedSessionCount: Int {
@@ -87,11 +105,13 @@ final class FocusSessionService: ObservableObject {
 
         errorMessage = nil
         let startedAt = Date()
-        let duration = Self.normalizedDurationMinutes(durationMinutes) * 60
+        let isStrict = strictModeEnabled
+        let duration = Self.normalizedDurationMinutes(durationMinutes, strict: isStrict) * 60
         let record = ActiveSessionRecord(
             startedAt: startedAt,
             plannedEndAt: startedAt.addingTimeInterval(TimeInterval(duration)),
-            plannedDurationSeconds: duration
+            plannedDurationSeconds: duration,
+            isStrict: isStrict
         )
         let restrictionConfiguration = FocusSessionRestrictionConfiguration(
             selection: selection,
@@ -136,6 +156,10 @@ final class FocusSessionService: ObservableObject {
 
     func endEarly() {
         guard let activeSession else { return }
+        guard !activeSession.isStrict else {
+            errorMessage = "Strict focus cannot end early. It ends at \(activeSession.plannedEndAt.formatted(date: .omitted, time: .shortened))."
+            return
+        }
         reconciliationTask?.cancel()
         errorMessage = nil
         let endedAt = Date()
@@ -286,6 +310,10 @@ final class FocusSessionService: ObservableObject {
         history = []
         errorMessage = nil
         store.clearSnapshot()
+        store.isStrictModeEnabled = false
+        store.hasOfferedStrictMode = false
+        strictModeEnabled = false
+        hasOfferedStrictMode = false
     }
 
     private func schedule(record: ActiveSessionRecord) throws {
@@ -437,10 +465,12 @@ final class FocusSessionService: ObservableObject {
         max(0, min(plannedDurationSeconds, Int(endedAt.timeIntervalSince(startedAt))))
     }
 
-    static func normalizedDurationMinutes(_ minutes: Int) -> Int {
+    static func normalizedDurationMinutes(_ minutes: Int, strict: Bool = false) -> Int {
         min(
             max(minutes, NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes),
-            NoxaDeviceActivityConfiguration.maximumFocusSessionMinutes
+            strict
+                ? NoxaDeviceActivityConfiguration.maximumStrictFocusSessionMinutes
+                : NoxaDeviceActivityConfiguration.maximumFocusSessionMinutes
         )
     }
 }

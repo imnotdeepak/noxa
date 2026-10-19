@@ -284,7 +284,7 @@ private struct RestrictionRecoveryView: View {
                 }
             }
 
-            if focusSession.isActive {
+            if focusSession.isActive && !focusSession.isActiveSessionStrict {
                 RecoveryActionButton(title: "End Focus Session") {
                     focusSession.endEarly()
                 }

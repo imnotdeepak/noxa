@@ -27,6 +27,8 @@ final class AppGroupStore {
         static let manualShield = "noxa.manualShield"
         static let websiteShieldActive = "noxa.websiteShieldActive"
         static let restrictionStoresMigrated = "noxa.restrictionStoresMigrated"
+        static let strictModeEnabled = "noxa.strictModeEnabled"
+        static let hasOfferedStrictMode = "noxa.hasOfferedStrictMode"
         static let websiteBlocklist = "noxa.websiteBlocklist"
         static let dailyLimits = "noxa.dailyLimits"
         static let restrictionSchedules = "noxa.restrictionSchedules"
@@ -127,6 +129,16 @@ final class AppGroupStore {
     var hasMigratedRestrictionStores: Bool {
         get { defaults.bool(forKey: Key.restrictionStoresMigrated) }
         set { defaults.set(newValue, forKey: Key.restrictionStoresMigrated) }
+    }
+
+    var isStrictModeEnabled: Bool {
+        get { defaults.bool(forKey: Key.strictModeEnabled) }
+        set { defaults.set(newValue, forKey: Key.strictModeEnabled) }
+    }
+
+    var hasOfferedStrictMode: Bool {
+        get { defaults.bool(forKey: Key.hasOfferedStrictMode) }
+        set { defaults.set(newValue, forKey: Key.hasOfferedStrictMode) }
     }
 
     /// Returns whether a focus session is in a start-pending or active state.

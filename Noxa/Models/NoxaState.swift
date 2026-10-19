@@ -58,6 +58,7 @@ struct ActiveSessionRecord: Codable, Equatable, Identifiable, Sendable {
     let plannedEndAt: Date
     let plannedDurationSeconds: Int
     var outcome: SessionOutcome
+    let isStrict: Bool
     /// Measured duration for sessions ended before their planned end.
     /// Completed sessions can use the planned duration when this is nil.
     var actualDurationSeconds: Int?
@@ -70,6 +71,7 @@ struct ActiveSessionRecord: Codable, Equatable, Identifiable, Sendable {
         plannedEndAt: Date,
         plannedDurationSeconds: Int,
         outcome: SessionOutcome = .startPending,
+        isStrict: Bool = false,
         actualDurationSeconds: Int? = nil,
         lastRestrictionApplicationAt: Date? = nil,
         lastCleanupAttemptAt: Date? = nil
@@ -79,9 +81,41 @@ struct ActiveSessionRecord: Codable, Equatable, Identifiable, Sendable {
         self.plannedEndAt = plannedEndAt
         self.plannedDurationSeconds = plannedDurationSeconds
         self.outcome = outcome
+        self.isStrict = isStrict
         self.actualDurationSeconds = actualDurationSeconds
         self.lastRestrictionApplicationAt = lastRestrictionApplicationAt
         self.lastCleanupAttemptAt = lastCleanupAttemptAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, startedAt, plannedEndAt, plannedDurationSeconds, outcome
+        case isStrict, actualDurationSeconds, lastRestrictionApplicationAt, lastCleanupAttemptAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        startedAt = try container.decode(Date.self, forKey: .startedAt)
+        plannedEndAt = try container.decode(Date.self, forKey: .plannedEndAt)
+        plannedDurationSeconds = try container.decode(Int.self, forKey: .plannedDurationSeconds)
+        outcome = try container.decode(SessionOutcome.self, forKey: .outcome)
+        isStrict = try container.decodeIfPresent(Bool.self, forKey: .isStrict) ?? false
+        actualDurationSeconds = try container.decodeIfPresent(Int.self, forKey: .actualDurationSeconds)
+        lastRestrictionApplicationAt = try container.decodeIfPresent(Date.self, forKey: .lastRestrictionApplicationAt)
+        lastCleanupAttemptAt = try container.decodeIfPresent(Date.self, forKey: .lastCleanupAttemptAt)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(startedAt, forKey: .startedAt)
+        try container.encode(plannedEndAt, forKey: .plannedEndAt)
+        try container.encode(plannedDurationSeconds, forKey: .plannedDurationSeconds)
+        try container.encode(outcome, forKey: .outcome)
+        try container.encode(isStrict, forKey: .isStrict)
+        try container.encodeIfPresent(actualDurationSeconds, forKey: .actualDurationSeconds)
+        try container.encodeIfPresent(lastRestrictionApplicationAt, forKey: .lastRestrictionApplicationAt)
+        try container.encodeIfPresent(lastCleanupAttemptAt, forKey: .lastCleanupAttemptAt)
     }
 }
 

@@ -129,6 +129,62 @@ struct NoxaTests {
         #expect(FocusSessionService.normalizedDurationMinutes(1) == 15)
         #expect(FocusSessionService.normalizedDurationMinutes(45) == 45)
         #expect(FocusSessionService.normalizedDurationMinutes(600) == 480)
+        #expect(FocusSessionService.normalizedDurationMinutes(600, strict: true) == 240)
+    }
+
+    @Test @MainActor func strictSettingPersistsButDoesNotRewriteAnExistingSession() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.StrictSetting.\(UUID().uuidString)"))
+        let store = AppGroupStore(defaults: defaults)
+        let existingSession = ActiveSessionRecord(
+            plannedEndAt: Date().addingTimeInterval(900),
+            plannedDurationSeconds: 900,
+            outcome: .active
+        )
+        var snapshot = NoxaLocalSnapshot()
+        snapshot.activeSession = existingSession
+        try store.saveSnapshot(snapshot)
+
+        let service = FocusSessionService(store: store)
+        #expect(!service.strictModeEnabled)
+        service.setStrictModeEnabled(true)
+
+        #expect(FocusSessionService(store: store).strictModeEnabled)
+        #expect(service.activeSession?.isStrict == false)
+        #expect(try store.loadSnapshot()?.activeSession?.isStrict == false)
+    }
+
+    @Test @MainActor func strictActiveSessionRejectsEarlyEnd() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.StrictEnd.\(UUID().uuidString)"))
+        let store = AppGroupStore(defaults: defaults)
+        let session = ActiveSessionRecord(
+            plannedEndAt: Date().addingTimeInterval(900),
+            plannedDurationSeconds: 900,
+            outcome: .active,
+            isStrict: true
+        )
+        var snapshot = NoxaLocalSnapshot()
+        snapshot.activeSession = session
+        try store.saveSnapshot(snapshot)
+
+        let service = FocusSessionService(store: store)
+        service.endEarly()
+
+        #expect(service.activeSession?.id == session.id)
+        #expect(try store.loadSnapshot()?.activeSession?.outcome == .active)
+        #expect(service.errorMessage?.contains("cannot end early") == true)
+    }
+
+    @Test func legacySessionWithoutStrictFieldDecodesAsNormal() throws {
+        let session = ActiveSessionRecord(
+            plannedEndAt: Date(timeIntervalSince1970: 1_700_001_500),
+            plannedDurationSeconds: 1_500
+        )
+        let encoded = try JSONEncoder().encode(session)
+        var object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        object.removeValue(forKey: "isStrict")
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+
+        #expect(try JSONDecoder().decode(ActiveSessionRecord.self, from: legacyData).isStrict == false)
     }
 
     @Test @MainActor func focusSessionRestrictionsRoundTripThroughAppGroupStore() throws {
