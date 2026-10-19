@@ -68,14 +68,38 @@ final class FocusNotificationService: ObservableObject {
         guard canSchedule else { return }
 
         cancel(for: session.id)
+        let breakTiming = PomodoroBreakTiming(
+            workEndsAt: session.plannedEndAt,
+            breakMinutes: breakMinutes
+        )
         let focusComplete = UNMutableNotificationContent()
         focusComplete.title = "Focus interval complete"
         focusComplete.body = "Your apps are available. Take a \(breakMinutes)-minute break."
         focusComplete.sound = .default
         await add(
             content: focusComplete,
-            date: session.plannedEndAt,
+            date: breakTiming.startsAt,
             identifier: completionIdentifier(for: session.id)
+        )
+
+        let halfway = UNMutableNotificationContent()
+        halfway.title = "Halfway through your break"
+        halfway.body = "Take a moment to recharge before your next focus interval."
+        halfway.sound = .default
+        await add(
+            content: halfway,
+            date: breakTiming.halfwayAt,
+            identifier: breakHalfwayIdentifier(for: session.id)
+        )
+
+        let almostOver = UNMutableNotificationContent()
+        almostOver.title = "1 minute left in your break"
+        almostOver.body = "Your next focus interval is coming up."
+        almostOver.sound = .default
+        await add(
+            content: almostOver,
+            date: breakTiming.oneMinuteRemainingAt,
+            identifier: breakWarningIdentifier(for: session.id)
         )
 
         let breakComplete = UNMutableNotificationContent()
@@ -84,7 +108,7 @@ final class FocusNotificationService: ObservableObject {
         breakComplete.sound = .default
         await add(
             content: breakComplete,
-            date: session.plannedEndAt.addingTimeInterval(TimeInterval(max(1, breakMinutes) * 60)),
+            date: breakTiming.endsAt,
             identifier: breakIdentifier(for: session.id)
         )
     }
@@ -93,6 +117,8 @@ final class FocusNotificationService: ObservableObject {
         center.removePendingNotificationRequests(withIdentifiers: [
             warningIdentifier(for: sessionID),
             completionIdentifier(for: sessionID),
+            breakHalfwayIdentifier(for: sessionID),
+            breakWarningIdentifier(for: sessionID),
             breakIdentifier(for: sessionID)
         ])
     }
@@ -117,5 +143,13 @@ final class FocusNotificationService: ObservableObject {
 
     private func breakIdentifier(for sessionID: UUID) -> String {
         "noxa.focus.\(sessionID.uuidString).break-complete"
+    }
+
+    private func breakHalfwayIdentifier(for sessionID: UUID) -> String {
+        "noxa.focus.\(sessionID.uuidString).break-halfway"
+    }
+
+    private func breakWarningIdentifier(for sessionID: UUID) -> String {
+        "noxa.focus.\(sessionID.uuidString).break-warning"
     }
 }

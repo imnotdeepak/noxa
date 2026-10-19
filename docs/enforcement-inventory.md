@@ -37,7 +37,7 @@ The migration cannot always infer whether an old web-content filter came from a 
 
 - Environment: Xcode 27.0, iPhone 17 simulator on iOS 26.5. The active command-line developer directory points to Command Line Tools, so project commands use `/Applications/Xcode.app/Contents/Developer` explicitly.
 - The first test attempt exposed stale subscription test calls. After that test was updated, the next run exposed an onboarding test that skipped the required value-overview milestone. Both test expectations were brought into line with the current services.
-- All 40 unit tests passed after the initial store migration changes, including saved manual and website activation state. Simulator Managed Settings stores read back as empty even after accepting a write, so physical-device testing is required for actual enforcement and migration.
+- All 47 unit tests passed through the Pomodoro timing slice, including saved manual and website activation state, Strict Mode policy, break timing, and four-round timeline boundaries. Simulator Managed Settings stores read back as empty even after accepting a write, so physical-device testing is required for actual enforcement and migration.
 - A full-suite rerun did not complete because the simulator UI-test runner timed out while loading Accessibility. An earlier full run executed UI tests, but failed on the onboarding test before that expectation was fixed. A clean UI-test result remains to be obtained; this is separate from physical-device Screen Time validation.
 
 ## Strict Mode first slice
@@ -45,4 +45,10 @@ The migration cannot always infer whether an old web-content filter came from a 
 - A device-local Settings toggle defaults off and is offered once on first entry to the paid app. Its value is copied into each new session record; changing the toggle does not rewrite an active session.
 - Strict starts show the expected end time and an in-app no-early-end warning. The service enforces a four-hour cap and rejects early-end calls for strict records; normal sessions retain the existing early-end flow and eight-hour cap.
 - Account sign-out and deletion controls remain unavailable during any active focus session. Strict sessions show their scheduled end instead of an early-end action, including in the subscription recovery view.
-- Pomodoro work intervals use the same strict policy. Automatic work/break transitions and the approved break notifications are still pending, so the complete four-round Pomodoro behavior is not yet implemented.
+- Pomodoro work intervals use the same strict policy. Automatic work/break transitions are still pending, so the complete four-round Pomodoro behavior is not yet implemented.
+
+## Pomodoro timing slice
+
+- `PomodoroCyclePlan` now describes four work intervals and three breaks using elapsed time. It can identify the correct phase after a process restart and has boundary tests.
+- `FocusNotificationService` now schedules reminders halfway through a break and one minute before it ends, in addition to the existing work-end and break-end notices.
+- The app still runs only the first work interval. The next step is to persist a cycle and pre-schedule all work intervals through Device Activity so later intervals can start while Noxa is closed. Apple's callbacks may arrive when the device is next used, so recovery must derive the phase from the saved timeline.
