@@ -61,7 +61,6 @@ struct ContentView: View {
     @State private var pomodoroWorkMinutes = 25
     @State private var pomodoroBreakMinutes = 5
     @State private var isCustomPomodoro = false
-    @State private var pendingPomodoroBreakMinutes: Int?
     @State private var isPaywallPresented = false
     @State private var isDeleteAccountConfirmationPresented = false
     @State private var isCustomDuration = false
@@ -69,6 +68,7 @@ struct ContentView: View {
     @State private var isEndRitualPresented = false
     @State private var isStrictModeIntroductionPresented = false
     @State private var isStrictStartConfirmationPresented = false
+    @State private var isPomodoroCompletionPresented = false
     @State private var strictStartIsPomodoro = false
     @State private var isNotificationPromptPresented = false
     @State private var selectedTab = MainTab.home
@@ -123,6 +123,121 @@ struct ContentView: View {
     }
 
     var body: some View {
+        let presentedTabs = mainTabs
+        .tint(NoxaTheme.accent)
+        .preferredColorScheme(.dark)
+        .font(NoxaTheme.font(17))
+        .toolbarBackground(NoxaTheme.background.opacity(0.96), for: .tabBar)
+        .toolbarBackground(.visible, for: .tabBar)
+        .background(NoxaBackground())
+        .sheet(isPresented: $restrictions.isPickerPresented) {
+            restrictionPickerSheet
+        }
+        .sheet(isPresented: $isDailyLimitPickerPresented) {
+            dailyLimitPickerSheet
+        }
+        .sheet(isPresented: $isSchedulePickerPresented) {
+            schedulePickerSheet
+        }
+        .fullScreenCover(isPresented: $isEndRitualPresented) {
+            EndSessionRitualView {
+                guard !focusSession.isActiveSessionStrict else { return }
+                if let cycle = focusSession.pomodoroCycle {
+                    notifications.cancelPomodoroCycle(cycle.id)
+                }
+                if let sessionID = focusSession.activeSession?.id {
+                    notifications.cancel(for: sessionID)
+                }
+                focusSession.endEarly()
+            }
+        }
+        let observedTabs = presentedTabs
+        .task {
+            authorization.refresh()
+            if focusSession.completedPomodoroCycleID != nil {
+                isPomodoroCompletionPresented = true
+            }
+            if !focusSession.hasOfferedStrictMode {
+                focusSession.markStrictModeOffered()
+                isStrictModeIntroductionPresented = true
+            }
+        }
+        .onChange(of: scenePhase) { newPhase in
+            guard newPhase == .active else { return }
+            statsReferenceDate = Date()
+        }
+        .onChange(of: focusSession.completedPomodoroCycleID) { completedID in
+            isPomodoroCompletionPresented = completedID != nil
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+            statsReferenceDate = Date()
+        }
+        let accountAlerts = observedTabs
+        .alert("Delete your Noxa account?", isPresented: $isDeleteAccountConfirmationPresented) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete Account", role: .destructive) {
+                Task { @MainActor in
+                    await deleteAccountAndLocalData()
+                }
+            }
+        } message: {
+            Text("This permanently deletes your cloud account and Noxa data. Your App Store subscription must be cancelled separately in Apple settings.")
+        }
+        .alert("Get focus notifications?", isPresented: $isNotificationPromptPresented) {
+            Button("Not Now", role: .cancel) {}
+            Button("Allow Notifications") {
+                Task { await enableNotificationsForActiveSession() }
+            }
+        } message: {
+            Text("Noxa can notify you when focus sessions and Pomodoro breaks are complete.")
+        }
+        return accountAlerts
+        .alert("Try Strict Mode?", isPresented: $isStrictModeIntroductionPresented) {
+            Button("Keep Off", role: .cancel) {}
+            Button("Turn On") { focusSession.setStrictModeEnabled(true) }
+        } message: {
+            Text("Strict Mode makes future focus work sessions impossible to end early in Noxa. You can turn it off in Settings for future sessions. Strict sessions last at most 4 hours.")
+        }
+        .alert("Start Strict Focus?", isPresented: $isStrictStartConfirmationPresented) {
+            Button("Cancel", role: .cancel) {}
+            Button("Start Strict Session") {
+                if strictStartIsPomodoro {
+                    beginPomodoro()
+                } else {
+                    beginFocusSession(intention: "")
+                }
+            }
+        } message: {
+            Text("If you start now, this work session ends at \(strictEndTimeDescription). You cannot end it early in Noxa. During a Pomodoro break, you can stop before the next work session.")
+        }
+        .alert("Four rounds complete", isPresented: $isPomodoroCompletionPresented) {
+            Button("Later", role: .cancel) {
+                focusSession.acknowledgePomodoroCompletion()
+            }
+            Button("Start Another") {
+                focusSession.acknowledgePomodoroCompletion()
+                if focusSession.strictModeEnabled {
+                    strictStartIsPomodoro = true
+                    isStrictStartConfirmationPresented = true
+                } else {
+                    beginPomodoro()
+                }
+            }
+        } message: {
+            Text("Your Pomodoro cycle is over. Would you like to start another one?")
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    commitCustomDuration()
+                    isCustomDurationFieldFocused = false
+                }
+            }
+        }
+    }
+
+    private var mainTabs: some View {
         TabView(selection: $selectedTab) {
             NavigationStack {
                 dailyLimitsContent
@@ -168,92 +283,6 @@ struct ContentView: View {
                 Label("Account", systemImage: "person.crop.circle")
             }
             .tag(MainTab.account)
-        }
-        .tint(NoxaTheme.accent)
-        .preferredColorScheme(.dark)
-        .font(NoxaTheme.font(17))
-        .toolbarBackground(NoxaTheme.background.opacity(0.96), for: .tabBar)
-        .toolbarBackground(.visible, for: .tabBar)
-        .background(NoxaBackground())
-        .sheet(isPresented: $restrictions.isPickerPresented) {
-            restrictionPickerSheet
-        }
-        .sheet(isPresented: $isDailyLimitPickerPresented) {
-            dailyLimitPickerSheet
-        }
-        .sheet(isPresented: $isSchedulePickerPresented) {
-            schedulePickerSheet
-        }
-        .fullScreenCover(isPresented: $isEndRitualPresented) {
-            EndSessionRitualView {
-                guard !focusSession.isActiveSessionStrict else { return }
-                if let sessionID = focusSession.activeSession?.id {
-                    notifications.cancel(for: sessionID)
-                }
-                focusSession.endEarly()
-            }
-        }
-        .task {
-            authorization.refresh()
-            if !focusSession.hasOfferedStrictMode {
-                focusSession.markStrictModeOffered()
-                isStrictModeIntroductionPresented = true
-            }
-        }
-        .onChange(of: scenePhase) { newPhase in
-            guard newPhase == .active else { return }
-            statsReferenceDate = Date()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
-            statsReferenceDate = Date()
-        }
-        .alert("Delete your Noxa account?", isPresented: $isDeleteAccountConfirmationPresented) {
-            Button("Cancel", role: .cancel) {}
-            Button("Delete Account", role: .destructive) {
-                Task { @MainActor in
-                    await deleteAccountAndLocalData()
-                }
-            }
-        } message: {
-            Text("This permanently deletes your cloud account and Noxa data. Your App Store subscription must be cancelled separately in Apple settings.")
-        }
-        .alert("Get focus notifications?", isPresented: $isNotificationPromptPresented) {
-            Button("Not Now", role: .cancel) {}
-            Button("Allow Notifications") {
-                Task { await enableNotificationsForActiveSession() }
-            }
-        } message: {
-            Text("Noxa can notify you when focus sessions and Pomodoro breaks are complete.")
-        }
-        .alert("Try Strict Mode?", isPresented: $isStrictModeIntroductionPresented) {
-            Button("Keep Off", role: .cancel) {}
-            Button("Turn On") { focusSession.setStrictModeEnabled(true) }
-        } message: {
-            Text("Strict Mode makes future focus work sessions impossible to end early in Noxa. You can turn it off in Settings for future sessions. Strict sessions last at most 4 hours.")
-        }
-        .alert("Start Strict Focus?", isPresented: $isStrictStartConfirmationPresented) {
-            Button("Cancel", role: .cancel) {}
-            Button("Start Strict Session") {
-                if strictStartIsPomodoro {
-                    beginPomodoro()
-                } else {
-                    beginFocusSession(intention: "")
-                }
-            }
-        } message: {
-            let minutes = strictStartIsPomodoro ? pomodoroWorkMinutes : chosenDurationMinutes
-            let endTime = Date().addingTimeInterval(TimeInterval(minutes * 60))
-                .formatted(date: .omitted, time: .shortened)
-            Text("If you start now, this work session ends at \(endTime). You cannot end it early in Noxa. During a Pomodoro break, you can stop before the next work session.")
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") {
-                    commitCustomDuration()
-                    isCustomDurationFieldFocused = false
-                }
-            }
         }
     }
 
@@ -473,20 +502,31 @@ struct ContentView: View {
     private var focusSessionCard: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                VStack(alignment: focusSession.isActive ? .leading : .center, spacing: 4) {
-                    Text(focusSession.isActive ? "Stay focused" : "Start a focus")
+                VStack(alignment: focusSession.isActive || focusSession.hasPomodoroCycle ? .leading : .center, spacing: 4) {
+                    Text(focusSession.pomodoroBreakEndsAt != nil
+                         ? "Pomodoro break"
+                         : (focusSession.isActive ? "Stay focused" : "Start a focus"))
                         .font(NoxaTheme.font(24, weight: .bold, relativeTo: .title2))
-                    Text(focusSession.isActive ? "Noxa is protecting your time." : "Choose a duration and begin.")
+                    Text(focusSession.pomodoroBreakEndsAt != nil
+                         ? "The next work round starts automatically."
+                         : (focusSession.isActive ? "Noxa is protecting your time." : "Choose a duration and begin."))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .multilineTextAlignment(focusSession.isActive ? .leading : .center)
+                        .multilineTextAlignment(focusSession.isActive || focusSession.hasPomodoroCycle ? .leading : .center)
                 }
                 .frame(
                     maxWidth: .infinity,
-                    alignment: focusSession.isActive ? .leading : .center
+                    alignment: focusSession.isActive || focusSession.hasPomodoroCycle ? .leading : .center
                 )
                 if focusSession.isActive {
                     Text("LIVE")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(NoxaTheme.accent, in: Capsule())
+                } else if focusSession.pomodoroBreakEndsAt != nil {
+                    Text("BREAK")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.black)
                         .padding(.horizontal, 10)
@@ -527,6 +567,11 @@ struct ContentView: View {
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(.secondary)
 
+                        if let round = focusSession.pomodoroRoundDescription {
+                            Text(round)
+                                .font(.subheadline.weight(.semibold))
+                        }
+
                         if let intention = focusSession.activeIntention, !intention.isEmpty {
                             Label(intention, systemImage: "scope")
                                 .font(.subheadline.weight(.medium))
@@ -545,6 +590,28 @@ struct ContentView: View {
                     }
                     .buttonStyle(NoxaSecondaryButtonStyle())
                 }
+            } else if let breakEndsAt = focusSession.pomodoroBreakEndsAt {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    VStack(spacing: 10) {
+                        Text(Self.durationString(seconds: Int(max(0, breakEndsAt.timeIntervalSince(context.date)))))
+                            .font(NoxaTheme.font(42, weight: .medium, relativeTo: .largeTitle))
+                            .monospacedDigit()
+                        Text("Break ends at \(breakEndsAt.formatted(date: .omitted, time: .shortened))")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        if let round = focusSession.pomodoroRoundDescription {
+                            Text(round).font(.subheadline.weight(.semibold))
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                Button("Stop Pomodoro") {
+                    if let cycle = focusSession.pomodoroCycle {
+                        notifications.cancelPomodoroCycle(cycle.id)
+                    }
+                    focusSession.stopPomodoroDuringBreak()
+                }
+                .buttonStyle(NoxaSecondaryButtonStyle())
             } else {
                 VStack(spacing: 2) {
                     Text(Self.durationLabel(minutes: chosenDurationMinutes))
@@ -689,6 +756,7 @@ struct ContentView: View {
                     presentRestrictionPicker()
                 }
                 .font(.subheadline.weight(.semibold))
+                .disabled(focusSession.hasPomodoroCycle && !focusSession.isActive)
             }
 
             Text(hasFocusRestrictions
@@ -733,6 +801,10 @@ struct ContentView: View {
                     Label("You can add distractions now, but existing ones stay locked until the session ends", systemImage: "lock.fill")
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(.orange)
+                } else if focusSession.hasPomodoroCycle {
+                    Label("Blocklist changes resume after you stop the Pomodoro during a break or finish all four rounds", systemImage: "lock.fill")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.orange)
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
@@ -758,7 +830,7 @@ struct ContentView: View {
                         presentRestrictionPicker()
                     }
                     .buttonStyle(NoxaSecondaryButtonStyle())
-                    .disabled(!authorization.state.isApproved)
+                    .disabled(!authorization.state.isApproved || (focusSession.hasPomodoroCycle && !focusSession.isActive))
                 }
                 .noxaCard()
 
@@ -821,7 +893,10 @@ struct ContentView: View {
                 }
                 .buttonStyle(NoxaSecondaryButtonStyle())
                 .fixedSize()
-                .disabled(websites.domains.count >= WebsiteBlocklistService.maximumDomains)
+                .disabled(
+                    websites.domains.count >= WebsiteBlocklistService.maximumDomains
+                        || (focusSession.hasPomodoroCycle && !focusSession.isActive)
+                )
             }
 
             if websites.domains.isEmpty {
@@ -841,7 +916,7 @@ struct ContentView: View {
                         }
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .disabled(focusSession.isActive)
+                        .disabled(focusSession.isActive || focusSession.hasPomodoroCycle)
                     }
                 }
             }
@@ -872,7 +947,7 @@ struct ContentView: View {
                     .foregroundStyle(NoxaTheme.accent)
             }
 
-            Text("Noxa blocks your current Blocklist during the focus interval, releases it for your break, and reminds you when it’s time to return.")
+            Text("Four work rounds start automatically, with a break between each. Noxa releases the focus blocklist during breaks and reminds you before work resumes.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
@@ -937,6 +1012,7 @@ struct ContentView: View {
                 .disabled(
                     !authorization.state.isApproved
                         || focusSession.isActive
+                        || focusSession.hasPomodoroCycle
                         || restrictions.isShieldActive
                         || monitoring.isMonitoring
                 )
@@ -1403,7 +1479,7 @@ struct ContentView: View {
                     }
                 }
                 .buttonStyle(NoxaSecondaryButtonStyle())
-                .disabled(authentication.isBusy || focusSession.isActive)
+                .disabled(authentication.isBusy || focusSession.isActive || focusSession.hasPomodoroCycle)
 
                 Button("Delete Account", role: .destructive) {
                     isDeleteAccountConfirmationPresented = true
@@ -1411,9 +1487,9 @@ struct ContentView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.red)
                 .frame(maxWidth: .infinity)
-                .disabled(authentication.isBusy || focusSession.isActive)
+                .disabled(authentication.isBusy || focusSession.isActive || focusSession.hasPomodoroCycle)
 
-                if focusSession.isActive {
+                if focusSession.isActive || focusSession.hasPomodoroCycle {
                     Text("Wait until the active focus session ends before signing out or deleting your account.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -1481,7 +1557,7 @@ struct ContentView: View {
     }
 
     private func deleteAccountAndLocalData() async {
-        guard !focusSession.isActive else { return }
+        guard !focusSession.isActive && !focusSession.hasPomodoroCycle else { return }
         guard await authentication.deleteAccount() else { return }
         LocalDataCleanupService.clear(
             focusSession: focusSession,
@@ -1498,6 +1574,12 @@ struct ContentView: View {
     private var chosenDurationMinutes: Int {
         guard isCustomDuration else { return min(selectedDurationMinutes, maximumFocusMinutes) }
         return normalizedCustomDuration
+    }
+
+    private var strictEndTimeDescription: String {
+        let minutes = strictStartIsPomodoro ? pomodoroWorkMinutes : chosenDurationMinutes
+        return Date().addingTimeInterval(TimeInterval(minutes * 60))
+            .formatted(date: .omitted, time: .shortened)
     }
 
     private var maximumFocusMinutes: Int {
@@ -1528,6 +1610,7 @@ struct ContentView: View {
     }
 
     private func presentRestrictionPicker() {
+        guard !focusSession.hasPomodoroCycle || focusSession.isActive else { return }
         // Existing choices stay visibly checked. During an active session the
         // binding below also prevents those locked choices from being removed.
         restrictionPickerSelection = restrictions.selection
@@ -1535,6 +1618,11 @@ struct ContentView: View {
     }
 
     private func finishRestrictionPicker() {
+        if focusSession.hasPomodoroCycle && !focusSession.isActive {
+            restrictionPickerSelection = FamilyActivitySelection()
+            restrictions.isPickerPresented = false
+            return
+        }
         if focusSession.isActive {
             guard restrictions.addToActiveSession(restrictionPickerSelection) else { return }
         } else {
@@ -1587,7 +1675,6 @@ struct ContentView: View {
     }
 
     private func beginFocusSession(intention: String) {
-        pendingPomodoroBreakMinutes = nil
         restrictions.persistSelection()
         focusSession.start(
             selection: restrictions.selection,
@@ -1608,18 +1695,17 @@ struct ContentView: View {
 
     private func beginPomodoro() {
         restrictions.persistSelection()
-        focusSession.start(
+        focusSession.startPomodoro(
             selection: restrictions.selection,
             websiteDomains: websites.domains,
-            durationMinutes: pomodoroWorkMinutes,
-            intention: "Pomodoro · \(pomodoroWorkMinutes)/\(pomodoroBreakMinutes)"
+            workMinutes: pomodoroWorkMinutes,
+            breakMinutes: pomodoroBreakMinutes
         )
-        guard let session = focusSession.activeSession else { return }
-        pendingPomodoroBreakMinutes = pomodoroBreakMinutes
+        guard let cycle = focusSession.pomodoroCycle else { return }
         Task {
             await notifications.refreshAuthorizationStatus()
             if notifications.canSchedule {
-                await notifications.schedulePomodoro(for: session, breakMinutes: pomodoroBreakMinutes)
+                await notifications.schedulePomodoroCycle(cycle)
             } else if notifications.authorizationStatus == .notDetermined {
                 isNotificationPromptPresented = true
             }
@@ -1629,8 +1715,8 @@ struct ContentView: View {
     private func enableNotificationsForActiveSession() async {
         guard await notifications.requestAuthorization(),
               let session = focusSession.activeSession else { return }
-        if let breakMinutes = pendingPomodoroBreakMinutes {
-            await notifications.schedulePomodoro(for: session, breakMinutes: breakMinutes)
+        if let cycle = focusSession.pomodoroCycle {
+            await notifications.schedulePomodoroCycle(cycle)
         } else {
             await notifications.schedule(for: session)
         }

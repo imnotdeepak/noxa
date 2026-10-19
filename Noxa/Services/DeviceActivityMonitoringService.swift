@@ -14,6 +14,7 @@ enum NoxaDeviceActivityConfiguration {
     static let activityName = DeviceActivityName("noxa.validation.activity")
     static let thresholdEvent = DeviceActivityEvent.Name("noxa.validation.threshold")
     static let focusActivityName = DeviceActivityName("noxa.focus.session")
+    static let pomodoroWorkActivityPrefix = "noxa.pomodoro.work"
     static let dailyLimitActivityName = DeviceActivityName("noxa.daily.limits")
     static let scheduleActivityPrefix = "noxa.schedule"
     static let dailyLimitReachedEventsKey = "noxa.dailyLimitReachedEvents"
@@ -30,6 +31,10 @@ enum NoxaDeviceActivityConfiguration {
 
     static func scheduleActivityName(for id: UUID, segment: String) -> DeviceActivityName {
         DeviceActivityName("\(scheduleActivityPrefix).\(segment).\(id.uuidString.lowercased())")
+    }
+
+    static func pomodoroWorkActivityName(cycleID: UUID, round: Int) -> DeviceActivityName {
+        DeviceActivityName("\(pomodoroWorkActivityPrefix).\(cycleID.uuidString.lowercased()).\(round)")
     }
 
     static func scheduleRelaxationActivityName(for id: UUID) -> DeviceActivityName {

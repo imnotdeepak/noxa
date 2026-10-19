@@ -32,6 +32,8 @@ final class AppGroupStore {
         static let websiteBlocklist = "noxa.websiteBlocklist"
         static let dailyLimits = "noxa.dailyLimits"
         static let restrictionSchedules = "noxa.restrictionSchedules"
+        static let pomodoroCycle = "noxa.pomodoroCycle"
+        static let pendingPomodoroCompletion = "noxa.pendingPomodoroCompletion"
         static let cloudSyncState = "noxa.cloudSyncState"
         static let cloudAccountCaches = "noxa.cloudAccountCaches"
     }
@@ -197,6 +199,58 @@ final class AppGroupStore {
 
     func clearRestrictionSchedules() {
         defaults.removeObject(forKey: Key.restrictionSchedules)
+    }
+
+    func loadPomodoroCycle() throws -> PomodoroCycleRecord? {
+        guard let data = defaults.data(forKey: Key.pomodoroCycle) else { return nil }
+        return try JSONDecoder().decode(PomodoroCycleRecord.self, from: data)
+    }
+
+    func savePomodoroCycle(_ cycle: PomodoroCycleRecord) throws {
+        defaults.set(try JSONEncoder().encode(cycle), forKey: Key.pomodoroCycle)
+    }
+
+    func clearPomodoroCycle() {
+        defaults.removeObject(forKey: Key.pomodoroCycle)
+    }
+
+    func hasActivePomodoroCycle() -> Bool {
+        (try? loadPomodoroCycle()) != nil
+    }
+
+    func pomodoroRoundEnforcedAt(cycleID: UUID, round: Int) -> Date? {
+        defaults.object(forKey: pomodoroRoundEnforcementKey(cycleID: cycleID, round: round)) as? Date
+    }
+
+    func markPomodoroRoundEnforced(cycleID: UUID, round: Int, at date: Date = Date()) {
+        let key = pomodoroRoundEnforcementKey(cycleID: cycleID, round: round)
+        if defaults.object(forKey: key) == nil {
+            defaults.set(date, forKey: key)
+        }
+    }
+
+    func clearPomodoroRoundEnforcement(cycleID: UUID) {
+        for round in 1...PomodoroCyclePlan.roundCount {
+            defaults.removeObject(forKey: pomodoroRoundEnforcementKey(cycleID: cycleID, round: round))
+        }
+    }
+
+    private func pomodoroRoundEnforcementKey(cycleID: UUID, round: Int) -> String {
+        "noxa.pomodoro.enforced.\(cycleID.uuidString.lowercased()).\(round)"
+    }
+
+    var pendingPomodoroCompletionID: UUID? {
+        get {
+            guard let value = defaults.string(forKey: Key.pendingPomodoroCompletion) else { return nil }
+            return UUID(uuidString: value)
+        }
+        set {
+            if let newValue {
+                defaults.set(newValue.uuidString, forKey: Key.pendingPomodoroCompletion)
+            } else {
+                defaults.removeObject(forKey: Key.pendingPomodoroCompletion)
+            }
+        }
     }
 
     func loadCloudSyncState() throws -> CloudSyncState? {

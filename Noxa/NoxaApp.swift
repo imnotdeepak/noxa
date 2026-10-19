@@ -25,6 +25,7 @@ struct NoxaApp: App {
 
     private var hasActiveRestrictions: Bool {
         focusSession.isActive
+            || focusSession.hasPomodoroCycle
             || restrictions.isShieldActive
             || websites.isBlocklistActive
             || monitoring.isMonitoring
@@ -254,6 +255,7 @@ private struct RestrictionRecoveryView: View {
     @EnvironmentObject private var monitoring: DeviceActivityMonitoringService
     @EnvironmentObject private var dailyLimits: DailyLimitService
     @EnvironmentObject private var schedules: RestrictionScheduleService
+    @EnvironmentObject private var notifications: FocusNotificationService
     @State private var isLoginPresented = false
 
     var body: some View {
@@ -286,7 +288,19 @@ private struct RestrictionRecoveryView: View {
 
             if focusSession.isActive && !focusSession.isActiveSessionStrict {
                 RecoveryActionButton(title: "End Focus Session") {
+                    if let cycle = focusSession.pomodoroCycle {
+                        notifications.cancelPomodoroCycle(cycle.id)
+                    }
                     focusSession.endEarly()
+                }
+            }
+
+            if focusSession.pomodoroBreakEndsAt != nil {
+                RecoveryActionButton(title: "Stop Pomodoro During Break") {
+                    if let cycle = focusSession.pomodoroCycle {
+                        notifications.cancelPomodoroCycle(cycle.id)
+                    }
+                    focusSession.stopPomodoroDuringBreak()
                 }
             }
 

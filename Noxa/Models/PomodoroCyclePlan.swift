@@ -2,7 +2,7 @@ import Foundation
 
 /// Fixed elapsed-time plan for four work intervals and three breaks. The
 /// timeline can be reconstructed after the app or monitor extension restarts.
-struct PomodoroCyclePlan: Codable, Equatable, Sendable {
+struct PomodoroCyclePlan: Codable, nonisolated Equatable, Sendable {
     enum Phase: nonisolated Equatable {
         case scheduled(startsAt: Date)
         case work(round: Int, endsAt: Date)

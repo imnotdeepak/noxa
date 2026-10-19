@@ -21,6 +21,8 @@ final class FocusSessionService: ObservableObject {
     @Published private(set) var activeIntention: String?
     @Published private(set) var strictModeEnabled: Bool
     @Published private(set) var hasOfferedStrictMode: Bool
+    @Published private(set) var pomodoroCycle: PomodoroCycleRecord?
+    @Published private(set) var completedPomodoroCycleID: UUID?
 
     private let store: AppGroupStore
     private let center = DeviceActivityCenter()
@@ -33,6 +35,8 @@ final class FocusSessionService: ObservableObject {
         self.store = store ?? AppGroupStore.shared
         strictModeEnabled = self.store.isStrictModeEnabled
         hasOfferedStrictMode = self.store.hasOfferedStrictMode
+        pomodoroCycle = (try? self.store.loadPomodoroCycle()) ?? nil
+        completedPomodoroCycleID = self.store.pendingPomodoroCompletionID
         let snapshot = try? self.store.loadSnapshot()
         activeSession = snapshot?.activeSession
         history = snapshot?.sessionHistory ?? []
@@ -51,6 +55,26 @@ final class FocusSessionService: ObservableObject {
         activeSession?.isStrict == true
     }
 
+    var hasPomodoroCycle: Bool { pomodoroCycle != nil }
+
+    var pomodoroBreakEndsAt: Date? {
+        guard let pomodoroCycle,
+              case let .breakTime(_, endsAt) = pomodoroCycle.plan.phase(at: Date()) else {
+            return nil
+        }
+        return endsAt
+    }
+
+    var pomodoroRoundDescription: String? {
+        guard let pomodoroCycle else { return nil }
+        switch pomodoroCycle.plan.phase(at: Date()) {
+        case let .work(round, _): return "Round \(round) of 4"
+        case let .breakTime(afterRound, _): return "Break after round \(afterRound)"
+        case .scheduled: return "Starting soon"
+        case .complete: return "Four rounds complete"
+        }
+    }
+
     func setStrictModeEnabled(_ enabled: Bool) {
         store.isStrictModeEnabled = enabled
         strictModeEnabled = enabled
@@ -59,6 +83,11 @@ final class FocusSessionService: ObservableObject {
     func markStrictModeOffered() {
         store.hasOfferedStrictMode = true
         hasOfferedStrictMode = true
+    }
+
+    func acknowledgePomodoroCompletion() {
+        store.pendingPomodoroCompletionID = nil
+        completedPomodoroCycleID = nil
     }
 
     var completedSessionCount: Int {
@@ -93,6 +122,10 @@ final class FocusSessionService: ObservableObject {
         }
         guard activeSession == nil else {
             errorMessage = "A focus session is already active."
+            return
+        }
+        guard (try? store.loadPomodoroCycle()) == nil else {
+            errorMessage = "Finish or stop the current Pomodoro before starting another session."
             return
         }
         guard !selection.applicationTokens.isEmpty
@@ -154,11 +187,74 @@ final class FocusSessionService: ObservableObject {
         }
     }
 
+    func startPomodoro(
+        selection: FamilyActivitySelection,
+        websiteDomains: [String] = [],
+        workMinutes: Int,
+        breakMinutes: Int
+    ) {
+        guard pomodoroCycle == nil else {
+            errorMessage = "A Pomodoro cycle is already in progress."
+            return
+        }
+        let plan = PomodoroCyclePlan(
+            startedAt: Date(),
+            workMinutes: workMinutes,
+            breakMinutes: breakMinutes
+        )
+        start(
+            selection: selection,
+            websiteDomains: websiteDomains,
+            durationMinutes: plan.workMinutes,
+            intention: "Pomodoro · \(plan.workMinutes)/\(plan.breakMinutes)"
+        )
+        guard let firstSession = activeSession else { return }
+
+        let cycle = PomodoroCycleRecord(
+            plan: PomodoroCyclePlan(
+                startedAt: firstSession.startedAt,
+                workMinutes: plan.workMinutes,
+                breakMinutes: plan.breakMinutes
+            ),
+            selection: selection,
+            websiteDomains: websiteDomains,
+            isStrict: firstSession.isStrict,
+            firstSessionID: firstSession.id
+        )
+        do {
+            try store.savePomodoroCycle(cycle)
+            try schedulePomodoroMonitors(for: cycle)
+            store.markPomodoroRoundEnforced(
+                cycleID: cycle.id,
+                round: 1,
+                at: firstSession.lastRestrictionApplicationAt ?? firstSession.startedAt
+            )
+            pomodoroCycle = cycle
+            acknowledgePomodoroCompletion()
+            schedulePomodoroBoundaryReconciliation(for: firstSession.plannedEndAt)
+        } catch {
+            stopPomodoroMonitors(for: cycle)
+            store.clearPomodoroCycle()
+            store.clearPomodoroRoundEnforcement(cycleID: cycle.id)
+            pomodoroCycle = nil
+            interrupt(
+                session: firstSession,
+                message: "The Pomodoro cycle could not be scheduled: \(error.localizedDescription)"
+            )
+        }
+    }
+
     func endEarly() {
         guard let activeSession else { return }
         guard !activeSession.isStrict else {
             errorMessage = "Strict focus cannot end early. It ends at \(activeSession.plannedEndAt.formatted(date: .omitted, time: .shortened))."
             return
+        }
+        if let pomodoroCycle {
+            stopPomodoroMonitors(for: pomodoroCycle)
+            store.clearPomodoroCycle()
+            store.clearPomodoroRoundEnforcement(cycleID: pomodoroCycle.id)
+            self.pomodoroCycle = nil
         }
         reconciliationTask?.cancel()
         errorMessage = nil
@@ -198,6 +294,18 @@ final class FocusSessionService: ObservableObject {
     /// Reconciles persisted intent with the current time and the system's
     /// scheduled activity. Call this at launch and after returning foreground.
     func reconcile(recoverStale: Bool = true) {
+        if let cycle = (try? store.loadPomodoroCycle()) ?? nil {
+            pomodoroCycle = cycle
+            if case .work(round: 1, _) = cycle.plan.phase(at: Date()) {
+                // The first interval uses the existing focus activity and its
+                // established recovery path below.
+            } else {
+                reconcilePomodoro(cycle)
+                return
+            }
+        } else {
+            pomodoroCycle = nil
+        }
         guard let snapshot = try? store.loadSnapshot() else {
             activeSession = nil
             activeIntention = nil
@@ -302,6 +410,14 @@ final class FocusSessionService: ObservableObject {
 
     func clearAllLocalData() {
         reconciliationTask?.cancel()
+        if let pomodoroCycle {
+            stopPomodoroMonitors(for: pomodoroCycle)
+            store.clearPomodoroRoundEnforcement(cycleID: pomodoroCycle.id)
+        }
+        store.clearPomodoroCycle()
+        store.pendingPomodoroCompletionID = nil
+        pomodoroCycle = nil
+        completedPomodoroCycleID = nil
         center.stopMonitoring([NoxaDeviceActivityConfiguration.focusActivityName])
         settingsStore.clearAllSettings()
         store.clearFocusSessionRestrictions()
@@ -314,6 +430,170 @@ final class FocusSessionService: ObservableObject {
         store.hasOfferedStrictMode = false
         strictModeEnabled = false
         hasOfferedStrictMode = false
+    }
+
+    func stopPomodoroDuringBreak() {
+        guard let pomodoroCycle,
+              case .breakTime = pomodoroCycle.plan.phase(at: Date()) else { return }
+        reconciliationTask?.cancel()
+        stopPomodoroMonitors(for: pomodoroCycle)
+        store.clearPomodoroCycle()
+        store.clearPomodoroRoundEnforcement(cycleID: pomodoroCycle.id)
+        self.pomodoroCycle = nil
+        settingsStore.clearAllSettings()
+        store.clearFocusSessionRestrictions()
+        if var snapshot = try? store.loadSnapshot() {
+            snapshot.activeSession = nil
+            snapshot.sessionEngineState = .idle
+            try? store.saveSnapshot(snapshot)
+        }
+        activeSession = nil
+        activeIntention = nil
+        errorMessage = nil
+    }
+
+    private func schedulePomodoroMonitors(for cycle: PomodoroCycleRecord) throws {
+        let calendar = Calendar.current
+        for round in 2...PomodoroCyclePlan.roundCount {
+            guard let interval = cycle.plan.workInterval(round: round),
+                  interval.end > Date() else { continue }
+            let name = NoxaDeviceActivityConfiguration.pomodoroWorkActivityName(
+                cycleID: cycle.id, round: round
+            )
+            guard !center.activities.contains(name) else { continue }
+            let start = calendar.dateComponents(
+                [.calendar, .year, .month, .day, .hour, .minute, .second],
+                from: interval.start
+            )
+            let end = calendar.dateComponents(
+                [.calendar, .year, .month, .day, .hour, .minute, .second],
+                from: interval.end
+            )
+            try center.startMonitoring(
+                name,
+                during: DeviceActivitySchedule(
+                    intervalStart: start,
+                    intervalEnd: end,
+                    repeats: false
+                )
+            )
+        }
+    }
+
+    private func stopPomodoroMonitors(for cycle: PomodoroCycleRecord) {
+        center.stopMonitoring((2...PomodoroCyclePlan.roundCount).map {
+            NoxaDeviceActivityConfiguration.pomodoroWorkActivityName(
+                cycleID: cycle.id, round: $0
+            )
+        })
+    }
+
+    private func reconcilePomodoro(_ cycle: PomodoroCycleRecord, now: Date = Date()) {
+        guard Self.isAuthorizationApproved(authorizationCenter.authorizationStatus) else {
+            let message = "Screen Time access was revoked. The Pomodoro cycle was stopped."
+            if let session = (try? store.loadSnapshot())?.activeSession,
+               session.outcome == .active {
+                interrupt(session: session, message: message)
+                return
+            }
+            stopPomodoroMonitors(for: cycle)
+            store.clearPomodoroCycle()
+            pomodoroCycle = nil
+            settingsStore.clearAllSettings()
+            activeSession = nil
+            activeIntention = nil
+            errorMessage = message
+            return
+        }
+
+        var snapshot = (try? store.loadSnapshot()) ?? NoxaLocalSnapshot()
+        if cycle.plan.phase(at: now) != .complete {
+            do {
+                try schedulePomodoroMonitors(for: cycle)
+            } catch {
+                errorMessage = "A Pomodoro work interval could not be restored: \(error.localizedDescription)"
+            }
+        }
+        for completed in cycle.verifiedCompletedSessions(
+            asOf: now,
+            enforcedAt: { store.pomodoroRoundEnforcedAt(cycleID: cycle.id, round: $0) }
+        )
+        where !snapshot.sessionHistory.contains(where: { $0.id == completed.id }) {
+            snapshot.sessionHistory.insert(completed, at: 0)
+        }
+        snapshot.sessionHistory = Array(snapshot.sessionHistory.prefix(100))
+
+        let phase = cycle.plan.phase(at: now)
+        switch phase {
+        case .scheduled:
+            return
+        case let .work(round, endsAt):
+            guard let session = cycle.session(for: round) else { return }
+            snapshot.activeSession = session
+            snapshot.sessionEngineState = .active
+            do {
+                try store.saveSnapshot(snapshot)
+                try store.saveFocusSessionRestrictions(FocusSessionRestrictionConfiguration(
+                    selection: cycle.selection,
+                    websiteDomains: cycle.websiteDomains,
+                    intention: "Pomodoro · \(cycle.plan.workMinutes)/\(cycle.plan.breakMinutes)"
+                ))
+                applyShield(cycle.selection, websiteDomains: cycle.websiteDomains)
+                store.markPomodoroRoundEnforced(cycleID: cycle.id, round: round)
+                var appliedSession = session
+                appliedSession.lastRestrictionApplicationAt = Date()
+                snapshot.activeSession = appliedSession
+                try store.saveSnapshot(snapshot)
+                activeSession = appliedSession
+                activeIntention = "Pomodoro · \(cycle.plan.workMinutes)/\(cycle.plan.breakMinutes)"
+                history = snapshot.sessionHistory
+                schedulePomodoroBoundaryReconciliation(for: endsAt)
+            } catch {
+                errorMessage = "Could not restore the Pomodoro work interval: \(error.localizedDescription)"
+            }
+        case let .breakTime(_, endsAt):
+            snapshot.activeSession = nil
+            snapshot.sessionEngineState = .idle
+            do {
+                try store.saveSnapshot(snapshot)
+                settingsStore.clearAllSettings()
+                store.clearFocusSessionRestrictions()
+                activeSession = nil
+                activeIntention = nil
+                history = snapshot.sessionHistory
+                schedulePomodoroBoundaryReconciliation(for: endsAt)
+            } catch {
+                errorMessage = "Could not restore the Pomodoro break: \(error.localizedDescription)"
+            }
+        case .complete:
+            snapshot.activeSession = nil
+            snapshot.sessionEngineState = .idle
+            do {
+                try store.saveSnapshot(snapshot)
+                settingsStore.clearAllSettings()
+                store.clearFocusSessionRestrictions()
+                stopPomodoroMonitors(for: cycle)
+                store.clearPomodoroCycle()
+                store.clearPomodoroRoundEnforcement(cycleID: cycle.id)
+                store.pendingPomodoroCompletionID = cycle.id
+                completedPomodoroCycleID = cycle.id
+                pomodoroCycle = nil
+                activeSession = nil
+                activeIntention = nil
+                history = snapshot.sessionHistory
+            } catch {
+                errorMessage = "Could not finish the Pomodoro cycle: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func schedulePomodoroBoundaryReconciliation(for boundary: Date) {
+        reconciliationTask?.cancel()
+        reconciliationTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(max(1, boundary.timeIntervalSinceNow + 1)))
+            guard !Task.isCancelled else { return }
+            self?.reconcile(recoverStale: false)
+        }
     }
 
     private func schedule(record: ActiveSessionRecord) throws {
@@ -409,6 +689,12 @@ final class FocusSessionService: ObservableObject {
 
     private func interrupt(session: ActiveSessionRecord, message: String) {
         reconciliationTask?.cancel()
+        if let pomodoroCycle {
+            stopPomodoroMonitors(for: pomodoroCycle)
+            store.clearPomodoroCycle()
+            store.clearPomodoroRoundEnforcement(cycleID: pomodoroCycle.id)
+            self.pomodoroCycle = nil
+        }
         center.stopMonitoring([NoxaDeviceActivityConfiguration.focusActivityName])
         settingsStore.clearAllSettings()
         store.clearFocusSessionRestrictions()

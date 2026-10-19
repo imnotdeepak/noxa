@@ -50,7 +50,7 @@ final class ScreenTimeRestrictionService: ObservableObject {
     /// Selection edits are locked while a focus session is pending or active.
     /// The persisted check protects the invariant even after app relaunch.
     var isLockedForFocusSession: Bool {
-        store.hasActiveFocusSession()
+        store.hasActiveFocusSession() || store.hasActivePomodoroCycle()
     }
 
     func persistSelection() {
@@ -96,6 +96,10 @@ final class ScreenTimeRestrictionService: ObservableObject {
                 intention: current.intention
             )
             try store.saveFocusSessionRestrictions(updated)
+            if var cycle = try store.loadPomodoroCycle() {
+                cycle.selection = mergedSelection
+                try store.savePomodoroCycle(cycle)
+            }
             try store.saveFamilyActivitySelection(mergedSelection)
             selection = mergedSelection
             applyShieldConfiguration(

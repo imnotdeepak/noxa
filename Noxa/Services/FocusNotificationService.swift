@@ -113,6 +113,73 @@ final class FocusNotificationService: ObservableObject {
         )
     }
 
+    func schedulePomodoroCycle(_ cycle: PomodoroCycleRecord) async {
+        await refreshAuthorizationStatus()
+        guard canSchedule else { return }
+        cancelPomodoroCycle(cycle.id)
+
+        for round in 1...PomodoroCyclePlan.roundCount {
+            guard let interval = cycle.plan.workInterval(round: round) else { continue }
+            let workComplete = UNMutableNotificationContent()
+            workComplete.title = round == PomodoroCyclePlan.roundCount
+                ? "Four focus rounds complete"
+                : "Focus round \(round) complete"
+            workComplete.body = round == PomodoroCyclePlan.roundCount
+                ? "Your Pomodoro cycle is over. Would you like to start another one?"
+                : "Your apps are available for a \(cycle.plan.breakMinutes)-minute break."
+            workComplete.sound = .default
+            await add(
+                content: workComplete,
+                date: interval.end,
+                identifier: cycleNotificationIdentifier(cycle.id, round: round, kind: "work-end")
+            )
+
+            guard round < PomodoroCyclePlan.roundCount else { continue }
+            let timing = PomodoroBreakTiming(
+                workEndsAt: interval.end,
+                breakMinutes: cycle.plan.breakMinutes
+            )
+            let halfway = UNMutableNotificationContent()
+            halfway.title = "Halfway through your break"
+            halfway.body = "Round \(round + 1) starts after your break."
+            halfway.sound = .default
+            await add(
+                content: halfway,
+                date: timing.halfwayAt,
+                identifier: cycleNotificationIdentifier(cycle.id, round: round, kind: "break-halfway")
+            )
+
+            let warning = UNMutableNotificationContent()
+            warning.title = "1 minute left in your break"
+            warning.body = "Round \(round + 1) starts automatically in one minute."
+            warning.sound = .default
+            await add(
+                content: warning,
+                date: timing.oneMinuteRemainingAt,
+                identifier: cycleNotificationIdentifier(cycle.id, round: round, kind: "break-warning")
+            )
+
+            let nextRound = UNMutableNotificationContent()
+            nextRound.title = "Focus round \(round + 1) started"
+            nextRound.body = "Your next focus interval is scheduled."
+            nextRound.sound = .default
+            await add(
+                content: nextRound,
+                date: timing.endsAt,
+                identifier: cycleNotificationIdentifier(cycle.id, round: round, kind: "break-end")
+            )
+        }
+    }
+
+    func cancelPomodoroCycle(_ cycleID: UUID) {
+        let identifiers = (1...PomodoroCyclePlan.roundCount).flatMap { round in
+            ["work-end", "break-halfway", "break-warning", "break-end"].map { kind in
+                cycleNotificationIdentifier(cycleID, round: round, kind: kind)
+            }
+        }
+        center.removePendingNotificationRequests(withIdentifiers: identifiers)
+    }
+
     func cancel(for sessionID: UUID) {
         center.removePendingNotificationRequests(withIdentifiers: [
             warningIdentifier(for: sessionID),
@@ -124,7 +191,8 @@ final class FocusNotificationService: ObservableObject {
     }
 
     private func add(content: UNNotificationContent, date: Date, identifier: String) async {
-        let delay = max(1, date.timeIntervalSinceNow)
+        let delay = date.timeIntervalSinceNow
+        guard delay > 1 else { return }
         let request = UNNotificationRequest(
             identifier: identifier,
             content: content,
@@ -151,5 +219,9 @@ final class FocusNotificationService: ObservableObject {
 
     private func breakWarningIdentifier(for sessionID: UUID) -> String {
         "noxa.focus.\(sessionID.uuidString).break-warning"
+    }
+
+    private func cycleNotificationIdentifier(_ cycleID: UUID, round: Int, kind: String) -> String {
+        "noxa.pomodoro.\(cycleID.uuidString).\(round).\(kind)"
     }
 }

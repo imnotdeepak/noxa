@@ -16,6 +16,7 @@ private enum NoxaMonitorActivity {
     static let dailyLimitResetDayKey = "noxa.dailyLimitResetDay"
     static let scheduleActivityPrefix = "noxa.schedule."
     static let scheduleRelaxationActivityPrefix = "noxa.schedule.relax."
+    static let pomodoroWorkActivityPrefix = "noxa.pomodoro.work."
 
     static func dailyLimitEventPrefix() -> String {
         "noxa.daily.limit."
@@ -33,6 +34,36 @@ private enum NoxaMonitorActivity {
 private struct PersistedFocusSessionConfiguration: Codable {
     let selection: FamilyActivitySelection
     let websiteDomains: [String]
+}
+
+private struct PersistedPomodoroPlan: Codable {
+    let startedAt: Date
+    let workMinutes: Int
+    let breakMinutes: Int
+
+    func workInterval(round: Int) -> DateInterval? {
+        guard (2...4).contains(round) else { return nil }
+        let work = TimeInterval(workMinutes * 60)
+        let breakTime = TimeInterval(breakMinutes * 60)
+        let start = startedAt.addingTimeInterval(TimeInterval(round - 1) * (work + breakTime))
+        return DateInterval(start: start, duration: work)
+    }
+}
+
+private struct PersistedPomodoroCycle: Codable {
+    let id: UUID
+    let plan: PersistedPomodoroPlan
+    let selection: FamilyActivitySelection
+    let websiteDomains: [String]
+}
+
+private struct PersistedSessionStatus: Codable {
+    let activeSession: ActiveStatus?
+
+    struct ActiveStatus: Codable {
+        let plannedEndAt: Date
+        let outcome: String
+    }
 }
 
 private struct PersistedDailyLimitConfiguration: Codable {
@@ -76,6 +107,8 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         super.intervalDidStart(for: activity)
         if activity == NoxaMonitorActivity.focusActivityName {
             applyPersistedFocusShield(reason: "focus session started")
+        } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.pomodoroWorkActivityPrefix) {
+            applyPomodoroShield(for: activity)
         } else if activity == NoxaMonitorActivity.dailyLimitActivityName {
             let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa")
             let today = NoxaMonitorActivity.dailyLimitDayStamp()
@@ -111,15 +144,23 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
     override func intervalDidEnd(for activity: DeviceActivityName) {
         super.intervalDidEnd(for: activity)
         if activity == NoxaMonitorActivity.focusActivityName {
-            focusSettingsStore.clearAllSettings()
+            if let cycle = loadPomodoroCycle() {
+                reconcilePomodoroShield(cycle)
+            } else if hasUnexpiredFocusSession() {
+                applyPersistedFocusShield(reason: "reconciled late focus-end callback")
+            } else {
+                focusSettingsStore.clearAllSettings()
+                UserDefaults(suiteName: "group.LycheeCorp.Noxa")?.removeObject(
+                    forKey: "noxa.focusSessionRestrictions"
+                )
+            }
             let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa")
             if defaults?.bool(forKey: "noxa.restrictionStoresMigrated") != true {
                 settingsStore.clearAllSettings()
             }
-            UserDefaults(suiteName: "group.LycheeCorp.Noxa")?.removeObject(
-                forKey: "noxa.focusSessionRestrictions"
-            )
             logger.info("Removed focus shield when session ended")
+        } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.pomodoroWorkActivityPrefix) {
+            reconcilePomodoroShield(for: activity)
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleRelaxationActivityPrefix) {
             logger.info("Pending schedule relaxation interval ended")
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleActivityPrefix) {
@@ -146,6 +187,69 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
             reason: reason,
             to: focusSettingsStore
         )
+    }
+
+    private func loadPomodoroCycle() -> PersistedPomodoroCycle? {
+        guard let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa"),
+              let data = defaults.data(forKey: "noxa.pomodoroCycle") else { return nil }
+        return try? JSONDecoder().decode(PersistedPomodoroCycle.self, from: data)
+    }
+
+    private func hasUnexpiredFocusSession() -> Bool {
+        guard let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa"),
+              let data = defaults.data(forKey: "noxa.localSnapshot"),
+              let snapshot = try? JSONDecoder().decode(PersistedSessionStatus.self, from: data),
+              let session = snapshot.activeSession else { return false }
+        return session.outcome == "active" && session.plannedEndAt > Date()
+    }
+
+    private func applyPomodoroShield(for activity: DeviceActivityName) {
+        reconcilePomodoroShield(for: activity)
+    }
+
+    private func reconcilePomodoroShield(for activity: DeviceActivityName) {
+        let parts = activity.rawValue.split(separator: ".")
+        guard let idText = parts.dropLast().last,
+              let id = UUID(uuidString: String(idText)),
+              let cycle = loadPomodoroCycle(),
+              cycle.id == id else {
+            logger.error("Skipped stale Pomodoro callback for \(activity.rawValue, privacy: .public)")
+            return
+        }
+        reconcilePomodoroShield(cycle)
+    }
+
+    private func reconcilePomodoroShield(_ cycle: PersistedPomodoroCycle) {
+        let now = Date()
+        for round in 2...4 {
+            if cycle.plan.workInterval(round: round)?.contains(now) == true {
+                if let data = try? JSONEncoder().encode(PersistedFocusSessionConfiguration(
+                    selection: cycle.selection,
+                    websiteDomains: cycle.websiteDomains
+                )) {
+                    UserDefaults(suiteName: "group.LycheeCorp.Noxa")?.set(
+                        data, forKey: "noxa.focusSessionRestrictions"
+                    )
+                }
+                applyShield(
+                    selection: cycle.selection,
+                    websiteDomains: cycle.websiteDomains,
+                    reason: "Pomodoro round \(round) active",
+                    to: focusSettingsStore
+                )
+                let enforcementKey = "noxa.pomodoro.enforced.\(cycle.id.uuidString.lowercased()).\(round)"
+                let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa")
+                if defaults?.object(forKey: enforcementKey) == nil {
+                    defaults?.set(now, forKey: enforcementKey)
+                }
+                return
+            }
+        }
+        focusSettingsStore.clearAllSettings()
+        UserDefaults(suiteName: "group.LycheeCorp.Noxa")?.removeObject(
+            forKey: "noxa.focusSessionRestrictions"
+        )
+        logger.info("Removed Pomodoro work shield during break or after completion")
     }
 
     private func applyPersistedShield(reason: String) {

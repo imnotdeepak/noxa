@@ -31,7 +31,7 @@ final class WebsiteBlocklistService: ObservableObject {
     }
 
     var isLockedForFocusSession: Bool {
-        store.hasActiveFocusSession()
+        store.hasActiveFocusSession() || store.hasActivePomodoroCycle()
     }
 
     @discardableResult
@@ -50,6 +50,10 @@ final class WebsiteBlocklistService: ObservableObject {
         }
 
         if isLockedForFocusSession {
+            guard store.hasActiveFocusSession() else {
+                errorMessage = "Changes can be made after this Pomodoro cycle ends."
+                return false
+            }
             return addDomainToActiveSession(domain)
         }
 
@@ -80,6 +84,10 @@ final class WebsiteBlocklistService: ObservableObject {
                 intention: current.intention
             )
             try store.saveFocusSessionRestrictions(updated)
+            if var cycle = try store.loadPomodoroCycle() {
+                cycle.websiteDomains = mergedDomains
+                try store.savePomodoroCycle(cycle)
+            }
             try store.saveWebsiteBlocklist(mergedDomains)
             domains = mergedDomains
             focusSettingsStore.webContent.blockedByFilter = .specific(

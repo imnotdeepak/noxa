@@ -146,7 +146,7 @@ struct PaywallView: View {
                             }
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.secondary)
-                            .disabled(authentication.isBusy || focusSession.isActive)
+                            .disabled(authentication.isBusy || focusSession.isActive || focusSession.hasPomodoroCycle)
                         }
 
                         Button("Delete Account", role: .destructive) {
@@ -154,7 +154,7 @@ struct PaywallView: View {
                         }
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.red)
-                        .disabled(authentication.isBusy || focusSession.isActive)
+                        .disabled(authentication.isBusy || focusSession.isActive || focusSession.hasPomodoroCycle)
 
                         Link("Manage subscriptions in Apple settings", destination: URL(string: "https://apps.apple.com/account/subscriptions")!)
                             .font(.footnote)
@@ -202,7 +202,7 @@ struct PaywallView: View {
                 Button("Cancel", role: .cancel) {}
                 Button("Delete Account", role: .destructive) {
                     Task { @MainActor in
-                        guard !focusSession.isActive else { return }
+                        guard !focusSession.isActive && !focusSession.hasPomodoroCycle else { return }
                         guard await authentication.deleteAccount() else { return }
                         LocalDataCleanupService.clear(
                             focusSession: focusSession,
