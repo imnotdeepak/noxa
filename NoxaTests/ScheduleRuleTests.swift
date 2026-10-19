@@ -14,7 +14,7 @@ struct ScheduleRuleTests {
         calendar.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour, minute: minute))!
     }
 
-    @Test func migratesLegacySchedulesWithoutChangingTheirWindow() throws {
+    @Test @MainActor func migratesLegacySchedulesWithoutChangingTheirWindow() throws {
         let defaults = try #require(UserDefaults(suiteName: "NoxaTests.ScheduleMigration.\(UUID())"))
         let store = AppGroupStore(defaults: defaults)
         let pending = PendingScheduleRelaxation(
@@ -76,6 +76,58 @@ struct ScheduleRuleTests {
         #expect(!ScheduleRuleEvaluator.isBlocking(rule, at: date(21, 6), calendar: calendar))
     }
 
+    @Test func anAllowedScheduleCannotReleaseAnotherScheduleOrFocusBlock() {
+        let allowed = ScheduleRule(
+            name: "Available during class",
+            mode: .allowedHours,
+            selection: FamilyActivitySelection(),
+            weekdays: [2],
+            startMinutes: 9 * 60,
+            endMinutes: 17 * 60
+        )
+        let blocked = ScheduleRule(
+            name: "Lunch block",
+            mode: .blockedHours,
+            selection: FamilyActivitySelection(),
+            weekdays: [2],
+            startMinutes: 12 * 60,
+            endMinutes: 13 * 60
+        )
+        let atLunch = date(19, 12, 30)
+        let target = "Instagram"
+        let rules = [allowed, blocked].map { schedule in
+            RestrictionRule(
+                id: RestrictionRuleID(source: .schedule, value: schedule.id),
+                effect: ScheduleRuleEvaluator.isBlocking(schedule, at: atLunch, calendar: calendar)
+                    ? .block : .allow,
+                targets: [target]
+            )
+        } + [RestrictionRule(
+            id: RestrictionRuleID(source: .focusSession, value: UUID()),
+            effect: .block,
+            targets: [target]
+        )]
+        let result = RestrictionRuleEvaluator.evaluate(rules)
+        #expect(result.blockedTargets == [target])
+        #expect(result.owners(for: target).count == 2)
+    }
+
+    @Test func scheduleUsesTheDevicesCurrentLocalTimeZone() {
+        let rule = ScheduleRule(
+            name: "Morning",
+            mode: .blockedHours,
+            selection: FamilyActivitySelection(),
+            weekdays: [2],
+            startMinutes: 9 * 60,
+            endMinutes: 10 * 60
+        )
+        var newYork = calendar
+        newYork.timeZone = TimeZone(identifier: "America/New_York")!
+        let instant = date(19, 13, 30)
+        #expect(ScheduleRuleEvaluator.isBlocking(rule, at: instant, calendar: newYork))
+        #expect(!ScheduleRuleEvaluator.isBlocking(rule, at: instant, calendar: calendar))
+    }
+
     @Test @MainActor func dailyLimitEditsIgnoreAnOldHardLock() throws {
         let defaults = try #require(UserDefaults(suiteName: "NoxaTests.DailyLimitEdit.\(UUID())"))
         let store = AppGroupStore(defaults: defaults)
@@ -120,5 +172,21 @@ struct ScheduleRuleTests {
         let updated = try #require(store.loadRestrictionSchedules().first)
         #expect(!updated.isEnabled)
         #expect(updated.pendingRelaxation == nil)
+    }
+
+    @Test @MainActor func renamedLegacyScheduleKeepsItsNameDuringMigration() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.ScheduleRename.\(UUID())"))
+        let store = AppGroupStore(defaults: defaults)
+        let schedule = RestrictionScheduleConfiguration(
+            selection: FamilyActivitySelection(),
+            allowedStartMinutes: 9 * 60,
+            allowedEndMinutes: 17 * 60
+        )
+        try store.saveRestrictionSchedules([schedule])
+
+        let service = RestrictionScheduleService(store: store)
+        service.rename(schedule, to: "  Study hours  ")
+        #expect(service.configurations.first?.name == "Study hours")
+        #expect(try store.loadScheduleRules().first?.name == "Study hours")
     }
 }

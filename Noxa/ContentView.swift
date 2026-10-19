@@ -54,6 +54,9 @@ struct ContentView: View {
     @State private var dailyLimitSelection = FamilyActivitySelection()
     @State private var selectedDailyLimitMinutes = 30
     @State private var isSchedulePickerPresented = false
+    @State private var scheduleName = ""
+    @State private var scheduleToRename: RestrictionScheduleConfiguration?
+    @State private var renamedScheduleName = ""
     @State private var scheduleSelection = FamilyActivitySelection()
     @State private var scheduleAllowedStart = Calendar.current.date(from: DateComponents(hour: 21)) ?? Date()
     @State private var scheduleAllowedEnd = Calendar.current.date(from: DateComponents(hour: 22)) ?? Date()
@@ -389,25 +392,39 @@ struct ContentView: View {
 
     private var schedulePickerSheet: some View {
         NavigationStack {
-            FamilyActivityPicker(selection: $scheduleSelection)
+            VStack(spacing: 12) {
+                TextField("Schedule name", text: $scheduleName)
+                    .textInputAutocapitalization(.words)
+                    .padding(.horizontal, 16)
+                if let errorMessage = schedules.errorMessage {
+                    Text(errorMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                        .padding(.horizontal, 16)
+                }
+                FamilyActivityPicker(selection: $scheduleSelection)
+            }
             .navigationTitle("Choose schedule targets")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         schedules.add(
+                            name: scheduleName,
                             selection: scheduleSelection,
                             allowedStart: scheduleAllowedStart,
                             allowedEnd: scheduleAllowedEnd
                         )
                         if schedules.errorMessage == nil {
+                            scheduleName = ""
                             scheduleSelection = FamilyActivitySelection()
                             isSchedulePickerPresented = false
                         }
                     }
                     .disabled(
-                        scheduleSelection.applicationTokens.isEmpty
+                        scheduleName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            || (scheduleSelection.applicationTokens.isEmpty
                             && scheduleSelection.categoryTokens.isEmpty
-                            && scheduleSelection.webDomainTokens.isEmpty
+                            && scheduleSelection.webDomainTokens.isEmpty)
                     )
                 }
             }
@@ -425,6 +442,9 @@ struct ContentView: View {
                 }
 
                 focusSessionCard
+                if schedules.enabledCount > 0 {
+                    homeScheduleCard
+                }
                 quickSetupCard
             }
             .padding()
@@ -451,6 +471,64 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 18)
+    }
+
+    private var homeScheduleCard: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            VStack(alignment: .leading, spacing: 12) {
+                Label("Schedules", systemImage: "calendar.badge.clock")
+                    .font(.headline)
+
+                ForEach(schedules.configurations.filter(\.isEnabled)) { configuration in
+                    let nowMinutes = Self.minutesSinceMidnight(context.date)
+                    let isBlocking = nowMinutes < configuration.allowedStartMinutes
+                        || nowMinutes >= configuration.allowedEndMinutes
+                    DisclosureGroup {
+                        tokenRows(for: configuration.selection)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(configuration.name ?? "Allowed hours, every day")
+                                .font(.subheadline.weight(.semibold))
+                            Text(isBlocking ? "Blocking selected targets" : "Allowing selected targets")
+                                .font(.caption)
+                                .foregroundStyle(isBlocking ? NoxaTheme.warning : NoxaTheme.accent)
+                            if let nextChange = Self.nextLegacyScheduleChange(
+                                for: configuration,
+                                after: context.date
+                            ) {
+                                Text("Changes at \(nextChange.formatted(date: .abbreviated, time: .shortened))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+            .noxaCard()
+        }
+    }
+
+    private static func minutesSinceMidnight(_ date: Date) -> Int {
+        let components = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute], from: date)
+        return (components.hour ?? 0) * 60 + (components.minute ?? 0)
+    }
+
+    private static func nextLegacyScheduleChange(
+        for configuration: RestrictionScheduleConfiguration,
+        after date: Date
+    ) -> Date? {
+        let calendar = Calendar.autoupdatingCurrent
+        return [configuration.allowedStartMinutes, configuration.allowedEndMinutes]
+            .compactMap { minutes in
+                calendar.nextDate(
+                    after: date,
+                    matching: DateComponents(hour: minutes / 60, minute: minutes % 60),
+                    matchingPolicy: .nextTime,
+                    repeatedTimePolicy: .first,
+                    direction: .forward
+                )
+            }
+            .min()
     }
 
     private var permissionCard: some View {
@@ -1153,6 +1231,8 @@ struct ContentView: View {
             }
 
             Button("Add Schedule") {
+                schedules.clearError()
+                scheduleName = ""
                 scheduleSelection = FamilyActivitySelection()
                 isSchedulePickerPresented = true
             }
@@ -1179,13 +1259,21 @@ struct ContentView: View {
                             .buttonStyle(.plain)
 
                             VStack(alignment: .leading, spacing: 3) {
-                                Text("Available \(Self.timeLabel(minutes: configuration.allowedStartMinutes))–\(Self.timeLabel(minutes: configuration.allowedEndMinutes))")
+                                Text(configuration.name ?? "Allowed hours, every day")
                                     .font(.subheadline.weight(.semibold))
+                                Text("Available \(Self.timeLabel(minutes: configuration.allowedStartMinutes))–\(Self.timeLabel(minutes: configuration.allowedEndMinutes))")
+                                    .font(.caption)
                                 Text("Blocked outside this window every day")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
+                            Button("Rename") {
+                                scheduleToRename = configuration
+                                renamedScheduleName = configuration.name ?? "Allowed hours, every day"
+                            }
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
                             Button("Remove") {
                                 schedules.remove(configuration)
                             }
@@ -1236,6 +1324,22 @@ struct ContentView: View {
             }
         }
         .noxaCard()
+        .alert(
+            "Rename schedule",
+            isPresented: Binding(
+                get: { scheduleToRename != nil },
+                set: { if !$0 { scheduleToRename = nil } }
+            )
+        ) {
+            TextField("Schedule name", text: $renamedScheduleName)
+            Button("Save") {
+                if let scheduleToRename {
+                    schedules.rename(scheduleToRename, to: renamedScheduleName)
+                }
+                scheduleToRename = nil
+            }
+            Button("Cancel", role: .cancel) { scheduleToRename = nil }
+        }
     }
 
     @ViewBuilder

@@ -206,6 +206,7 @@ struct PendingScheduleRelaxation: Codable, Equatable, Sendable {
 
 struct RestrictionScheduleConfiguration: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
+    var name: String?
     var selection: FamilyActivitySelection
     var allowedStartMinutes: Int
     var allowedEndMinutes: Int
@@ -215,6 +216,7 @@ struct RestrictionScheduleConfiguration: Codable, Equatable, Identifiable, Senda
 
     init(
         id: UUID = UUID(),
+        name: String? = nil,
         selection: FamilyActivitySelection,
         allowedStartMinutes: Int,
         allowedEndMinutes: Int,
@@ -223,6 +225,7 @@ struct RestrictionScheduleConfiguration: Codable, Equatable, Identifiable, Senda
         pendingRelaxation: PendingScheduleRelaxation? = nil
     ) {
         self.id = id
+        self.name = name
         self.selection = selection
         self.allowedStartMinutes = min(max(allowedStartMinutes, 15), 1_425)
         self.allowedEndMinutes = min(max(allowedEndMinutes, 15), 1_425)

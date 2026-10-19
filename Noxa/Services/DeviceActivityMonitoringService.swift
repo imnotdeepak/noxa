@@ -415,8 +415,33 @@ final class RestrictionScheduleService: ObservableObject {
         configurations.compactMap(\.pendingRelaxation?.effectiveAt).min()
     }
 
-    func add(selection: FamilyActivitySelection, allowedStart: Date, allowedEnd: Date) {
+    func clearError() {
         errorMessage = nil
+    }
+
+    func rename(_ configuration: RestrictionScheduleConfiguration, to name: String) {
+        errorMessage = nil
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            errorMessage = "Give this schedule a name."
+            return
+        }
+        guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
+        configurations[index].name = trimmedName
+        do {
+            try store.saveRestrictionSchedules(configurations)
+        } catch {
+            errorMessage = "Could not rename the schedule: \(error.localizedDescription)"
+        }
+    }
+
+    func add(name: String, selection: FamilyActivitySelection, allowedStart: Date, allowedEnd: Date) {
+        errorMessage = nil
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            errorMessage = "Give this schedule a name."
+            return
+        }
         guard !selection.applicationTokens.isEmpty
                 || !selection.categoryTokens.isEmpty
                 || !selection.webDomainTokens.isEmpty else {
@@ -438,6 +463,7 @@ final class RestrictionScheduleService: ObservableObject {
 
         configurations.append(
             RestrictionScheduleConfiguration(
+                name: trimmedName,
                 selection: selection,
                 allowedStartMinutes: start,
                 allowedEndMinutes: end
@@ -602,7 +628,9 @@ final class RestrictionScheduleService: ObservableObject {
         guard let segment else { return }
         let name = NoxaDeviceActivityConfiguration.scheduleActivityName(for: configuration.id, segment: segment)
         let settings = ManagedSettingsStore(named: ManagedSettingsStore.Name(name.rawValue))
-        settings.shield.applications = configuration.selection.applicationTokens
+        settings.shield.applications = configuration.selection.applicationTokens.isEmpty
+            ? nil
+            : configuration.selection.applicationTokens
         settings.shield.applicationCategories = configuration.selection.categoryTokens.isEmpty
             ? nil
             : .specific(configuration.selection.categoryTokens)

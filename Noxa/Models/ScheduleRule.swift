@@ -56,9 +56,11 @@ struct ScheduleRule: Codable, Equatable, Identifiable, Sendable {
     }
 
     init(legacy: RestrictionScheduleConfiguration) {
+        let rawName = legacy.name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let migratedName = rawName?.isEmpty == true ? nil : rawName
         self.init(
             id: legacy.id,
-            name: "Allowed hours, every day",
+            name: migratedName ?? "Allowed hours, every day",
             mode: .allowedHours,
             selection: legacy.selection,
             weekdays: Set(1...7),
@@ -74,6 +76,14 @@ struct ScheduleRule: Codable, Equatable, Identifiable, Sendable {
 /// A selected weekday is the day on which the interval starts. Overnight
 /// intervals continue into the following day, including an unselected day.
 enum ScheduleRuleEvaluator {
+    /// Wake at every possible local-time transition. Daily wakes keep the
+    /// number of Device Activity monitors fixed when weekdays are edited.
+    static func dailyWakeMinutes(for rule: ScheduleRule) -> [Int] {
+        var minutes: Set<Int> = [rule.startMinutes, rule.endMinutes]
+        if rule.mode == .allowedHours { minutes.insert(0) }
+        return minutes.filter { (0..<1_440).contains($0) }.sorted()
+    }
+
     static func isBlocking(_ rule: ScheduleRule, at date: Date, calendar: Calendar) -> Bool {
         guard rule.isEnabled, rule.weekdays.contains(where: { (1...7).contains($0) }),
               (0..<1_440).contains(rule.startMinutes),

@@ -203,7 +203,7 @@ final class AppGroupStore {
         defaults.removeObject(forKey: Key.scheduleRules)
     }
 
-    func loadScheduleRules() throws -> [ScheduleRule] {
+    @MainActor func loadScheduleRules() throws -> [ScheduleRule] {
         if let data = defaults.data(forKey: Key.scheduleRules) {
             let archive = try JSONDecoder().decode(ScheduleRuleArchive.self, from: data)
             guard archive.version == 2 else { throw ScheduleRuleArchiveError.unsupportedVersion }

@@ -22,9 +22,12 @@ The migration cannot always infer whether an old web-content filter came from a 
 
 - A schedule is an allowed window every day; selected apps are blocked before and after it.
 - Creation accepts app, category, or website tokens, permits overlap with other schedules, and requires a same-day window of at least 15 minutes.
+- Users choose a name when creating a schedule and can rename it later. Older unnamed schedules display “Allowed hours, every day”; the versioned migration preserves a user-chosen name.
+- The home screen lists enabled schedule names, whether each currently blocks or allows its targets, and the next local-time change. Tapping a row shows its selected targets. This display covers the live legacy daily windows; weekday and overnight status will follow the versioned-rule activation.
 - Disabling or removing a schedule takes effect immediately, including during focus. Existing pending 24-hour changes retain their original date until the user explicitly changes the schedule; an explicit change clears that pending record.
 - Each schedule uses before/after monitor names and named stores. This is a useful foundation for the approved migration, but is not yet the new weekday/overnight/blocked-hours model.
 - A versioned `ScheduleRule` archive and migration reader now convert legacy rules into named, every-day allowed-hour rules while retaining IDs, targets, enabled state, and pending 24-hour changes. The pure local-time evaluator covers weekdays and overnight windows. The live schedule service and monitor still use the legacy format; the new rule model is not yet enforced or shown in the app.
+- The intended live transition uses one named shield store per rule and daily local-time wake points at the rule's start/end, plus midnight for allowed-hour rules. Each callback must reevaluate the current weekday and time before changing only that rule's store. The old before/after activity stores should be cleared only after the new store has the correct current shield. Physical-device testing must verify repeating wake points across sleep, DST, and timezone changes before enabling this path.
 - Daily limits can now be edited, disabled, removed, or stopped immediately, including during focus. Their independent Managed Settings store keeps a focus block in force when a daily limit changes.
 
 ## First engineering slice
