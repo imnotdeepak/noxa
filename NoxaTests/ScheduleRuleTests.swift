@@ -14,6 +14,23 @@ struct ScheduleRuleTests {
         calendar.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour, minute: minute))!
     }
 
+    @Test func firstSessionScheduleSuggestionIsDeviceLocalAndDismissible() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.ScheduleSuggestion.\(UUID())"))
+        let store = AppGroupStore(defaults: defaults)
+        let suggestion = PendingScheduleSuggestion(
+            selection: FamilyActivitySelection(),
+            websiteDomains: ["example.com"],
+            startedAt: date(19, 9),
+            plannedEndAt: date(19, 10)
+        )
+        try store.savePendingScheduleSuggestion(suggestion)
+        #expect(try store.loadPendingScheduleSuggestion() == suggestion)
+        store.hasOfferedScheduleSuggestion = true
+        store.clearPendingScheduleSuggestion()
+        #expect(store.hasOfferedScheduleSuggestion)
+        #expect(try store.loadPendingScheduleSuggestion() == nil)
+    }
+
     @Test @MainActor func migratesLegacySchedulesWithoutChangingTheirWindow() throws {
         let defaults = try #require(UserDefaults(suiteName: "NoxaTests.ScheduleMigration.\(UUID())"))
         let store = AppGroupStore(defaults: defaults)

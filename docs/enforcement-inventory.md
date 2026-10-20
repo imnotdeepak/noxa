@@ -63,4 +63,5 @@ The migration cannot always infer whether an old web-content filter came from a 
 - A notification education page now appears after payment and before target selection. It offers a clear enable or Not Now choice. Declining notifications does not stop focus or Pomodoro enforcement.
 - Every normal focus start now opens a review of selected targets, duration, expected end time, and Strict status before the final Start action. After paid setup, Noxa opens that review once with a 30-minute default, after the one-time Strict offer. Existing completed users do not reenter it.
 - The target picker now shows a suggestion based on the user's goal and distraction answer; the user still chooses the actual opaque Screen Time targets.
-- Confirmed activation state and a one-time schedule prompt after completion remain to be implemented.
+- A first completed focus session now offers a one-time recurring schedule using its saved device-local targets. The user chooses the schedule name, days, mode, and hours before saving; dismissing the offer clears the target copy. The target copy survives the extension clearing the active focus shield before the app records completion. This path still needs physical-device lifecycle validation.
+- Confirmed activation state remains to be implemented.

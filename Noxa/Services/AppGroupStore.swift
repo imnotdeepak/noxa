@@ -29,6 +29,8 @@ final class AppGroupStore {
         static let restrictionStoresMigrated = "noxa.restrictionStoresMigrated"
         static let strictModeEnabled = "noxa.strictModeEnabled"
         static let hasOfferedStrictMode = "noxa.hasOfferedStrictMode"
+        static let hasOfferedScheduleSuggestion = "noxa.hasOfferedScheduleSuggestion"
+        static let pendingScheduleSuggestion = "noxa.pendingScheduleSuggestion"
         static let websiteBlocklist = "noxa.websiteBlocklist"
         static let dailyLimits = "noxa.dailyLimits"
         static let restrictionSchedules = "noxa.restrictionSchedules"
@@ -142,6 +144,24 @@ final class AppGroupStore {
     var hasOfferedStrictMode: Bool {
         get { defaults.bool(forKey: Key.hasOfferedStrictMode) }
         set { defaults.set(newValue, forKey: Key.hasOfferedStrictMode) }
+    }
+
+    var hasOfferedScheduleSuggestion: Bool {
+        get { defaults.bool(forKey: Key.hasOfferedScheduleSuggestion) }
+        set { defaults.set(newValue, forKey: Key.hasOfferedScheduleSuggestion) }
+    }
+
+    func loadPendingScheduleSuggestion() throws -> PendingScheduleSuggestion? {
+        guard let data = defaults.data(forKey: Key.pendingScheduleSuggestion) else { return nil }
+        return try JSONDecoder().decode(PendingScheduleSuggestion.self, from: data)
+    }
+
+    func savePendingScheduleSuggestion(_ suggestion: PendingScheduleSuggestion) throws {
+        defaults.set(try JSONEncoder().encode(suggestion), forKey: Key.pendingScheduleSuggestion)
+    }
+
+    func clearPendingScheduleSuggestion() {
+        defaults.removeObject(forKey: Key.pendingScheduleSuggestion)
     }
 
     /// Returns whether a focus session is in a start-pending or active state.

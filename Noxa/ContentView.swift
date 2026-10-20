@@ -77,6 +77,7 @@ struct ContentView: View {
     @State private var isStrictModeIntroductionPresented = false
     @State private var isStrictStartConfirmationPresented = false
     @State private var isPomodoroCompletionPresented = false
+    @State private var isScheduleSuggestionPresented = false
     @State private var strictStartIsPomodoro = false
     @State private var isNotificationPromptPresented = false
     @State private var selectedTab = MainTab.home
@@ -167,6 +168,7 @@ struct ContentView: View {
             firstFocusReviewPending = onboarding.progress.isComplete
                 && !onboarding.progress.hasSeenFirstFocusReview
             presentFirstFocusReviewIfReady()
+            presentScheduleSuggestionIfReady()
         }
         .onChange(of: isStrictModeIntroductionPresented) { isPresented in
             if !isPresented { presentFirstFocusReviewIfReady() }
@@ -177,6 +179,13 @@ struct ContentView: View {
         }
         .onChange(of: focusSession.completedPomodoroCycleID) { completedID in
             isPomodoroCompletionPresented = completedID != nil
+            if completedID == nil { presentScheduleSuggestionIfReady() }
+        }
+        .onChange(of: focusSession.history) { _ in
+            presentScheduleSuggestionIfReady()
+        }
+        .onChange(of: focusSession.pomodoroCycle?.id) { _ in
+            presentScheduleSuggestionIfReady()
         }
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
             statsReferenceDate = Date()
@@ -234,6 +243,35 @@ struct ContentView: View {
             }
         } message: {
             Text("Your Pomodoro cycle is over. Would you like to start another one?")
+        }
+        .alert("Make this a recurring schedule?", isPresented: $isScheduleSuggestionPresented) {
+            Button("Not Now", role: .cancel) {
+                focusSession.acknowledgeScheduleSuggestion()
+            }
+            Button("Create Schedule") {
+                guard let suggestion = focusSession.pendingScheduleSuggestion else { return }
+                focusSession.acknowledgeScheduleSuggestion()
+                schedules.clearError()
+                scheduleToEdit = nil
+                scheduleName = ""
+                scheduleMode = .blockedHours
+                scheduleWeekdays = Set(1...7)
+                scheduleAllowedStart = Self.dateForScheduleMinute(
+                    Self.minutesSinceMidnight(suggestion.startedAt)
+                )
+                scheduleAllowedEnd = Self.dateForScheduleMinute(
+                    Self.minutesSinceMidnight(suggestion.plannedEndAt)
+                )
+                scheduleSelection = suggestion.selection
+                scheduleCustomDomains = suggestion.websiteDomains.joined(separator: ", ")
+                selectedTab = .dailyLimits
+                Task { @MainActor in
+                    await Task.yield()
+                    isSchedulePickerPresented = true
+                }
+            }
+        } message: {
+            Text("Use the apps and websites from your first completed focus session. You can choose the days and hours before saving.")
         }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -1705,6 +1743,9 @@ struct ContentView: View {
                 Button("Sign Out") {
                     Task {
                         await authentication.signOut()
+                        if !authentication.isAuthenticated {
+                            focusSession.discardScheduleSuggestion()
+                        }
                     }
                 }
                 .buttonStyle(NoxaSecondaryButtonStyle())
@@ -1934,6 +1975,22 @@ struct ContentView: View {
         isCustomDuration = false
         selectedTab = .home
         isFocusStartReviewPresented = true
+    }
+
+    private func presentScheduleSuggestionIfReady() {
+        guard onboarding.progress.isComplete,
+              subscriptions.canEnterApp(for: authentication.userID),
+              authorization.state.isApproved,
+              schedules.configurations.count < RestrictionScheduleService.maximumConfigurations,
+              focusSession.completedSessionCount > 0,
+              !focusSession.isActive,
+              !focusSession.hasPomodoroCycle,
+              !isPomodoroCompletionPresented,
+              !isStrictModeIntroductionPresented,
+              !isFocusStartReviewPresented,
+              !isNotificationPromptPresented,
+              focusSession.pendingScheduleSuggestion != nil else { return }
+        isScheduleSuggestionPresented = true
     }
 
     private func beginPomodoro() {

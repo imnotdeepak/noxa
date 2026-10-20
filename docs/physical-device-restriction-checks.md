@@ -32,6 +32,8 @@ Status: A signed build was installed and launched on the paired iPhone “iphony
 | Deny notification permission | Pomodoro scheduling and enforcement still work; no notification-dependent transition fails. |
 | Allow notifications | Each break has halfway and one-minute-left notices; round four asks whether to start another cycle. |
 | Revoke Screen Time authorization mid-cycle | The cycle is stopped and Noxa reports the interruption without leaving an app-controlled stale shield. |
+| Complete the first focus session after force-quitting Noxa, then reopen it | The one-time recurring-schedule offer appears with the completed session's targets after subscription and authorization recover. The editor lets the user choose name, days, hours, and mode before saving. |
+| End the first focus session early | No recurring-schedule offer appears. A later first completed session uses its own targets. |
 
 ## Evidence to retain
 

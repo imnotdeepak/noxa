@@ -94,6 +94,19 @@ final class FocusSessionService: ObservableObject {
         history.filter { $0.outcome.countsTowardFocusStatistics }.count
     }
 
+    var pendingScheduleSuggestion: PendingScheduleSuggestion? {
+        (try? store.loadPendingScheduleSuggestion()) ?? nil
+    }
+
+    func acknowledgeScheduleSuggestion() {
+        store.hasOfferedScheduleSuggestion = true
+        store.clearPendingScheduleSuggestion()
+    }
+
+    func discardScheduleSuggestion() {
+        store.clearPendingScheduleSuggestion()
+    }
+
     var completedFocusMinutes: Int {
         history
             .filter { $0.outcome.countsTowardFocusStatistics }
@@ -165,6 +178,14 @@ final class FocusSessionService: ObservableObject {
             try saveSnapshot(engineState: .active, session: activeRecord)
             activeSession = activeRecord
             activeIntention = restrictionConfiguration.intention
+            if completedSessionCount == 0 && !store.hasOfferedScheduleSuggestion {
+                try? store.savePendingScheduleSuggestion(PendingScheduleSuggestion(
+                    selection: selection,
+                    websiteDomains: websiteDomains,
+                    startedAt: activeRecord.startedAt,
+                    plannedEndAt: activeRecord.plannedEndAt
+                ))
+            }
             scheduleReconciliation(for: activeRecord)
             let selectionCount = selection.applicationTokens.count
                 + selection.categoryTokens.count
@@ -269,6 +290,7 @@ final class FocusSessionService: ObservableObject {
         center.stopMonitoring([NoxaDeviceActivityConfiguration.focusActivityName])
         settingsStore.clearAllSettings()
         store.clearFocusSessionRestrictions()
+        if completedSessionCount == 0 { store.clearPendingScheduleSuggestion() }
 
         var endedRecord = activeSession
         endedRecord.outcome = .endedEarly
@@ -428,6 +450,8 @@ final class FocusSessionService: ObservableObject {
         store.clearSnapshot()
         store.isStrictModeEnabled = false
         store.hasOfferedStrictMode = false
+        store.hasOfferedScheduleSuggestion = false
+        store.clearPendingScheduleSuggestion()
         strictModeEnabled = false
         hasOfferedStrictMode = false
     }
@@ -507,6 +531,9 @@ final class FocusSessionService: ObservableObject {
         }
 
         var snapshot = (try? store.loadSnapshot()) ?? NoxaLocalSnapshot()
+        let hadCompletedSession = snapshot.sessionHistory.contains {
+            $0.outcome.countsTowardFocusStatistics
+        }
         if cycle.plan.phase(at: now) != .complete {
             do {
                 try schedulePomodoroMonitors(for: cycle)
@@ -522,7 +549,6 @@ final class FocusSessionService: ObservableObject {
             snapshot.sessionHistory.insert(completed, at: 0)
         }
         snapshot.sessionHistory = Array(snapshot.sessionHistory.prefix(100))
-
         let phase = cycle.plan.phase(at: now)
         switch phase {
         case .scheduled:
@@ -570,6 +596,16 @@ final class FocusSessionService: ObservableObject {
             snapshot.sessionEngineState = .idle
             do {
                 try store.saveSnapshot(snapshot)
+                if !hadCompletedSession,
+                   let firstCompleted = snapshot.sessionHistory
+                    .filter({ $0.outcome.countsTowardFocusStatistics })
+                    .min(by: { $0.startedAt < $1.startedAt }) {
+                    saveFirstScheduleSuggestion(
+                        for: firstCompleted,
+                        selection: cycle.selection,
+                        websiteDomains: cycle.websiteDomains
+                    )
+                }
                 settingsStore.clearAllSettings()
                 store.clearFocusSessionRestrictions()
                 stopPomodoroMonitors(for: cycle)
@@ -653,6 +689,8 @@ final class FocusSessionService: ObservableObject {
 
     private func finish(session: ActiveSessionRecord, recovered: Bool) {
         reconciliationTask?.cancel()
+        let sessionTargets = (try? store.loadFocusSessionRestrictions()) ?? nil
+        let hadCompletedSession = history.contains { $0.outcome.countsTowardFocusStatistics }
         center.stopMonitoring([NoxaDeviceActivityConfiguration.focusActivityName])
         settingsStore.clearAllSettings()
         store.clearFocusSessionRestrictions()
@@ -666,6 +704,13 @@ final class FocusSessionService: ObservableObject {
             activeSession = nil
             activeIntention = nil
             history = (try? store.loadSnapshot())?.sessionHistory ?? history
+            if !hadCompletedSession, let sessionTargets {
+                saveFirstScheduleSuggestion(
+                    for: completedRecord,
+                    selection: sessionTargets.selection,
+                    websiteDomains: sessionTargets.websiteDomains
+                )
+            }
             AnalyticsService.shared.capture(.focusCompleted(
                 durationMinutes: completedRecord.plannedDurationSeconds / 60
             ))
@@ -675,10 +720,30 @@ final class FocusSessionService: ObservableObject {
         }
     }
 
+    private func saveFirstScheduleSuggestion(
+        for session: ActiveSessionRecord,
+        selection: FamilyActivitySelection,
+        websiteDomains: [String]
+    ) {
+        guard !store.hasOfferedScheduleSuggestion,
+              pendingScheduleSuggestion == nil else { return }
+        do {
+            try store.savePendingScheduleSuggestion(PendingScheduleSuggestion(
+                selection: selection,
+                websiteDomains: websiteDomains,
+                startedAt: session.startedAt,
+                plannedEndAt: session.plannedEndAt
+            ))
+        } catch {
+            logger.error("Could not save the first-session schedule suggestion")
+        }
+    }
+
     private func failPendingSession(_ session: ActiveSessionRecord) {
         center.stopMonitoring([NoxaDeviceActivityConfiguration.focusActivityName])
         settingsStore.clearAllSettings()
         store.clearFocusSessionRestrictions()
+        if completedSessionCount == 0 { store.clearPendingScheduleSuggestion() }
         var failedSession = session
         failedSession.outcome = .failedToStart
         failedSession.lastCleanupAttemptAt = Date()
@@ -698,6 +763,7 @@ final class FocusSessionService: ObservableObject {
         center.stopMonitoring([NoxaDeviceActivityConfiguration.focusActivityName])
         settingsStore.clearAllSettings()
         store.clearFocusSessionRestrictions()
+        if completedSessionCount == 0 { store.clearPendingScheduleSuggestion() }
 
         var interruptedSession = session
         interruptedSession.outcome = .interrupted

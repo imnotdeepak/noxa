@@ -119,6 +119,15 @@ struct ActiveSessionRecord: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+/// A device-local copy of the first completed session's targets, retained
+/// only until the user accepts or dismisses the recurring-schedule offer.
+struct PendingScheduleSuggestion: Codable, Equatable {
+    let selection: FamilyActivitySelection
+    let websiteDomains: [String]
+    let startedAt: Date
+    let plannedEndAt: Date
+}
+
 /// The device-local restriction snapshot owned by an active focus session.
 /// Screen Time selections are opaque Apple-managed tokens and never leave the
 /// device. This configuration is separate from the user's editable blocklist
