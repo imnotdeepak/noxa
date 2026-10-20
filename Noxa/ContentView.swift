@@ -1793,6 +1793,8 @@ struct ContentView: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
+                    Link("Report a filter problem", destination: NoxaWebLinks.support)
+                        .font(.subheadline.weight(.semibold))
                 }
                 .noxaCard()
                 .task {
