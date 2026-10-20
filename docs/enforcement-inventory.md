@@ -39,7 +39,7 @@ The migration cannot always infer whether an old web-content filter came from a 
 
 - Environment: Xcode 27.0, iPhone 17 simulator on iOS 26.5. The active command-line developer directory points to Command Line Tools, so project commands use `/Applications/Xcode.app/Contents/Developer` explicitly.
 - The first test attempt exposed stale subscription test calls. After that test was updated, the next run exposed an onboarding test that skipped the required value-overview milestone. Both test expectations were brought into line with the current services.
-- The current branch has 61 passing unit tests and 3 passing simulator UI tests. Simulator Managed Settings stores read back as empty even after accepting a write, so physical-device testing is required for actual enforcement and migration.
+- The current branch has 62 passing unit tests and 3 passing simulator UI tests. Simulator Managed Settings stores read back as empty even after accepting a write, so physical-device testing is required for actual enforcement and migration.
 - A signed build was installed and launched on the paired iPhone. A launch-only device UI test passed, but a screen-query test was denied iPhone UI-automation permission. Actual Screen Time behavior remains unverified.
 
 ## Strict Mode first slice
@@ -65,3 +65,10 @@ The migration cannot always infer whether an old web-content filter came from a 
 - The target picker now shows a suggestion based on the user's goal and distraction answer; the user still chooses the actual opaque Screen Time targets.
 - A first completed focus session now offers a one-time recurring schedule using its saved device-local targets. The user chooses the schedule name, days, mode, and hours before saving; dismissing the offer clears the target copy. The target copy survives the extension clearing the active focus shield before the app records completion. This path still needs physical-device lifecycle validation.
 - Confirmed activation state remains to be implemented.
+
+## Widget and Lock Screen first slice
+
+- A WidgetKit extension provides Home Screen and Lock Screen focus widgets. An idle widget opens the paid app's focus review with one hour selected; the user can change the duration before starting. An active widget reads the device-local App Group session snapshot and counts down to the planned end. Its timeline returns to idle at the planned end, and the app reloads it when session state changes.
+- An ActivityKit Live Activity shows the same session countdown on the Lock Screen and Dynamic Island where available. The app requests it for an active session, ends it when session state changes, and reconciles it on app launch or foreground. If iOS suspends the app at the precise end time, the Live Activity may remain stale until reconciliation; this behavior needs physical-device measurement.
+- Widget taps still pass through the existing subscription, Screen Time authorization, target, Strict, and active-session checks in the app. An idle widget never starts blocking directly.
+- The new widget extension builds in the simulator, and the signed app with the extension installed and launched on the paired iPhone. Widget placement, countdown behavior while the app is closed, and Live Activity permission still need direct device observation.

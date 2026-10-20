@@ -15,6 +15,9 @@
 		00B100000000000000000001 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 00B100000000000000000003 /* Supabase */; };
 		00C100000000000000000001 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = 00C100000000000000000003 /* RevenueCat */; };
 		00C200000000000000000001 /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = 00C200000000000000000003 /* PostHog */; };
+		00D100000000000000000001 /* NoxaWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 00D100000000000000000002 /* NoxaWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		00D100000000000000000003 /* FocusActivityAttributes.swift in Noxa Sources */ = {isa = PBXBuildFile; fileRef = 00D100000000000000000004 /* FocusActivityAttributes.swift */; };
+		00D100000000000000000005 /* FocusActivityAttributes.swift in Widget Sources */ = {isa = PBXBuildFile; fileRef = 00D100000000000000000004 /* FocusActivityAttributes.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -46,6 +49,13 @@
 			remoteGlobalIDString = 00A100000000000000000003;
 			remoteInfo = NoxaMonitor;
 		};
+		00D100000000000000000006 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0043105D3048CD18003BCE77 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 00D100000000000000000007;
+			remoteInfo = NoxaWidgets;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -57,6 +67,7 @@
 			files = (
 				00324858306C4E8600F0AC35 /* NoxaShieldConfiguration.appex in Embed Foundation Extensions */,
 				00A10000000000000000000B /* NoxaMonitor.appex in Embed Foundation Extensions */,
+				00D100000000000000000001 /* NoxaWidgets.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -72,6 +83,8 @@
 		0043107C3048CD19003BCE77 /* NoxaUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NoxaUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		00431223304F9028003BCE77 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 		00A100000000000000000001 /* NoxaMonitor.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NoxaMonitor.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		00D100000000000000000002 /* NoxaWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NoxaWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		00D100000000000000000004 /* FocusActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/FocusActivityAttributes.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -88,6 +101,13 @@
 				Info.plist,
 			);
 			target = 004310643048CD18003BCE77 /* Noxa */;
+		};
+		00D100000000000000000011 /* Exceptions for "NoxaWidgets" folder in "NoxaWidgets" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 00D100000000000000000007 /* NoxaWidgets */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -121,6 +141,14 @@
 		00A100000000000000000002 /* NoxaMonitor */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = NoxaMonitor;
+			sourceTree = "<group>";
+		};
+		00D100000000000000000008 /* NoxaWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				00D100000000000000000011 /* Exceptions for "NoxaWidgets" folder in "NoxaWidgets" target */,
+			);
+			path = NoxaWidgets;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -167,6 +195,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		00D100000000000000000009 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -178,6 +213,8 @@
 				0043107F3048CD19003BCE77 /* NoxaUITests */,
 				00A100000000000000000002 /* NoxaMonitor */,
 				00324851306C4E8600F0AC35 /* NoxaShieldConfiguration */,
+				00D100000000000000000008 /* NoxaWidgets */,
+				00D100000000000000000004 /* FocusActivityAttributes.swift */,
 				00431222304F9028003BCE77 /* Frameworks */,
 				004310663048CD18003BCE77 /* Products */,
 			);
@@ -191,6 +228,7 @@
 				0043107C3048CD19003BCE77 /* NoxaUITests.xctest */,
 				00A100000000000000000001 /* NoxaMonitor.appex */,
 				0032484C306C4E8600F0AC35 /* NoxaShieldConfiguration.appex */,
+				00D100000000000000000002 /* NoxaWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -234,7 +272,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 004310863048CD19003BCE77 /* Build configuration list for PBXNativeTarget "Noxa" */;
 			buildPhases = (
-				004310613048CD18003BCE77 /* Sources */,
+		004310613048CD18003BCE77 /* Sources */,
 				004310623048CD18003BCE77 /* Frameworks */,
 				004310633048CD18003BCE77 /* Resources */,
 				00A10000000000000000000A /* Embed Foundation Extensions */,
@@ -244,6 +282,7 @@
 			dependencies = (
 				00A10000000000000000000D /* PBXTargetDependency */,
 				00324857306C4E8600F0AC35 /* PBXTargetDependency */,
+				00D10000000000000000000D /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				004310673048CD18003BCE77 /* Noxa */,
@@ -326,6 +365,28 @@
 			productReference = 00A100000000000000000001 /* NoxaMonitor.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		00D100000000000000000007 /* NoxaWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 00D10000000000000000000E /* Build configuration list for PBXNativeTarget "NoxaWidgets" */;
+			buildPhases = (
+				00D10000000000000000000A /* Sources */,
+				00D100000000000000000009 /* Frameworks */,
+				00D10000000000000000000B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				00D100000000000000000008 /* NoxaWidgets */,
+			);
+			name = NoxaWidgets;
+			packageProductDependencies = (
+			);
+			productName = NoxaWidgets;
+			productReference = 00D100000000000000000002 /* NoxaWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -353,6 +414,9 @@
 					00A100000000000000000003 = {
 						CreatedOnToolsVersion = 26.6;
 					};
+					00D100000000000000000007 = {
+						CreatedOnToolsVersion = 27.0;
+					};
 				};
 			};
 			buildConfigurationList = 004310603048CD18003BCE77 /* Build configuration list for PBXProject "Noxa" */;
@@ -379,6 +443,7 @@
 				0043107B3048CD19003BCE77 /* NoxaUITests */,
 				00A100000000000000000003 /* NoxaMonitor */,
 				0032484B306C4E8600F0AC35 /* NoxaShieldConfiguration */,
+				00D100000000000000000007 /* NoxaWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -419,6 +484,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		00D10000000000000000000B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -433,6 +505,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				00D100000000000000000003 /* FocusActivityAttributes.swift in Noxa Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -454,6 +527,14 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		00D10000000000000000000A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				00D100000000000000000005 /* FocusActivityAttributes.swift in Widget Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -479,6 +560,11 @@
 			isa = PBXTargetDependency;
 			target = 00A100000000000000000003 /* NoxaMonitor */;
 			targetProxy = 00A10000000000000000000C /* PBXContainerItemProxy */;
+		};
+		00D10000000000000000000D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 00D100000000000000000007 /* NoxaWidgets */;
+			targetProxy = 00D100000000000000000006 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -872,6 +958,56 @@
 			};
 			name = Release;
 		};
+		00D10000000000000000000F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = NoxaWidgets/NoxaWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 9;
+				DEVELOPMENT_TEAM = 7QPHM2BM3N;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NoxaWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.1;
+				PRODUCT_BUNDLE_IDENTIFIER = LycheeCorp.Noxa.Widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		00D100000000000000000010 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = NoxaWidgets/NoxaWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 9;
+				DEVELOPMENT_TEAM = 7QPHM2BM3N;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NoxaWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.1;
+				PRODUCT_BUNDLE_IDENTIFIER = LycheeCorp.Noxa.Widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -925,6 +1061,15 @@
 			buildConfigurations = (
 				00A100000000000000000008 /* Debug */,
 				00A100000000000000000009 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		00D10000000000000000000E /* Build configuration list for PBXNativeTarget "NoxaWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				00D10000000000000000000F /* Debug */,
+				00D100000000000000000010 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

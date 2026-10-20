@@ -1,6 +1,6 @@
 # Physical-device restriction checks
 
-Status: A signed build was installed and launched on the paired iPhone “iphony 5x” on October 19, 2026. A launch-only device UI test passed. A UI test that queried the screen failed with “Not authorized for performing UI testing actions,” so no on-device interaction was automated. Screen Time permission, subscription access, target selection, actual shield behavior, and release behavior remain unverified. iPhone Mirroring is unavailable on this Mac because iCloud is signed out; device-side setup or another observation path is needed. Simulator results do not prove Screen Time enforcement.
+Status: A signed build was installed and launched on the paired iPhone “iphony 5x” on October 19, 2026, and the later widget-enabled build was also signed, installed, and launched. A launch-only device UI test passed. A UI test that queried the screen failed with “Not authorized for performing UI testing actions,” so no on-device interaction was automated. Screen Time permission, subscription access, target selection, actual shield behavior, widget placement, Live Activity presentation, and release behavior remain unverified. iPhone Mirroring is unavailable on this Mac because iCloud is signed out; device-side setup or another observation path is needed. Simulator results do not prove Screen Time enforcement.
 
 ## Setup
 
@@ -34,6 +34,9 @@ Status: A signed build was installed and launched on the paired iPhone “iphony
 | Revoke Screen Time authorization mid-cycle | The cycle is stopped and Noxa reports the interruption without leaving an app-controlled stale shield. |
 | Complete the first focus session after force-quitting Noxa, then reopen it | The one-time recurring-schedule offer appears with the completed session's targets after subscription and authorization recover. The editor lets the user choose name, days, hours, and mode before saving. |
 | End the first focus session early | No recurring-schedule offer appears. A later first completed session uses its own targets. |
+| Tap an idle Home or Lock Screen widget | Noxa opens a focus review with one hour selected; the user can change duration and sees the Strict warning and planned end before confirming. No block starts on the widget tap alone. |
+| Start and end a focus session with widgets placed | Home and Lock Screen widgets show the correct countdown, then return to Start. The Live Activity appears when permitted and clears at the end or on recovery. |
+| Tap the widget with no subscription, targets, or Screen Time access | Noxa shows the correct paywall or setup path and does not claim a session started. |
 
 ## Evidence to retain
 

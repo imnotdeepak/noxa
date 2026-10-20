@@ -22,6 +22,7 @@ struct NoxaApp: App {
     @StateObject private var websites = WebsiteBlocklistService()
     @StateObject private var cloudSync = CloudSyncService()
     @StateObject private var notifications = FocusNotificationService()
+    @StateObject private var focusLaunchRouter = FocusLaunchRouter()
 
     private var hasActiveRestrictions: Bool {
         focusSession.isActive
@@ -94,6 +95,7 @@ struct NoxaApp: App {
             .environmentObject(websites)
             .environmentObject(cloudSync)
             .environmentObject(notifications)
+            .environmentObject(focusLaunchRouter)
             .task {
                 RestrictionStoreMigration.migrateIfNeeded()
                 restrictions.reconcile()
@@ -103,6 +105,7 @@ struct NoxaApp: App {
                 await bindAccountServices()
                 await reconcileOnboardingAccount()
                 focusSession.reconcile()
+                await FocusPresentationCoordinator.reconcile(session: focusSession.activeSession)
                 restrictions.reconcile()
                 websites.reconcile()
                 dailyLimits.rescheduleActiveMonitoring()
@@ -112,6 +115,7 @@ struct NoxaApp: App {
             .onChange(of: scenePhase) { newPhase in
                 guard newPhase == .active else { return }
                 focusSession.reconcile()
+                Task { await FocusPresentationCoordinator.reconcile(session: focusSession.activeSession) }
                 restrictions.reconcile()
                 websites.reconcile()
                 dailyLimits.reconcileDayBoundary()
@@ -170,12 +174,16 @@ struct NoxaApp: App {
                     await syncCloudDataIfAuthenticated()
                 }
             }
+            .onChange(of: focusSession.activeSession) { session in
+                Task { await FocusPresentationCoordinator.reconcile(session: session) }
+            }
             .onChange(of: websites.domains) { _ in
                 Task {
                     await syncCloudDataIfAuthenticated()
                 }
             }
             .onOpenURL { url in
+                if focusLaunchRouter.handle(url) { return }
                 Task {
                     await authentication.handleAuthCallback(url)
                 }

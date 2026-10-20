@@ -44,6 +44,7 @@ struct ContentView: View {
     @EnvironmentObject private var websites: WebsiteBlocklistService
     @EnvironmentObject private var notifications: FocusNotificationService
     @EnvironmentObject private var onboarding: OnboardingService
+    @EnvironmentObject private var focusLaunchRouter: FocusLaunchRouter
     @StateObject private var authorization = FamilyControlsAuthorizationService()
     @State private var selectedDurationMinutes = 30
     @State private var isRequestingAuthorization = false
@@ -78,6 +79,7 @@ struct ContentView: View {
     @State private var isStrictStartConfirmationPresented = false
     @State private var isPomodoroCompletionPresented = false
     @State private var isScheduleSuggestionPresented = false
+    @State private var isWidgetSetupAlertPresented = false
     @State private var strictStartIsPomodoro = false
     @State private var isNotificationPromptPresented = false
     @State private var selectedTab = MainTab.home
@@ -169,6 +171,8 @@ struct ContentView: View {
                 && !onboarding.progress.hasSeenFirstFocusReview
             presentFirstFocusReviewIfReady()
             presentScheduleSuggestionIfReady()
+            presentWidgetStartIfReady()
+            presentWidgetHomeIfReady()
         }
         .onChange(of: isStrictModeIntroductionPresented) { isPresented in
             if !isPresented { presentFirstFocusReviewIfReady() }
@@ -186,6 +190,12 @@ struct ContentView: View {
         }
         .onChange(of: focusSession.pomodoroCycle?.id) { _ in
             presentScheduleSuggestionIfReady()
+        }
+        .onChange(of: focusLaunchRouter.hasPendingStart) { _ in
+            presentWidgetStartIfReady()
+        }
+        .onChange(of: focusLaunchRouter.hasPendingHome) { _ in
+            presentWidgetHomeIfReady()
         }
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
             statsReferenceDate = Date()
@@ -272,6 +282,12 @@ struct ContentView: View {
             }
         } message: {
             Text("Use the apps and websites from your first completed focus session. You can choose the days and hours before saving.")
+        }
+        .alert("Set up Focus first", isPresented: $isWidgetSetupAlertPresented) {
+            Button("Choose Distractions") { selectedTab = .blocklist }
+            Button("Later", role: .cancel) {}
+        } message: {
+            Text("Allow Screen Time and choose at least one app or website before starting from a widget.")
         }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -616,6 +632,14 @@ struct ContentView: View {
 
                     Text("Noxa will block these selected distractions for \(Self.durationLabel(minutes: chosenDurationMinutes)).")
                         .foregroundStyle(.secondary)
+
+                    Stepper(
+                        "Duration: \(Self.durationLabel(minutes: chosenDurationMinutes))",
+                        value: $selectedDurationMinutes,
+                        in: NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes...maximumFocusMinutes,
+                        step: 5
+                    )
+                    .onChange(of: selectedDurationMinutes) { _ in isCustomDuration = false }
 
                     tokenRows(for: restrictions.selection)
                     ForEach(websites.domains, id: \.self) { domain in
@@ -1977,6 +2001,27 @@ struct ContentView: View {
         isFocusStartReviewPresented = true
     }
 
+    private func presentWidgetStartIfReady() {
+        guard focusLaunchRouter.hasPendingStart,
+              subscriptions.canEnterApp(for: authentication.userID) else { return }
+        focusLaunchRouter.consumeStart()
+        selectedTab = .home
+        guard !focusSession.isActive, !focusSession.hasPomodoroCycle else { return }
+        selectedDurationMinutes = 60
+        isCustomDuration = false
+        if hasFocusRestrictions && authorization.state.isApproved {
+            isFocusStartReviewPresented = true
+        } else {
+            isWidgetSetupAlertPresented = true
+        }
+    }
+
+    private func presentWidgetHomeIfReady() {
+        guard focusLaunchRouter.hasPendingHome else { return }
+        focusLaunchRouter.consumeHome()
+        selectedTab = .home
+    }
+
     private func presentScheduleSuggestionIfReady() {
         guard onboarding.progress.isComplete,
               subscriptions.canEnterApp(for: authentication.userID),
@@ -2203,4 +2248,5 @@ private extension CloudSyncService {
         .environmentObject(CloudSyncService())
         .environmentObject(FocusNotificationService())
         .environmentObject(OnboardingService())
+        .environmentObject(FocusLaunchRouter())
 }
