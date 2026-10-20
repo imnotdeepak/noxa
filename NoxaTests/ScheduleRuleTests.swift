@@ -4,6 +4,32 @@ import Testing
 @testable import Noxa
 
 struct ScheduleRuleTests {
+    @Test func remindersDefaultOffWhenOlderArchiveIsDecoded() throws {
+        let rule = ScheduleRule(
+            name: "Old schedule",
+            mode: .blockedHours,
+            selection: FamilyActivitySelection(),
+            startMinutes: 9 * 60,
+            endMinutes: 17 * 60
+        )
+        let encoded = try JSONEncoder().encode(rule)
+        var payload = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        payload.removeValue(forKey: "notifyAtStart")
+        payload.removeValue(forKey: "notifyAtEnd")
+        let oldData = try JSONSerialization.data(withJSONObject: payload)
+
+        let migrated = try JSONDecoder().decode(ScheduleRule.self, from: oldData)
+        #expect(!migrated.notifyAtStart)
+        #expect(!migrated.notifyAtEnd)
+
+        var changed = migrated
+        changed.notifyAtStart = true
+        changed.notifyAtEnd = true
+        let roundTrip = try JSONDecoder().decode(ScheduleRule.self, from: JSONEncoder().encode(changed))
+        #expect(roundTrip.notifyAtStart)
+        #expect(roundTrip.notifyAtEnd)
+    }
+
     private var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!

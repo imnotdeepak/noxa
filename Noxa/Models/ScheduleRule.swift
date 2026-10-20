@@ -27,7 +27,15 @@ struct ScheduleRule: Codable, Equatable, Identifiable, Sendable {
     var endMinutes: Int
     var createdAt: Date
     var isEnabled: Bool
+    var notifyAtStart: Bool
+    var notifyAtEnd: Bool
     var pendingLegacyRelaxation: PendingScheduleRelaxation?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, mode, selection, websiteDomains, weekdays
+        case startMinutes, endMinutes, createdAt, isEnabled
+        case notifyAtStart, notifyAtEnd, pendingLegacyRelaxation
+    }
 
     init(
         id: UUID = UUID(),
@@ -40,6 +48,8 @@ struct ScheduleRule: Codable, Equatable, Identifiable, Sendable {
         endMinutes: Int,
         createdAt: Date = Date(),
         isEnabled: Bool = true,
+        notifyAtStart: Bool = false,
+        notifyAtEnd: Bool = false,
         pendingLegacyRelaxation: PendingScheduleRelaxation? = nil
     ) {
         self.id = id
@@ -52,7 +62,28 @@ struct ScheduleRule: Codable, Equatable, Identifiable, Sendable {
         self.endMinutes = endMinutes
         self.createdAt = createdAt
         self.isEnabled = isEnabled
+        self.notifyAtStart = notifyAtStart
+        self.notifyAtEnd = notifyAtEnd
         self.pendingLegacyRelaxation = pendingLegacyRelaxation
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        name = try values.decode(String.self, forKey: .name)
+        mode = try values.decode(Mode.self, forKey: .mode)
+        selection = try values.decode(FamilyActivitySelection.self, forKey: .selection)
+        websiteDomains = try values.decode([String].self, forKey: .websiteDomains)
+        weekdays = try values.decode(Set<Int>.self, forKey: .weekdays)
+        startMinutes = try values.decode(Int.self, forKey: .startMinutes)
+        endMinutes = try values.decode(Int.self, forKey: .endMinutes)
+        createdAt = try values.decode(Date.self, forKey: .createdAt)
+        isEnabled = try values.decode(Bool.self, forKey: .isEnabled)
+        notifyAtStart = try values.decodeIfPresent(Bool.self, forKey: .notifyAtStart) ?? false
+        notifyAtEnd = try values.decodeIfPresent(Bool.self, forKey: .notifyAtEnd) ?? false
+        pendingLegacyRelaxation = try values.decodeIfPresent(
+            PendingScheduleRelaxation.self, forKey: .pendingLegacyRelaxation
+        )
     }
 
     init(legacy: RestrictionScheduleConfiguration) {

@@ -43,7 +43,9 @@ final class RestrictionScheduleService: ObservableObject {
         websiteDomains: [String] = [],
         weekdays: Set<Int>,
         start: Date,
-        end: Date
+        end: Date,
+        notifyAtStart: Bool = false,
+        notifyAtEnd: Bool = false
     ) {
         errorMessage = nil
         guard configurations.count < Self.maximumConfigurations else {
@@ -58,7 +60,9 @@ final class RestrictionScheduleService: ObservableObject {
             websiteDomains: websiteDomains,
             weekdays: weekdays,
             startMinutes: Self.minutesSinceMidnight(start, calendar: calendar),
-            endMinutes: Self.minutesSinceMidnight(end, calendar: calendar)
+            endMinutes: Self.minutesSinceMidnight(end, calendar: calendar),
+            notifyAtStart: notifyAtStart,
+            notifyAtEnd: notifyAtEnd
         )
         guard let normalized = validated(rule) else { return }
         configurations.append(normalized)

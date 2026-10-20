@@ -8,6 +8,7 @@ import FamilyControls
 import Foundation
 import ManagedSettings
 import os
+import UserNotifications
 
 private enum NoxaMonitorActivity {
     static let focusActivityName = DeviceActivityName("noxa.focus.session")
@@ -106,6 +107,7 @@ private struct PersistedScheduleRule: Codable {
     }
 
     let id: UUID
+    let name: String?
     let mode: Mode
     let selection: FamilyActivitySelection
     let websiteDomains: [String]
@@ -113,6 +115,8 @@ private struct PersistedScheduleRule: Codable {
     let startMinutes: Int
     let endMinutes: Int
     let isEnabled: Bool
+    let notifyAtStart: Bool?
+    let notifyAtEnd: Bool?
     let pendingLegacyRelaxation: PersistedScheduleRelaxation?
 
     func isBlocking(at date: Date, calendar: Calendar) -> Bool {
@@ -168,6 +172,9 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleV2WakePrefix)
                     || activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleV2RelaxationPrefix) {
             applyV2ScheduleShield(for: activity)
+            if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleV2WakePrefix) {
+                sendScheduleReminder(for: activity)
+            }
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleRelaxationActivityPrefix) {
             applyPendingScheduleRelaxation(for: activity)
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleActivityPrefix) {
@@ -477,6 +484,53 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
             )
         } else {
             ruleStore.clearAllSettings()
+        }
+    }
+
+    private func sendScheduleReminder(for activity: DeviceActivityName) {
+        let parts = activity.rawValue.split(separator: ".")
+        guard parts.count >= 2,
+              let id = UUID(uuidString: String(parts[parts.count - 1])),
+              let wakeMinute = Int(parts[parts.count - 2]),
+              let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa"),
+              let data = defaults.data(forKey: "noxa.scheduleRules.v2"),
+              let archive = try? JSONDecoder().decode(PersistedScheduleRuleArchive.self, from: data),
+              archive.version == 2,
+              let rule = archive.rules.first(where: { $0.id == id && $0.isEnabled }) else { return }
+
+        let now = Date()
+        let calendar = Calendar.autoupdatingCurrent
+        let components = calendar.dateComponents([.hour, .minute], from: now)
+        let currentMinute = (components.hour ?? -1) * 60 + (components.minute ?? -1)
+        // A late Device Activity callback must not announce an old boundary.
+        guard (0...3).contains((currentMinute - wakeMinute + 1_440) % 1_440),
+              rule.isBlocking(at: now.addingTimeInterval(-240), calendar: calendar)
+                != rule.isBlocking(at: now, calendar: calendar) else { return }
+
+        let kind: String
+        if wakeMinute == rule.startMinutes, rule.notifyAtStart == true {
+            kind = "start"
+        } else if wakeMinute == rule.endMinutes, rule.notifyAtEnd == true {
+            kind = "end"
+        } else {
+            return
+        }
+
+        let day = calendar.dateComponents([.era, .year, .month, .day], from: now)
+        let identifier = "noxa.schedule.reminder.\(id.uuidString).\(kind).\(day.era ?? 0)-\(day.year ?? 0)-\(day.month ?? 0)-\(day.day ?? 0)"
+        guard defaults.bool(forKey: identifier) == false else { return }
+        defaults.set(true, forKey: identifier)
+
+        let content = UNMutableNotificationContent()
+        content.title = kind == "start" ? "Schedule started" : "Schedule ended"
+        let name = rule.name.flatMap { $0.isEmpty ? nil : $0 } ?? "Your schedule"
+        content.body = "\(name) \(kind == "start" ? "has started" : "has ended")."
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { [logger] error in
+            if let error {
+                logger.error("Schedule reminder failed: \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 

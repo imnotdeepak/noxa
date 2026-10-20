@@ -66,6 +66,8 @@ struct ContentView: View {
     @State private var renamedScheduleName = ""
     @State private var scheduleMode: ScheduleRule.Mode = .allowedHours
     @State private var scheduleWeekdays: Set<Int> = Set(1...7)
+    @State private var scheduleNotifyAtStart = false
+    @State private var scheduleNotifyAtEnd = false
     @State private var scheduleCustomDomains = ""
     @State private var scheduleSelection = FamilyActivitySelection()
     @State private var scheduleAllowedStart = Calendar.current.date(from: DateComponents(hour: 21)) ?? Date()
@@ -269,6 +271,8 @@ struct ContentView: View {
                 scheduleName = ""
                 scheduleMode = .blockedHours
                 scheduleWeekdays = Set(1...7)
+                scheduleNotifyAtStart = false
+                scheduleNotifyAtEnd = false
                 scheduleAllowedStart = Self.dateForScheduleMinute(
                     Self.minutesSinceMidnight(suggestion.startedAt)
                 )
@@ -497,6 +501,8 @@ struct ContentView: View {
                             rule.weekdays = scheduleWeekdays
                             rule.startMinutes = Self.minutesSinceMidnight(scheduleAllowedStart)
                             rule.endMinutes = Self.minutesSinceMidnight(scheduleAllowedEnd)
+                            rule.notifyAtStart = scheduleNotifyAtStart
+                            rule.notifyAtEnd = scheduleNotifyAtEnd
                             rule.pendingLegacyRelaxation = nil
                             schedules.update(rule)
                         } else {
@@ -507,7 +513,9 @@ struct ContentView: View {
                                 websiteDomains: Self.domains(from: scheduleCustomDomains),
                                 weekdays: scheduleWeekdays,
                                 start: scheduleAllowedStart,
-                                end: scheduleAllowedEnd
+                                end: scheduleAllowedEnd,
+                                notifyAtStart: scheduleNotifyAtStart,
+                                notifyAtEnd: scheduleNotifyAtEnd
                             )
                         }
                         if schedules.errorMessage == nil {
@@ -574,6 +582,14 @@ struct ContentView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+
+            Toggle("Remind me when this schedule starts", isOn: $scheduleNotifyAtStart)
+                .tint(NoxaTheme.accent)
+            Toggle("Remind me when this schedule ends", isOn: $scheduleNotifyAtEnd)
+                .tint(NoxaTheme.accent)
+            Text("Reminders need notification permission. Schedule blocking still works if notifications are off.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -1454,6 +1470,8 @@ struct ContentView: View {
                 scheduleSelection = FamilyActivitySelection()
                 scheduleMode = .allowedHours
                 scheduleWeekdays = Set(1...7)
+                scheduleNotifyAtStart = false
+                scheduleNotifyAtEnd = false
                 scheduleAllowedStart = Self.dateForScheduleMinute(21 * 60)
                 scheduleAllowedEnd = Self.dateForScheduleMinute(22 * 60)
                 isSchedulePickerPresented = true
@@ -1496,6 +1514,8 @@ struct ContentView: View {
                                 scheduleName = configuration.name
                                 scheduleMode = configuration.mode
                                 scheduleWeekdays = configuration.weekdays
+                                scheduleNotifyAtStart = configuration.notifyAtStart
+                                scheduleNotifyAtEnd = configuration.notifyAtEnd
                                 scheduleAllowedStart = Self.dateForScheduleMinute(configuration.startMinutes)
                                 scheduleAllowedEnd = Self.dateForScheduleMinute(configuration.endMinutes)
                                 scheduleSelection = configuration.selection
