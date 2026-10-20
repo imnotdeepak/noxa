@@ -590,7 +590,7 @@ struct ContentView: View {
                 .tint(NoxaTheme.accent)
             Toggle("Remind me when this schedule ends", isOn: $scheduleNotifyAtEnd)
                 .tint(NoxaTheme.accent)
-            Text("Reminders need notification permission. Schedule blocking still works if notifications are off.")
+            Text("Reminders need notification permission and may arrive late if iOS delays a schedule callback. Blocking does not depend on reminders.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

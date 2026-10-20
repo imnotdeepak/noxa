@@ -196,6 +196,45 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         }
     }
 
+    override func eventWillReachThresholdWarning(
+        _ event: DeviceActivityEvent.Name,
+        activity: DeviceActivityName
+    ) {
+        super.eventWillReachThresholdWarning(event, activity: activity)
+        guard activity == NoxaMonitorActivity.dailyLimitActivityName else { return }
+        sendDailyLimitWarning(for: event)
+    }
+
+    private func sendDailyLimitWarning(for event: DeviceActivityEvent.Name) {
+        guard let idText = event.rawValue.split(separator: ".").last,
+              let id = UUID(uuidString: String(idText)),
+              let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa"),
+              let data = defaults.data(forKey: "noxa.dailyLimits"),
+              let configurations = try? JSONDecoder().decode(
+                [PersistedDailyLimitConfiguration].self, from: data
+              ),
+              let limit = configurations.first(where: { $0.id == id && $0.isEnabled }),
+              limit.dailyLimitMinutes > 5 else { return }
+
+        let today = NoxaMonitorActivity.dailyLimitDayStamp()
+        let identifier = "noxa.daily.warning.\(id.uuidString.lowercased()).\(today)"
+        guard !defaults.bool(forKey: identifier),
+              !(defaults.stringArray(forKey: NoxaMonitorActivity.dailyLimitReachedEventsKey) ?? [])
+                .contains(event.rawValue) else { return }
+        defaults.set(true, forKey: identifier)
+
+        let content = UNMutableNotificationContent()
+        content.title = "Daily limit almost reached"
+        content.body = "About 5 minutes remain for one of your daily limits."
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { [logger] error in
+            if let error {
+                logger.error("Daily limit warning failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
     override func intervalDidEnd(for activity: DeviceActivityName) {
         super.intervalDidEnd(for: activity)
         if activity == NoxaMonitorActivity.focusActivityName {

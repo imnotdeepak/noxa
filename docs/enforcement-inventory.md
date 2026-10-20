@@ -91,5 +91,9 @@ The migration cannot always infer whether an old web-content filter came from a 
 
 ## Schedule reminders and shortcuts
 
-- Start and end schedule reminders are independently optional and off by default. The schedule monitor posts a reminder only when its corresponding configured boundary actually changes the rule's blocking state, and skips callbacks over three minutes late. Older saved schedules decode with both reminders off. Notification denial does not affect schedule enforcement. The extension and app sign for the paired iPhone; delivery timing still needs a real-device boundary test.
+- Start and end schedule reminders are independently optional and off by default. The schedule monitor posts a reminder only when its corresponding configured boundary actually changes the rule's blocking state, and skips callbacks over three minutes late. Older saved schedules decode with both reminders off. Notification denial does not affect schedule enforcement. Apple documents that Device Activity callbacks can wait until device use, so Settings warns that reminders may be late; delivery timing still needs a real-device boundary test.
 - The Start Focus App Shortcut opens the existing one-hour duration and policy review through the same launch router as the widget. It does not start a session in the background. Build succeeds; Shortcuts discovery and launch need device validation.
+
+## Daily limit warning candidate
+
+- Daily-limit monitoring now requests a warning callback about five minutes before each usage threshold. The monitor checks that the limit is still enabled and not already reached, deduplicates by limit and local day, and posts a local notification if notifications are allowed. This path signs for the paired iPhone. Timing must be validated with real app use before claiming dependable five-minute warnings.
