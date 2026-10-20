@@ -176,22 +176,16 @@ private struct Rule: Decodable {
     let pendingLegacyRelaxation: PendingRelaxation?
 
     func isBlocking(at date: Date, calendar: Calendar) -> Bool {
-        guard isEnabled, weekdays.contains(where: { (1...7).contains($0) }),
-              (0..<1_440).contains(startMinutes), (0..<1_440).contains(endMinutes),
-              startMinutes != endMinutes,
-              pendingLegacyRelaxation.map({ $0.effectiveAt > date }) ?? true else { return false }
-        let weekday = calendar.component(.weekday, from: date)
-        let minute = calendar.component(.hour, from: date) * 60 + calendar.component(.minute, from: date)
-        let yesterday = calendar.date(byAdding: .day, value: -1, to: date)
-            .map { calendar.component(.weekday, from: $0) }
-        let within: Bool
-        if endMinutes < startMinutes {
-            within = (weekdays.contains(weekday) && minute >= startMinutes)
-                || (yesterday.map(weekdays.contains) ?? false) && minute < endMinutes
-        } else {
-            within = weekdays.contains(weekday) && minute >= startMinutes && minute < endMinutes
-        }
-        return mode == "blockedHours" ? within : (weekdays.contains(weekday) && !within)
+        ScheduleWindow.isBlocking(
+            mode: mode,
+            weekdays: weekdays,
+            startMinutes: startMinutes,
+            endMinutes: endMinutes,
+            isEnabled: isEnabled,
+            pendingRelaxationAt: pendingLegacyRelaxation?.effectiveAt,
+            at: date,
+            calendar: calendar
+        )
     }
 
     func nextEnd(after date: Date, calendar: Calendar) -> Date? {

@@ -85,39 +85,16 @@ enum ScheduleRuleEvaluator {
     }
 
     static func isBlocking(_ rule: ScheduleRule, at date: Date, calendar: Calendar) -> Bool {
-        guard rule.isEnabled, rule.weekdays.contains(where: { (1...7).contains($0) }),
-              (0..<1_440).contains(rule.startMinutes),
-              (0..<1_440).contains(rule.endMinutes),
-              rule.startMinutes != rule.endMinutes else { return false }
-        if let pending = rule.pendingLegacyRelaxation, pending.effectiveAt <= date {
-            return false
-        }
-
-        let weekday = calendar.component(.weekday, from: date)
-        let minutes = calendar.component(.hour, from: date) * 60
-            + calendar.component(.minute, from: date)
-        let yesterday = calendar.date(byAdding: .day, value: -1, to: date)
-            .map { calendar.component(.weekday, from: $0) }
-        let startsToday = rule.weekdays.contains(weekday)
-        let startsYesterday = yesterday.map(rule.weekdays.contains) ?? false
-        let overnight = rule.endMinutes < rule.startMinutes
-
-        let withinWindow: Bool
-        if overnight {
-            withinWindow = (startsToday && minutes >= rule.startMinutes)
-                || (startsYesterday && minutes < rule.endMinutes)
-        } else {
-            withinWindow = startsToday
-                && minutes >= rule.startMinutes
-                && minutes < rule.endMinutes
-        }
-
-        switch rule.mode {
-        case .blockedHours:
-            return withinWindow
-        case .allowedHours:
-            return startsToday && !withinWindow
-        }
+        ScheduleWindow.isBlocking(
+            mode: rule.mode.rawValue,
+            weekdays: rule.weekdays,
+            startMinutes: rule.startMinutes,
+            endMinutes: rule.endMinutes,
+            isEnabled: rule.isEnabled,
+            pendingRelaxationAt: rule.pendingLegacyRelaxation?.effectiveAt,
+            at: date,
+            calendar: calendar
+        )
     }
 
     static func nextChange(

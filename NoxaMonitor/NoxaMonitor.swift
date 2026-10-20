@@ -116,29 +116,16 @@ private struct PersistedScheduleRule: Codable {
     let pendingLegacyRelaxation: PersistedScheduleRelaxation?
 
     func isBlocking(at date: Date, calendar: Calendar) -> Bool {
-        guard isEnabled, weekdays.contains(where: { (1...7).contains($0) }),
-              (0..<1_440).contains(startMinutes),
-              (0..<1_440).contains(endMinutes),
-              startMinutes != endMinutes else { return false }
-        if let pendingLegacyRelaxation, pendingLegacyRelaxation.effectiveAt <= date {
-            return false
-        }
-
-        let weekday = calendar.component(.weekday, from: date)
-        let minutes = calendar.component(.hour, from: date) * 60
-            + calendar.component(.minute, from: date)
-        let yesterday = calendar.date(byAdding: .day, value: -1, to: date)
-            .map { calendar.component(.weekday, from: $0) }
-        let startsToday = weekdays.contains(weekday)
-        let startsYesterday = yesterday.map(weekdays.contains) ?? false
-        let withinWindow: Bool
-        if endMinutes < startMinutes {
-            withinWindow = (startsToday && minutes >= startMinutes)
-                || (startsYesterday && minutes < endMinutes)
-        } else {
-            withinWindow = startsToday && minutes >= startMinutes && minutes < endMinutes
-        }
-        return mode == .blockedHours ? withinWindow : (startsToday && !withinWindow)
+        ScheduleWindow.isBlocking(
+            mode: mode.rawValue,
+            weekdays: weekdays,
+            startMinutes: startMinutes,
+            endMinutes: endMinutes,
+            isEnabled: isEnabled,
+            pendingRelaxationAt: pendingLegacyRelaxation?.effectiveAt,
+            at: date,
+            calendar: calendar
+        )
     }
 }
 
