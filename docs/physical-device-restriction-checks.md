@@ -1,6 +1,6 @@
 # Physical-device restriction checks
 
-Status: On October 20, 2026, the Safari-enabled build installed and launched on the paired iPhone “iphony 5x”; its embedded Safari extension has the required App Group entitlement. The physical-device screen-capture UI test passed and showed Noxa's Home screen with six saved distraction selections and an enabled schedule. This confirms app launch and state rendering only. Screen Time authorization and actual shield behavior, widget placement, Live Activity presentation, Safari extension permission and filtering, and release behavior remain unverified. iPhone Mirroring is unavailable on this Mac because iCloud is signed out. Simulator results do not prove Screen Time enforcement.
+Status: On October 20, 2026, the Safari- and rule-aware-shield build installed and launched on the paired iPhone “iphony 5x”; both extensions have the required App Group entitlement. An earlier physical-device screen-capture UI test passed and showed Noxa's Home screen with six saved distraction selections and an enabled schedule. A later read-only Blocklist inspection test timed out while enabling iPhone UI automation, before it could observe a shield. App launch and state rendering are verified; Screen Time enforcement, shield text, widget placement, Live Activity presentation, Safari extension permission and filtering, and release behavior remain unverified. iPhone Mirroring is unavailable on this Mac because iCloud is signed out. Simulator results do not prove Screen Time enforcement.
 
 ## Setup
 
@@ -41,6 +41,7 @@ Status: On October 20, 2026, the Safari-enabled build installed and launched on 
 | Turn the Noxa Safari toggle off, sign out, or reach subscription expiry | The extension stops hiding Instagram content even if Safari still lists it as enabled. Reload a page and check again after a minute on an already-open page. |
 | Revoke Safari's Instagram website permission | The app shows only the extension enabled state, and does not claim that filtering is working; Instagram remains unchanged until access is restored. |
 | Start focus and watch its status with Noxa open, then with Noxa relaunched | The app first shows that blocks were requested. A matching monitor callback changes the status to “Screen Time monitor applied your block settings.” Verify the selected app and site actually show a shield separately; the status alone does not prove that. A stale receipt from an earlier session never changes the new session's status. |
+| Open a shielded app or site with focus, schedule, manual, or daily-limit rules active | The shield names matching rules, shows the focus or schedule end when known, and never implies that one rule ending releases a target held by another rule. Unknown rule state uses the generic message. |
 
 ## Evidence to retain
 
