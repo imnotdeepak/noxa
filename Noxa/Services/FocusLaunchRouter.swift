@@ -3,6 +3,8 @@ import Foundation
 
 @MainActor
 final class FocusLaunchRouter: ObservableObject {
+    static let shared = FocusLaunchRouter()
+
     @Published private(set) var hasPendingStart = false
     @Published private(set) var hasPendingHome = false
 
@@ -12,7 +14,7 @@ final class FocusLaunchRouter: ObservableObject {
         }
         switch url.path {
         case "/start":
-            hasPendingStart = true
+            requestStart()
             return true
         case "/active":
             hasPendingHome = true
@@ -20,6 +22,10 @@ final class FocusLaunchRouter: ObservableObject {
         default:
             return false
         }
+    }
+
+    func requestStart() {
+        hasPendingStart = true
     }
 
     func consumeStart() {

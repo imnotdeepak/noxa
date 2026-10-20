@@ -22,7 +22,7 @@ struct NoxaApp: App {
     @StateObject private var websites = WebsiteBlocklistService()
     @StateObject private var cloudSync = CloudSyncService()
     @StateObject private var notifications = FocusNotificationService()
-    @StateObject private var focusLaunchRouter = FocusLaunchRouter()
+    @StateObject private var focusLaunchRouter = FocusLaunchRouter.shared
 
     private var hasActiveRestrictions: Bool {
         focusSession.isActive
