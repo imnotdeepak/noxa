@@ -15,7 +15,25 @@
 
   const style = document.createElement("style");
   style.textContent = `${hiddenLinkSelector} { display: none !important; }`;
-  (document.head || document.documentElement).appendChild(style);
+  let enabled = false;
+
+  async function refreshPermission() {
+    let nextEnabled = false;
+    try {
+      const response = await browser.runtime.sendMessage({ type: "noxa.instagram.filterState" });
+      nextEnabled = response?.enabled === true;
+    } catch {
+      // When Safari or native messaging is unavailable, leave Instagram alone.
+    }
+    if (nextEnabled === enabled) return;
+    enabled = nextEnabled;
+    if (enabled) {
+      (document.head || document.documentElement).appendChild(style);
+    } else {
+      style.remove();
+    }
+    updateRoute();
+  }
 
   function isBlockedPath(pathname) {
     return /^\/(?:reel|reels|explore)(?:\/|$)/i.test(pathname);
@@ -23,7 +41,7 @@
 
   function updateRoute() {
     if (!document.body) return;
-    const blocked = isBlockedPath(location.pathname);
+    const blocked = enabled && isBlockedPath(location.pathname);
     let overlay = document.getElementById("noxa-instagram-route-block");
     if (!blocked) {
       overlay?.remove();
@@ -67,6 +85,8 @@
   observer.observe(document.documentElement, { childList: true, subtree: true });
   window.addEventListener("popstate", updateRoute);
   window.addEventListener("pageshow", updateRoute);
+  refreshPermission();
+  setInterval(refreshPermission, 60_000);
   setInterval(() => {
     if (location.pathname !== previousPath) {
       previousPath = location.pathname;

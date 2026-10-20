@@ -4,6 +4,7 @@
 //
 
 import FamilyControls
+import SafariServices
 import SwiftUI
 
 struct ContentView: View {
@@ -49,6 +50,8 @@ struct ContentView: View {
     @State private var selectedDurationMinutes = 30
     @State private var isRequestingAuthorization = false
     @State private var newDomain = ""
+    @State private var safariFilterEnabled = AppGroupStore.shared.isSafariFilterEnabled
+    @State private var safariExtensionEnabled: Bool?
     @State private var restrictionPickerSelection = FamilyActivitySelection()
     @State private var isDailyLimitPickerPresented = false
     @State private var isChoosingDailyLimitDuration = false
@@ -1770,6 +1773,36 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                 }
                 .noxaCard()
+
+                settingsSectionTitle("Safari")
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("Hide Instagram Reels and Explore", isOn: $safariFilterEnabled)
+                        .font(.headline)
+                        .tint(NoxaTheme.accent)
+                        .onChange(of: safariFilterEnabled) { enabled in
+                            AppGroupStore.shared.setSafariFilterEnabled(enabled)
+                        }
+                    Text("Experimental Safari filter. The Instagram feed stays available. This does not change the Instagram app, and embedded Reels may still appear.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    if safariFilterEnabled {
+                        Text(safariExtensionEnabled == true
+                             ? "Safari extension is enabled. Allow it to access instagram.com in Safari; filtering still needs device testing."
+                             : "Enable Noxa Instagram Filter and allow instagram.com in Settings → Apps → Safari → Extensions.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .noxaCard()
+                .task {
+                    if #available(iOS 26.2, *) {
+                        let state = try? await SFSafariExtensionManager.stateOfExtension(
+                            withIdentifier: "LycheeCorp.Noxa.SafariFilter"
+                        )
+                        safariExtensionEnabled = state?.isEnabled
+                    }
+                }
 
                 settingsSectionTitle("Support & Legal")
 

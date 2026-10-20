@@ -32,5 +32,7 @@ enum LocalDataCleanupService {
         _ = onboarding.reset()
         store.clearCloudSyncState()
         store.clearCloudAccountCaches()
+        store.setSafariFilterAllowedUntil(nil)
+        store.setSafariFilterEnabled(false)
     }
 }

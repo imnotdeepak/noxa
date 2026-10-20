@@ -39,7 +39,7 @@ The migration cannot always infer whether an old web-content filter came from a 
 
 - Environment: Xcode 27.0, iPhone 17 simulator on iOS 26.5. The active command-line developer directory points to Command Line Tools, so project commands use `/Applications/Xcode.app/Contents/Developer` explicitly.
 - The first test attempt exposed stale subscription test calls. After that test was updated, the next run exposed an onboarding test that skipped the required value-overview milestone. Both test expectations were brought into line with the current services.
-- The current branch has 63 passing unit tests and 3 passing simulator UI tests. Simulator Managed Settings stores read back as empty even after accepting a write, so physical-device testing is required for actual enforcement and migration.
+- The current branch has 64 passing unit tests and 3 previously passing simulator UI tests. Simulator Managed Settings stores read back as empty even after accepting a write, so physical-device testing is required for actual enforcement and migration.
 - A signed build was installed and launched on the paired iPhone. A launch-only device UI test passed, but a screen-query test was denied iPhone UI-automation permission. Actual Screen Time behavior remains unverified.
 
 ## Strict Mode first slice
@@ -76,5 +76,5 @@ The migration cannot always infer whether an old web-content filter came from a 
 
 ## Instagram Safari prototype
 
-- `Experiments/InstagramSafari` now contains an isolated Safari Web Extension prototype. It covers direct Reels and Explore routes and hides links to those sections while leaving the feed and other paths available by route. Three script behavior tests pass, and Apple's Safari extension packager accepted the manifest for an iOS project (with icon warnings).
-- The prototype is not embedded in the Noxa app, exposed as a product setting, or verified on signed-in Instagram in Safari. Instagram's dynamic markup, embedded feed Reels, permission state, and physical-device behavior must be checked before claiming selective filtering or moving it into the app.
+- `Experiments/InstagramSafari` contains a Safari Web Extension prototype, now embedded in the Noxa app with an off-by-default experimental Settings toggle. It covers direct Reels and Explore routes and hides links to those sections while leaving the feed and other paths available by route. The extension asks the app-side native handler for permission before changing the page; the handler requires the user's toggle and an unexpired paid entitlement. Five script behavior tests pass, and the combined app builds in the simulator and signs for iOS.
+- The extension is not verified on signed-in Instagram in Safari. Instagram's dynamic markup, embedded feed Reels, permission state, and physical-device behavior must be checked before claiming selective filtering. Safari extension enablement is not proof that website access was granted or the script changed the page.

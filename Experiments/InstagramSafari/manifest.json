@@ -3,6 +3,8 @@
   "name": "Noxa Instagram Filter Prototype",
   "version": "0.1.0",
   "description": "Prototype that hides Instagram Reels and Explore in Safari.",
+  "permissions": ["nativeMessaging"],
+  "background": { "service_worker": "background.js" },
   "content_scripts": [
     {
       "matches": ["*://www.instagram.com/*", "*://instagram.com/*"],

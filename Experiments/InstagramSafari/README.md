@@ -1,9 +1,9 @@
 # Instagram Safari filter prototype
 
-This is an isolated Safari Web Extension prototype. It is not embedded in the Noxa iOS app, enabled for customers, or presented as working protection in the app.
+This Safari Web Extension prototype is now embedded in the Noxa iOS app behind an off-by-default toggle and an active subscription expiry check. It is labeled experimental in Settings and must not be presented as confirmed protection until Safari behavior is observed on a physical device.
 
 It requests access only to `instagram.com` and `www.instagram.com`. The content script hides links to `/reel/`, `/reels/`, and `/explore/`, and covers those direct routes with a way back to the main feed. The main feed, messages, search, and profiles are left available by route. Instagram can change its markup and navigation behavior at any time, and the script has not been checked against logged-in Safari on a physical iPhone. Reels embedded in the feed may still be visible.
 
-Before integrating this into Noxa, validate signed-in and signed-out pages, direct links, navigation after login, feed, messages, search, profiles, localization, extension permission loss, and Reels embedded in the feed. Then package it as an iOS Safari Web Extension in the existing Noxa app and add a user-facing permission and status flow. A successful script test alone must not be presented as confirmed filtering.
+Before release, validate signed-in and signed-out pages, direct links, navigation after login, feed, messages, search, profiles, localization, extension permission loss, and Reels embedded in the feed. The extension's native message handler reads the off-by-default toggle and RevenueCat entitlement expiry from the app's shared container; it returns disabled when either is missing or expired. Safari must also be enabled and granted instagram.com access by the user. On iOS 26.2 or later the app can show whether the extension itself is enabled; that state alone cannot prove that Instagram page access was granted or the filter worked.
 
 Apple's packaging and permission documentation: https://developer.apple.com/documentation/safariservices/packaging-a-web-extension-for-safari and https://developer.apple.com/documentation/safariservices/managing-safari-web-extension-permissions

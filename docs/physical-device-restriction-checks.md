@@ -1,6 +1,6 @@
 # Physical-device restriction checks
 
-Status: The latest signed app build, including focus monitor status and widgets, was installed and launched on the paired iPhone “iphony 5x” on October 19, 2026. A launch-only device UI test passed. A UI test that queried the screen failed with “Not authorized for performing UI testing actions,” so no on-device interaction was automated. Screen Time permission, subscription access, target selection, actual shield behavior, widget placement, Live Activity presentation, and release behavior remain unverified. iPhone Mirroring is unavailable on this Mac because iCloud is signed out; device-side setup or another observation path is needed. Simulator results do not prove Screen Time enforcement.
+Status: The focus-status and widget build was installed and launched on the paired iPhone “iphony 5x” on October 19, 2026. On October 20, the newer Safari-enabled app built and signed for iOS, and its extension has the required App Group entitlement, but Xcode could not reach the paired iPhone to install it. A launch-only device UI test passed for the earlier build. A UI test that queried the screen failed with “Not authorized for performing UI testing actions,” so no on-device interaction was automated. Screen Time permission, subscription access, target selection, actual shield behavior, widget placement, Live Activity presentation, Safari filtering, and release behavior remain unverified. iPhone Mirroring is unavailable on this Mac because iCloud is signed out; device-side setup or another observation path is needed. Simulator results do not prove Screen Time enforcement.
 
 ## Setup
 
@@ -37,6 +37,9 @@ Status: The latest signed app build, including focus monitor status and widgets,
 | Tap an idle Home or Lock Screen widget | Noxa opens a focus review with one hour selected; the user can change duration and sees the Strict warning and planned end before confirming. No block starts on the widget tap alone. |
 | Start and end a focus session with widgets placed | Home and Lock Screen widgets show the correct countdown, then return to Start. The Live Activity appears when permitted and clears at the end or on recovery. |
 | Tap the widget with no subscription, targets, or Screen Time access | Noxa shows the correct paywall or setup path and does not claim a session started. |
+| Enable the Instagram Safari extension and allow instagram.com after subscribing | With the Noxa Safari toggle on, direct Reels and Explore routes show the return-to-feed screen. The feed, messages, search, and profiles stay usable. Confirm embedded Reels separately; the prototype may miss them. |
+| Turn the Noxa Safari toggle off, sign out, or reach subscription expiry | The extension stops hiding Instagram content even if Safari still lists it as enabled. Reload a page and check again after a minute on an already-open page. |
+| Revoke Safari's Instagram website permission | The app shows only the extension enabled state, and does not claim that filtering is working; Instagram remains unchanged until access is restored. |
 | Start focus and watch its status with Noxa open, then with Noxa relaunched | The app first shows that blocks were requested. A matching monitor callback changes the status to “Screen Time monitor applied your block settings.” Verify the selected app and site actually show a shield separately; the status alone does not prove that. A stale receipt from an earlier session never changes the new session's status. |
 
 ## Evidence to retain

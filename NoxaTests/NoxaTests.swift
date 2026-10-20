@@ -215,6 +215,20 @@ struct NoxaTests {
         #expect(try store.loadFocusMonitorReceipt() == nil)
     }
 
+    @Test @MainActor func safariFilterToggleAndEntitlementExpiryPersistSeparately() throws {
+        let suiteName = "NoxaTests.SafariFilter.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let store = AppGroupStore(defaults: defaults)
+
+        #expect(!store.isSafariFilterEnabled)
+        store.setSafariFilterEnabled(true)
+        #expect(store.isSafariFilterEnabled)
+        store.setSafariFilterAllowedUntil(Date().addingTimeInterval(3_600))
+        #expect((defaults.object(forKey: "noxa.safariFilterAllowedUntil") as? Date) != nil)
+        store.setSafariFilterAllowedUntil(nil)
+        #expect(defaults.object(forKey: "noxa.safariFilterAllowedUntil") == nil)
+    }
+
     @Test @MainActor func activeFocusSessionAllowsAdditionsButRejectsRemovals() throws {
         let suiteName = "NoxaTests.FocusLock.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

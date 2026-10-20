@@ -65,6 +65,7 @@ final class SubscriptionService: NSObject, ObservableObject {
 
         hasLoaded = false
         hasAccess = false
+        AppGroupStore.shared.setSafariFilterAllowedUntil(nil)
         activeProductID = nil
         plans = []
         message = nil
@@ -120,6 +121,7 @@ final class SubscriptionService: NSObject, ObservableObject {
     func unbind() async {
         boundUserID = nil
         hasAccess = false
+        AppGroupStore.shared.setSafariFilterAllowedUntil(nil)
         activeProductID = nil
         hasLoaded = false
         plans = []
@@ -218,6 +220,7 @@ final class SubscriptionService: NSObject, ObservableObject {
     private func apply(_ customerInfo: CustomerInfo) {
         let activeEntitlement = customerInfo.entitlements.active[Self.entitlementID]
         hasAccess = activeEntitlement != nil
+        AppGroupStore.shared.setSafariFilterAllowedUntil(activeEntitlement?.expirationDate)
         activeProductID = activeEntitlement?.productIdentifier
         if hasAccess, message?.contains("unavailable") == true {
             message = nil

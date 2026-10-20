@@ -25,6 +25,8 @@ final class AppGroupStore {
         static let familyActivitySelection = "noxa.familyActivitySelection"
         static let focusSessionRestrictions = "noxa.focusSessionRestrictions"
         static let focusMonitorReceipt = "noxa.focusMonitorReceipt"
+        static let safariFilterEnabled = "noxa.safariFilterEnabled"
+        static let safariFilterAllowedUntil = "noxa.safariFilterAllowedUntil"
         static let manualShield = "noxa.manualShield"
         static let websiteShieldActive = "noxa.websiteShieldActive"
         static let restrictionStoresMigrated = "noxa.restrictionStoresMigrated"
@@ -122,6 +124,22 @@ final class AppGroupStore {
 
     func clearFocusMonitorReceipt() {
         defaults.removeObject(forKey: Key.focusMonitorReceipt)
+    }
+
+    var isSafariFilterEnabled: Bool {
+        defaults.bool(forKey: Key.safariFilterEnabled)
+    }
+
+    func setSafariFilterEnabled(_ enabled: Bool) {
+        defaults.set(enabled, forKey: Key.safariFilterEnabled)
+    }
+
+    func setSafariFilterAllowedUntil(_ date: Date?) {
+        if let date {
+            defaults.set(date, forKey: Key.safariFilterAllowedUntil)
+        } else {
+            defaults.removeObject(forKey: Key.safariFilterAllowedUntil)
+        }
     }
 
     func loadManualShield() throws -> ManualShieldConfiguration? {
