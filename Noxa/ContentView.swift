@@ -443,7 +443,7 @@ struct ContentView: View {
                 columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2),
                 spacing: 10
             ) {
-                ForEach([15, 30, 45, 60, 120], id: \.self) { minutes in
+                ForEach([10, 15, 30, 45, 60, 120], id: \.self) { minutes in
                     Button(Self.durationLabel(minutes: minutes)) {
                         selectedDailyLimitMinutes = minutes
                     }
@@ -1429,7 +1429,7 @@ struct ContentView: View {
                                     .font(.subheadline.weight(.semibold))
                             }
                             Menu("\(configuration.dailyLimitMinutes) min/day") {
-                                ForEach([15, 30, 45, 60, 90, 120, 180, 240], id: \.self) { minutes in
+                                ForEach([10, 15, 30, 45, 60, 90, 120, 180, 240], id: \.self) { minutes in
                                     Button(Self.durationLabel(minutes: minutes)) {
                                         dailyLimits.updateMinutes(minutes, for: configuration)
                                     }
@@ -2218,7 +2218,10 @@ struct ContentView: View {
     }
 
     private static func durationLabel(minutes: Int) -> String {
-        minutes >= 60 ? "\(minutes / 60)h" : "\(minutes)m"
+        guard minutes >= 60 else { return "\(minutes)m" }
+        let hours = minutes / 60
+        let remainingMinutes = minutes % 60
+        return remainingMinutes == 0 ? "\(hours)h" : "\(hours)h \(remainingMinutes)m"
     }
 
     private static func durationString(seconds: Int) -> String {

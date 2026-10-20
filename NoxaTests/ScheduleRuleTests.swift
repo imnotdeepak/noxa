@@ -171,6 +171,37 @@ struct ScheduleRuleTests {
         #expect(!ScheduleRuleEvaluator.isBlocking(rule, at: instant, calendar: calendar))
     }
 
+    @Test func overnightWindowSurvivesBothDaylightSavingTransitions() {
+        var newYork = calendar
+        newYork.timeZone = TimeZone(identifier: "America/New_York")!
+        let rule = ScheduleRule(
+            name: "Weekend night",
+            mode: .blockedHours,
+            selection: FamilyActivitySelection(),
+            weekdays: [7],
+            startMinutes: 22 * 60,
+            endMinutes: 3 * 60
+        )
+        let iso = ISO8601DateFormatter()
+        // Both instants are 1:30 a.m. in New York, on opposite sides of fall back.
+        #expect(ScheduleRuleEvaluator.isBlocking(
+            rule, at: iso.date(from: "2026-11-01T05:30:00Z")!, calendar: newYork
+        ))
+        #expect(ScheduleRuleEvaluator.isBlocking(
+            rule, at: iso.date(from: "2026-11-01T06:30:00Z")!, calendar: newYork
+        ))
+        #expect(!ScheduleRuleEvaluator.isBlocking(
+            rule, at: iso.date(from: "2026-11-01T08:15:00Z")!, calendar: newYork
+        ))
+        // Spring forward skips 2 a.m.; the 3 a.m. local end still releases it.
+        #expect(ScheduleRuleEvaluator.isBlocking(
+            rule, at: iso.date(from: "2026-03-08T06:30:00Z")!, calendar: newYork
+        ))
+        #expect(!ScheduleRuleEvaluator.isBlocking(
+            rule, at: iso.date(from: "2026-03-08T07:15:00Z")!, calendar: newYork
+        ))
+    }
+
     @Test func allowedRulesWakeAtMidnightWhenWeekdayEligibilityCanChange() {
         let allowed = ScheduleRule(
             name: "Evenings",

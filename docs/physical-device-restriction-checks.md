@@ -1,6 +1,6 @@
 # Physical-device restriction checks
 
-Status: On October 20, 2026, the Safari- and rule-aware-shield build installed and launched on the paired iPhone “iphony 5x”; both extensions have the required App Group entitlement. With the phone unlocked, UI automation observed Noxa's saved Blocklist, schedule target lists, and a real Screen Time shield for Dazz Cam at about 2:51 PM. The shield named the active “Allowed hours, every day” schedule and its 9:00 PM end time. A repeated rule description in the first screenshot was fixed; a second device screenshot showed it once. This validates one current scheduled app block and its text, not release at the boundary or other rule types. Widgets, Live Activity, Safari extension behavior, and the rest of the release matrix remain unverified. iPhone Mirroring is unavailable on this Mac because iCloud is signed out. Simulator results do not prove Screen Time enforcement.
+Status: On October 20, 2026, the current roadmap build installed and launched on the paired iPhone “iphony 5x.” UI automation observed a real Screen Time shield for Dazz Cam that named the active schedule and its 9:00 PM end time; a duplicate rule description was fixed and rechecked. Selecting Instagram Full Block produced Safari's “Website Not Allowed” page at `instagram.com/explore/`, and returning the setting to Off let that URL load again. Opening the widget's `noxa://focus/start` route displayed a one-hour review with selected targets, an end time, and the Strict warning before any session started. These are narrow physical observations; the full transition matrix, actual widget placement, Live Activity, and selective Safari filtering remain unverified. Simulator results do not prove Screen Time enforcement.
 
 ## Observed scheduled-app check
 
@@ -8,6 +8,12 @@ Status: On October 20, 2026, the Safari- and rule-aware-shield build installed a
 - Launching Dazz Cam showed the iOS shield with that schedule name and end time. The revised build showed the reason once and kept the warning that other rules may still apply.
 - DoorDash was saved in the general Blocklist but was absent from these schedules, so it launched normally. That is expected for this test and does not establish a schedule enforcement failure.
 - The checks only opened existing rules and apps; they did not change the user's saved selections or start a new focus session. Screen captures are retained in the local Xcode test result bundles and excluded from the repository because other captures include personal account details.
+
+## Observed Instagram and start-review checks
+
+- A temporary UI test selected Instagram Full Block, opened `instagram.com/explore/` in Safari, and captured the iOS “Website Not Allowed” page. A cleanup test returned the choice to Off. Safari then loaded Instagram at the same URL. Temporary UI tests were removed after the checks.
+- A temporary UI test opened the widget's focus-start URL on the paired iPhone. The review showed one hour selected, the existing targets, the expected end time, and a Strict warning. It was dismissed without starting a session. The actual Home and Lock Screen widget tap and countdown remain to be checked.
+- A temporary UI test changed the existing Letterboxd daily limit from 15 to 10 minutes, started daily-limit monitoring, kept Letterboxd foregrounded with interactions for 6.5 minutes, then stopped monitoring and restored 15 minutes. The test passed, but no five-minute warning callback marker was observed in the App Group preferences. It does not establish that warning timing works. Daily limits were off after cleanup, as they were before the test.
 
 ## Setup
 
@@ -44,9 +50,10 @@ Status: On October 20, 2026, the Safari- and rule-aware-shield build installed a
 | Tap an idle Home or Lock Screen widget | Noxa opens a focus review with one hour selected; the user can change duration and sees the Strict warning and planned end before confirming. No block starts on the widget tap alone. |
 | Start and end a focus session with widgets placed | Home and Lock Screen widgets show the correct countdown, then return to Start. The Live Activity appears when permitted and clears at the end or on recovery. |
 | Tap the widget with no subscription, targets, or Screen Time access | Noxa shows the correct paywall or setup path and does not claim a session started. |
-| Enable the Instagram Safari extension and allow instagram.com after subscribing | With the Noxa Safari toggle on, direct Reels and Explore routes show the return-to-feed screen. The feed, messages, search, and profiles stay usable. Confirm embedded Reels separately; the prototype may miss them. |
-| Turn the Noxa Safari toggle off, sign out, or reach subscription expiry | The extension stops hiding Instagram content even if Safari still lists it as enabled. Reload a page and check again after a minute on an already-open page. |
-| Revoke Safari's Instagram website permission | The app shows only the extension enabled state, and does not claim that filtering is working; Instagram remains unchanged until access is restored. |
+| Enable the Instagram Safari extension and allow instagram.com after subscribing | With Distraction-Free selected, direct Reels and Explore routes show the return-to-feed screen. The feed, messages, search, and profiles stay usable. Confirm embedded Reels separately; the prototype may miss them. |
+| Turn the Instagram website choice Off, sign out, or reach subscription expiry | The extension stops hiding Instagram content even if Safari still lists it as enabled. Reload a page and check again after a minute on an already-open page. |
+| Revoke Safari's Instagram website permission | The app shows no recent Instagram connection and offers Full Block; it does not claim that filtering is working. Instagram remains unchanged until access is restored. |
+| Select Instagram Full Block, then Off | Safari shows “Website Not Allowed” for instagram.com while Full Block is selected and loads the page again after Off. **Observed on the paired iPhone.** |
 | Start focus and watch its status with Noxa open, then with Noxa relaunched | The app first shows that blocks were requested. A matching monitor callback changes the status to “Screen Time monitor applied your block settings.” Verify the selected app and site actually show a shield separately; the status alone does not prove that. A stale receipt from an earlier session never changes the new session's status. |
 | Open a shielded app or site with focus, schedule, manual, or daily-limit rules active | The shield names matching rules, shows the focus or schedule end when known, and never implies that one rule ending releases a target held by another rule. Unknown rule state uses the generic message. |
 
