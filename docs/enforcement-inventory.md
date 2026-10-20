@@ -73,3 +73,8 @@ The migration cannot always infer whether an old web-content filter came from a 
 - The focus screen distinguishes a started session from a matching receipt written by the DeviceActivity monitor after it applies the saved block settings. The receipt is cleared with the focus restrictions and cannot confirm that iOS visibly shielded a selected target; that still requires physical-device observation.
 - Widget taps still pass through the existing subscription, Screen Time authorization, target, Strict, and active-session checks in the app. An idle widget never starts blocking directly.
 - The new widget extension builds in the simulator, and the signed app with the extension installed and launched on the paired iPhone. Widget placement, countdown behavior while the app is closed, and Live Activity permission still need direct device observation.
+
+## Instagram Safari prototype
+
+- `Experiments/InstagramSafari` now contains an isolated Safari Web Extension prototype. It covers direct Reels and Explore routes and hides links to those sections while leaving the feed and other paths available by route. Three script behavior tests pass, and Apple's Safari extension packager accepted the manifest for an iOS project (with icon warnings).
+- The prototype is not embedded in the Noxa app, exposed as a product setting, or verified on signed-in Instagram in Safari. Instagram's dynamic markup, embedded feed Reels, permission state, and physical-device behavior must be checked before claiming selective filtering or moving it into the app.
