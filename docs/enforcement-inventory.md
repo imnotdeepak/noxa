@@ -92,8 +92,12 @@ The migration cannot always infer whether an old web-content filter came from a 
 ## Schedule reminders and shortcuts
 
 - Start and end schedule reminders are independently optional and off by default. The schedule monitor posts a reminder only when its corresponding configured boundary actually changes the rule's blocking state, and skips callbacks over three minutes late. Older saved schedules decode with both reminders off. Notification denial does not affect schedule enforcement. Apple documents that Device Activity callbacks can wait until device use, so Settings warns that reminders may be late; delivery timing still needs a real-device boundary test.
-- The Start Focus App Shortcut opens the existing one-hour duration and policy review through the same launch router as the widget. It does not start a session in the background. Build succeeds; Shortcuts discovery and launch need device validation.
+- The Start Focus App Shortcut opens the existing one-hour duration and policy review through the same launch router as the widget. It does not start a session in the background. On the paired iPhone, the `noxa://focus/start` route opened a review with one hour selected, the selected targets, an end time, and the Strict warning before Start. The temporary UI test dismissed it without starting a session. Shortcuts discovery and the actual widget tap still need device validation.
 
 ## Daily limit warning candidate
 
 - Daily-limit monitoring now requests a warning callback about five minutes before each usage threshold. The monitor checks that the limit is still enabled and not already reached, deduplicates by limit and local day, and posts a local notification if notifications are allowed. This path signs for the paired iPhone. Timing must be validated with real app use before claiming dependable five-minute warnings.
+
+## Weekly schedule follow-through
+
+- The Stats screen now shows the share of tracked schedule windows that stayed enabled through their planned end in the last seven local days. Creating, editing, enabling, disabling, or deleting a schedule records a small device-local configuration event without target tokens or usage data. Existing schedules begin tracking when this version opens, so old windows are not backfilled. Edits to reminder preferences alone do not interrupt a window. The UI explicitly says this is not measured app use or proof of blocking. Three evaluator tests cover kept, interrupted, overnight, and pre-tracking windows; 74 unit tests pass.

@@ -1667,6 +1667,11 @@ struct ContentView: View {
             now: statsReferenceDate,
             calendar: .autoupdatingCurrent
         )
+        let scheduleCommitment = ScheduleCommitmentEvaluator.lastSevenDays(
+            events: schedules.commitmentEvents,
+            now: statsReferenceDate,
+            calendar: .autoupdatingCurrent
+        )
         return ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(spacing: 8) {
@@ -1712,6 +1717,26 @@ struct ContentView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Text("\(statistics.currentStreak)-day current streak · \(statistics.longestStreak)-day best")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .noxaStatsCard()
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("Schedule follow-through · last 7 days", systemImage: "calendar.badge.checkmark")
+                        .font(.headline)
+                    if scheduleCommitment.totalWindows == 0 {
+                        Text("Tracking starts with the next full schedule window.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("\(scheduleCommitment.percentage)% kept")
+                            .font(.title2.weight(.semibold))
+                        Text("\(scheduleCommitment.keptWindows) kept · \(scheduleCommitment.interruptedWindows) changed or stopped early")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("Based on whether schedules stayed enabled through their planned windows, not measured app use or proof of blocking.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

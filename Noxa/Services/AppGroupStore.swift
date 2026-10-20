@@ -29,6 +29,7 @@ final class AppGroupStore {
         static let safariFilterAllowedUntil = "noxa.safariFilterAllowedUntil"
         static let safariFilterLastSeenAt = "noxa.safariFilterLastSeenAt"
         static let instagramSiteMode = "noxa.instagramSiteMode"
+        static let scheduleCommitmentEvents = "noxa.scheduleCommitmentEvents"
         static let manualShield = "noxa.manualShield"
         static let websiteShieldActive = "noxa.websiteShieldActive"
         static let restrictionStoresMigrated = "noxa.restrictionStoresMigrated"
@@ -284,6 +285,7 @@ final class AppGroupStore {
     func clearRestrictionSchedules() {
         defaults.removeObject(forKey: Key.restrictionSchedules)
         defaults.removeObject(forKey: Key.scheduleRules)
+        defaults.removeObject(forKey: Key.scheduleCommitmentEvents)
     }
 
     func clearLegacyRestrictionSchedules() {
@@ -306,6 +308,15 @@ final class AppGroupStore {
 
     func clearScheduleRules() {
         defaults.removeObject(forKey: Key.scheduleRules)
+    }
+
+    func loadScheduleCommitmentEvents() throws -> [ScheduleCommitmentEvent] {
+        guard let data = defaults.data(forKey: Key.scheduleCommitmentEvents) else { return [] }
+        return try JSONDecoder().decode([ScheduleCommitmentEvent].self, from: data)
+    }
+
+    func saveScheduleCommitmentEvents(_ events: [ScheduleCommitmentEvent]) throws {
+        defaults.set(try JSONEncoder().encode(events), forKey: Key.scheduleCommitmentEvents)
     }
 
     func loadPomodoroCycle() throws -> PomodoroCycleRecord? {

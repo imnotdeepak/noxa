@@ -11,6 +11,7 @@ final class RestrictionScheduleService: ObservableObject {
     static let maximumConfigurations = 8
 
     @Published private(set) var configurations: [ScheduleRule]
+    @Published private(set) var commitmentEvents: [ScheduleCommitmentEvent]
     @Published private(set) var errorMessage: String?
 
     private let store: AppGroupStore
@@ -25,6 +26,12 @@ final class RestrictionScheduleService: ObservableObject {
         } catch {
             configurations = []
             errorMessage = "Could not load schedules: \(error.localizedDescription)"
+        }
+        commitmentEvents = (try? self.store.loadScheduleCommitmentEvents()) ?? []
+        if commitmentEvents.isEmpty && !configurations.isEmpty {
+            // Older schedules begin tracking now; past windows are not inferred.
+            commitmentEvents = configurations.map { ScheduleCommitmentEvent(rule: $0) }
+            try? self.store.saveScheduleCommitmentEvents(commitmentEvents)
         }
     }
 
@@ -66,15 +73,24 @@ final class RestrictionScheduleService: ObservableObject {
         )
         guard let normalized = validated(rule) else { return }
         configurations.append(normalized)
-        persistAndReschedule()
+        persistAndReschedule(recording: [ScheduleCommitmentEvent(rule: normalized)])
     }
 
     func update(_ configuration: ScheduleRule) {
         errorMessage = nil
         guard let index = configurations.firstIndex(where: { $0.id == configuration.id }),
               let normalized = validated(configuration) else { return }
+        let previous = configurations[index]
         configurations[index] = normalized
-        persistAndReschedule()
+        let affectsCommitment = previous.mode != normalized.mode
+            || previous.selection != normalized.selection
+            || previous.websiteDomains != normalized.websiteDomains
+            || previous.weekdays != normalized.weekdays
+            || previous.startMinutes != normalized.startMinutes
+            || previous.endMinutes != normalized.endMinutes
+            || previous.isEnabled != normalized.isEnabled
+        persistAndReschedule(recording: affectsCommitment
+            ? [ScheduleCommitmentEvent(rule: normalized)] : [])
     }
 
     func rename(_ configuration: ScheduleRule, to name: String) {
@@ -95,14 +111,16 @@ final class RestrictionScheduleService: ObservableObject {
 
     func setEnabled(_ enabled: Bool, for configuration: ScheduleRule) {
         guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
+        let wasEnabled = configurations[index].isEnabled
         configurations[index].isEnabled = enabled
         configurations[index].pendingLegacyRelaxation = nil
+        let changed = ScheduleCommitmentEvent(rule: configurations[index])
         if !enabled {
             recordImmediateLegacyStop(for: configuration.id, remove: false)
             coordinator.stop(configuration)
             stopLegacyActivities(for: configuration.id)
         }
-        persistAndReschedule()
+        persistAndReschedule(recording: wasEnabled == enabled ? [] : [changed])
     }
 
     func remove(_ configuration: ScheduleRule) {
@@ -111,7 +129,7 @@ final class RestrictionScheduleService: ObservableObject {
         coordinator.stop(configuration)
         stopLegacyActivities(for: configuration.id)
         configurations.remove(at: index)
-        persistAndReschedule()
+        persistAndReschedule(recording: [ScheduleCommitmentEvent(rule: configuration, isRemoved: true)])
     }
 
     func cancelPendingRelaxation(for configuration: ScheduleRule) {
@@ -122,14 +140,16 @@ final class RestrictionScheduleService: ObservableObject {
 
     func requestDisableAll() {
         guard configurations.contains(where: \.isEnabled) else { return }
+        var changes: [ScheduleCommitmentEvent] = []
         for index in configurations.indices where configurations[index].isEnabled {
             recordImmediateLegacyStop(for: configurations[index].id, remove: false)
             coordinator.stop(configurations[index])
             stopLegacyActivities(for: configurations[index].id)
             configurations[index].isEnabled = false
             configurations[index].pendingLegacyRelaxation = nil
+            changes.append(ScheduleCommitmentEvent(rule: configurations[index]))
         }
-        persistAndReschedule()
+        persistAndReschedule(recording: changes)
     }
 
     func reconcile() {
@@ -147,17 +167,29 @@ final class RestrictionScheduleService: ObservableObject {
         stopAllV2Activities()
         clearLegacyActivities(expected: [])
         configurations = []
+        commitmentEvents = []
         store.clearRestrictionSchedules()
         errorMessage = nil
     }
 
-    private func persistAndReschedule() {
+    private func persistAndReschedule(recording changes: [ScheduleCommitmentEvent] = []) {
         do {
             try store.saveScheduleRules(configurations)
+            if !changes.isEmpty { recordCommitmentChanges(changes) }
             rescheduleAll()
         } catch {
             errorMessage = "Could not save schedules: \(error.localizedDescription)"
         }
+    }
+
+    private func recordCommitmentChanges(_ changes: [ScheduleCommitmentEvent]) {
+        commitmentEvents.append(contentsOf: changes)
+        let cutoff = Date().addingTimeInterval(-90 * 24 * 60 * 60)
+        let older = Dictionary(grouping: commitmentEvents.filter { $0.changedAt < cutoff }, by: \.ruleID)
+            .compactMap { $0.value.max { $0.changedAt < $1.changedAt } }
+        commitmentEvents = (older + commitmentEvents.filter { $0.changedAt >= cutoff })
+            .sorted { $0.changedAt < $1.changedAt }
+        try? store.saveScheduleCommitmentEvents(commitmentEvents)
     }
 
     private func rescheduleAll() {
