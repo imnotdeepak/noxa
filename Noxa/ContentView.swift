@@ -50,7 +50,7 @@ struct ContentView: View {
     @State private var selectedDurationMinutes = 30
     @State private var isRequestingAuthorization = false
     @State private var newDomain = ""
-    @State private var safariFilterEnabled = AppGroupStore.shared.isSafariFilterEnabled
+    @State private var instagramSiteMode = AppGroupStore.shared.instagramSiteMode
     @State private var safariExtensionEnabled: Bool?
     @State private var restrictionPickerSelection = FamilyActivitySelection()
     @State private var isDailyLimitPickerPresented = false
@@ -1774,22 +1774,43 @@ struct ContentView: View {
                 }
                 .noxaCard()
 
-                settingsSectionTitle("Safari")
+                settingsSectionTitle("Instagram website")
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Toggle("Hide Instagram Reels and Explore", isOn: $safariFilterEnabled)
+                    Picker("Instagram website", selection: $instagramSiteMode) {
+                        Text("Off").tag(InstagramSiteMode.off)
+                        Text("Hide Reels and Explore").tag(InstagramSiteMode.distractionFree)
+                        Text("Full Block").tag(InstagramSiteMode.fullBlock)
+                    }
                         .font(.headline)
-                        .tint(NoxaTheme.accent)
-                        .onChange(of: safariFilterEnabled) { enabled in
-                            AppGroupStore.shared.setSafariFilterEnabled(enabled)
+                        .onChange(of: instagramSiteMode) { mode in
+                            AppGroupStore.shared.setInstagramSiteMode(mode)
+                            InstagramSiteProtectionService.reconcile()
                         }
-                    Text("Experimental Safari filter. The Instagram feed stays available. This does not change the Instagram app, and embedded Reels may still appear.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    if safariFilterEnabled {
+                    if instagramSiteMode == .distractionFree {
+                        Text("Experimental Safari filter: hides Reels and Explore while keeping the feed available. It does not change the Instagram app, and embedded Reels may still appear.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                         Text(safariExtensionEnabled == true
                              ? "Safari extension is enabled. Allow it to access instagram.com in Safari; filtering still needs device testing."
                              : "Enable Noxa Instagram Filter and allow instagram.com in Settings → Apps → Safari → Extensions.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        if websites.domains.contains(where: { $0 == "instagram.com" || $0 == "www.instagram.com" }) {
+                            Text("Instagram is also in your website blocklist. Remove that independent block to keep the feed available.")
+                                .font(.footnote)
+                                .foregroundStyle(.orange)
+                        }
+                    } else if instagramSiteMode == .fullBlock {
+                        Text("Screen Time blocks the Instagram website. The Instagram app is a separate choice in your app blocklist. Other Noxa rules still apply.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Text("iOS may turn off Safari Private Browsing while a website filter is active.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Text(authorization.state.isApproved
+                             ? "Full-site block requested through Screen Time. Verify it by opening Instagram in Safari."
+                             : "Allow Screen Time access to block the Instagram website.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }

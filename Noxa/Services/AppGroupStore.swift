@@ -27,6 +27,7 @@ final class AppGroupStore {
         static let focusMonitorReceipt = "noxa.focusMonitorReceipt"
         static let safariFilterEnabled = "noxa.safariFilterEnabled"
         static let safariFilterAllowedUntil = "noxa.safariFilterAllowedUntil"
+        static let instagramSiteMode = "noxa.instagramSiteMode"
         static let manualShield = "noxa.manualShield"
         static let websiteShieldActive = "noxa.websiteShieldActive"
         static let restrictionStoresMigrated = "noxa.restrictionStoresMigrated"
@@ -132,6 +133,30 @@ final class AppGroupStore {
 
     func setSafariFilterEnabled(_ enabled: Bool) {
         defaults.set(enabled, forKey: Key.safariFilterEnabled)
+    }
+
+    var instagramSiteMode: InstagramSiteMode {
+        if let raw = defaults.string(forKey: Key.instagramSiteMode),
+           let mode = InstagramSiteMode(rawValue: raw) {
+            return mode
+        }
+        return isSafariFilterEnabled ? .distractionFree : .off
+    }
+
+    func setInstagramSiteMode(_ mode: InstagramSiteMode) {
+        defaults.set(mode.rawValue, forKey: Key.instagramSiteMode)
+        // The existing Safari native handler uses this boolean; only the
+        // selective mode may change Instagram pages.
+        defaults.set(mode == .distractionFree, forKey: Key.safariFilterEnabled)
+    }
+
+    func clearInstagramSiteMode() {
+        defaults.removeObject(forKey: Key.instagramSiteMode)
+        defaults.set(false, forKey: Key.safariFilterEnabled)
+    }
+
+    var safariFilterAllowedUntil: Date? {
+        defaults.object(forKey: Key.safariFilterAllowedUntil) as? Date
     }
 
     func setSafariFilterAllowedUntil(_ date: Date?) {

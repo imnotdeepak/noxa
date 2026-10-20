@@ -33,6 +33,7 @@ enum LocalDataCleanupService {
         store.clearCloudSyncState()
         store.clearCloudAccountCaches()
         store.setSafariFilterAllowedUntil(nil)
-        store.setSafariFilterEnabled(false)
+        store.clearInstagramSiteMode()
+        InstagramSiteProtectionService.reconcile(store: store)
     }
 }

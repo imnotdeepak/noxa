@@ -40,7 +40,7 @@ The migration cannot always infer whether an old web-content filter came from a 
 
 - Environment: Xcode 27.0, iPhone 17 simulator on iOS 26.5. The active command-line developer directory points to Command Line Tools, so project commands use `/Applications/Xcode.app/Contents/Developer` explicitly.
 - The first test attempt exposed stale subscription test calls. After that test was updated, the next run exposed an onboarding test that skipped the required value-overview milestone. Both test expectations were brought into line with the current services.
-- The current branch has 69 passing unit tests and 3 previously passing simulator UI tests. Simulator Managed Settings stores read back as empty even after accepting a write, so physical-device testing is required for actual enforcement and migration.
+- The current branch has 70 passing unit tests and 3 previously passing simulator UI tests. Simulator Managed Settings stores read back as empty even after accepting a write, so physical-device testing is required for actual enforcement and migration.
 - A signed build was installed and launched on the paired iPhone. Device UI automation can now capture a launch screenshot; actual Screen Time behavior remains unverified.
 
 ## Strict Mode first slice
@@ -83,5 +83,7 @@ The migration cannot always infer whether an old web-content filter came from a 
 
 ## Instagram Safari prototype
 
-- `Experiments/InstagramSafari` contains a Safari Web Extension prototype, now embedded in the Noxa app with an off-by-default experimental Settings toggle. It covers direct Reels and Explore routes and hides links to those sections while leaving the feed and other paths available by route. The extension asks the app-side native handler for permission before changing the page; the handler requires the user's toggle and an unexpired paid entitlement. Five script behavior tests pass, and the combined app builds in the simulator and signs for iOS.
+- `Experiments/InstagramSafari` contains a Safari Web Extension prototype, now embedded in the Noxa app with an off-by-default Instagram website choice. Distraction-Free covers direct Reels and Explore routes and hides links to those sections while leaving the feed and other paths available by route. The extension asks the app-side native handler for permission before changing the page; the handler requires Distraction-Free mode and an unexpired paid entitlement. Five script behavior tests pass.
+- Settings now offers Off, Distraction-Free, and Full Block for Instagram. Full Block uses its own Managed Settings website store, separate from schedules and the user's website list. It applies only while the saved entitlement expiry is in the future, clears on sign-out, account deletion, or entitlement refresh, and reconciles at app launch and foreground. An old on/off Safari preference migrates into Distraction-Free. The combined app builds in the simulator and signs for iOS; 70 unit tests pass.
+- Apple notes that enabling a web-content filter can disable Safari Private Browsing. Settings explains this. The Instagram app remains a separate all-or-nothing selection.
 - The extension is not verified on signed-in Instagram in Safari. Instagram's dynamic markup, embedded feed Reels, permission state, and physical-device behavior must be checked before claiming selective filtering. Safari extension enablement is not proof that website access was granted or the script changed the page.

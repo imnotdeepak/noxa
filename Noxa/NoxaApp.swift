@@ -33,6 +33,7 @@ struct NoxaApp: App {
             || dailyLimits.isMonitoring
             || dailyLimits.isShieldActive
             || schedules.enabledCount > 0
+            || InstagramSiteProtectionService.isFullBlockApplied
     }
 
     var body: some Scene {
@@ -98,6 +99,7 @@ struct NoxaApp: App {
             .environmentObject(focusLaunchRouter)
             .task {
                 RestrictionStoreMigration.migrateIfNeeded()
+                InstagramSiteProtectionService.reconcile()
                 restrictions.reconcile()
                 websites.reconcile()
                 analytics.configure()
@@ -114,6 +116,7 @@ struct NoxaApp: App {
             }
             .onChange(of: scenePhase) { newPhase in
                 guard newPhase == .active else { return }
+                InstagramSiteProtectionService.reconcile()
                 focusSession.reconcile()
                 Task { await FocusPresentationCoordinator.reconcile(session: focusSession.activeSession) }
                 restrictions.reconcile()
@@ -321,6 +324,13 @@ private struct RestrictionRecoveryView: View {
             if websites.isBlocklistActive && !focusSession.isActive {
                 RecoveryActionButton(title: "Remove Website Blocklist") {
                     websites.clearBlocklist()
+                }
+            }
+
+            if InstagramSiteProtectionService.isFullBlockApplied && !focusSession.isActive {
+                RecoveryActionButton(title: "Remove Instagram Full Block") {
+                    AppGroupStore.shared.setInstagramSiteMode(.off)
+                    InstagramSiteProtectionService.reconcile()
                 }
             }
 

@@ -66,6 +66,7 @@ final class SubscriptionService: NSObject, ObservableObject {
         hasLoaded = false
         hasAccess = false
         AppGroupStore.shared.setSafariFilterAllowedUntil(nil)
+        InstagramSiteProtectionService.reconcile()
         activeProductID = nil
         plans = []
         message = nil
@@ -122,6 +123,7 @@ final class SubscriptionService: NSObject, ObservableObject {
         boundUserID = nil
         hasAccess = false
         AppGroupStore.shared.setSafariFilterAllowedUntil(nil)
+        InstagramSiteProtectionService.reconcile()
         activeProductID = nil
         hasLoaded = false
         plans = []
@@ -221,6 +223,7 @@ final class SubscriptionService: NSObject, ObservableObject {
         let activeEntitlement = customerInfo.entitlements.active[Self.entitlementID]
         hasAccess = activeEntitlement != nil
         AppGroupStore.shared.setSafariFilterAllowedUntil(activeEntitlement?.expirationDate)
+        InstagramSiteProtectionService.reconcile()
         activeProductID = activeEntitlement?.productIdentifier
         if hasAccess, message?.contains("unavailable") == true {
             message = nil
