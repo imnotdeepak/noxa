@@ -107,9 +107,12 @@ enum ShieldRuleExplanation {
             reasons.append("On your blocked websites list.")
         }
 
-        guard !reasons.isEmpty else { return nil }
-        if reasons.count == 1 { return reasons[0] + " Other rules may still apply." }
-        return reasons.prefix(2).joined(separator: " ") + " Other rules may still apply."
+        var distinctReasons: [String] = []
+        for reason in reasons where !distinctReasons.contains(reason) {
+            distinctReasons.append(reason)
+        }
+        guard !distinctReasons.isEmpty else { return nil }
+        return distinctReasons.prefix(2).joined(separator: " ") + " Other rules may still apply."
     }
 
     private static func decode<T: Decodable>(_ key: String, from defaults: UserDefaults) -> T? {

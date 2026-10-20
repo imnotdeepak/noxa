@@ -1,6 +1,13 @@
 # Physical-device restriction checks
 
-Status: On October 20, 2026, the Safari- and rule-aware-shield build installed and launched on the paired iPhone “iphony 5x”; both extensions have the required App Group entitlement. An earlier physical-device screen-capture UI test passed and showed Noxa's Home screen with six saved distraction selections and an enabled schedule. A later read-only Blocklist inspection test timed out while enabling iPhone UI automation, before it could observe a shield. App launch and state rendering are verified; Screen Time enforcement, shield text, widget placement, Live Activity presentation, Safari extension permission and filtering, and release behavior remain unverified. iPhone Mirroring is unavailable on this Mac because iCloud is signed out. Simulator results do not prove Screen Time enforcement.
+Status: On October 20, 2026, the Safari- and rule-aware-shield build installed and launched on the paired iPhone “iphony 5x”; both extensions have the required App Group entitlement. With the phone unlocked, UI automation observed Noxa's saved Blocklist, schedule target lists, and a real Screen Time shield for Dazz Cam at about 2:51 PM. The shield named the active “Allowed hours, every day” schedule and its 9:00 PM end time. A repeated rule description in the first screenshot was fixed; a second device screenshot showed it once. This validates one current scheduled app block and its text, not release at the boundary or other rule types. Widgets, Live Activity, Safari extension behavior, and the rest of the release matrix remain unverified. iPhone Mirroring is unavailable on this Mac because iCloud is signed out. Simulator results do not prove Screen Time enforcement.
+
+## Observed scheduled-app check
+
+- Three active schedules shared the display name “Allowed hours, every day.” Two selected Dazz Cam and one selected Letterboxd. At the observed time they displayed “Blocking selected targets” and a 9:00 PM change.
+- Launching Dazz Cam showed the iOS shield with that schedule name and end time. The revised build showed the reason once and kept the warning that other rules may still apply.
+- DoorDash was saved in the general Blocklist but was absent from these schedules, so it launched normally. That is expected for this test and does not establish a schedule enforcement failure.
+- The checks only opened existing rules and apps; they did not change the user's saved selections or start a new focus session. Screen captures are retained in the local Xcode test result bundles and excluded from the repository because other captures include personal account details.
 
 ## Setup
 

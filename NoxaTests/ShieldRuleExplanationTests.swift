@@ -125,4 +125,34 @@ import Testing
         let stale = ShieldRuleExplanation.explain(defaults: defaults, now: now, calendar: calendar) { _, _ in true }
         #expect(stale == nil)
     }
+
+    @Test func identicalScheduleReasonsAreShownOnce() throws {
+        let defaults = try defaults()
+        let first = ScheduleRule(
+            name: "Allowed hours, every day",
+            mode: .allowedHours,
+            selection: FamilyActivitySelection(),
+            websiteDomains: ["example.com"],
+            startMinutes: 21 * 60,
+            endMinutes: 22 * 60
+        )
+        let second = ScheduleRule(
+            name: first.name,
+            mode: first.mode,
+            selection: first.selection,
+            websiteDomains: first.websiteDomains,
+            weekdays: first.weekdays,
+            startMinutes: first.startMinutes,
+            endMinutes: first.endMinutes
+        )
+        defaults.set(
+            try JSONEncoder().encode(ScheduleRuleArchive(version: 2, rules: [first, second])),
+            forKey: "noxa.scheduleRules.v2"
+        )
+        let message = try #require(ShieldRuleExplanation.domain(
+            "example.com", defaults: defaults, now: now, calendar: calendar
+        ))
+        #expect(message.components(separatedBy: "Allowed hours, every day").count == 2)
+        #expect(message.contains("Other rules may still apply"))
+    }
 }
