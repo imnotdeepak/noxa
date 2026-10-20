@@ -11,6 +11,7 @@ async function runAt(pathname, hostname = "www.instagram.com", enabled = true) {
   const elements = new Map();
   const intervals = new Map();
   let authorized = enabled;
+  const requests = [];
   const makeElement = (tagName) => ({
     tagName,
     style: {},
@@ -33,7 +34,10 @@ async function runAt(pathname, hostname = "www.instagram.com", enabled = true) {
     addEventListener() {}
   };
   vm.runInNewContext(script, {
-    browser: { runtime: { sendMessage: async () => ({ enabled: authorized }) } },
+    browser: { runtime: { sendMessage: async (message) => {
+      requests.push(message);
+      return { enabled: authorized };
+    } } },
     document,
     location: { pathname, hostname },
     MutationObserver: class { observe() {} },
@@ -43,6 +47,7 @@ async function runAt(pathname, hostname = "www.instagram.com", enabled = true) {
   await new Promise(setImmediate);
   return {
     document,
+    requests,
     overlay: elements.get("noxa-instagram-route-block"),
     async setAuthorized(nextValue) {
       authorized = nextValue;
@@ -68,7 +73,11 @@ test("the feed and useful routes stay available", async () => {
 });
 
 test("the script ignores other hosts and fails closed without paid access", async () => {
-  assert.equal((await runAt("/reels/", "example.com")).overlay, undefined);
+  const otherHost = await runAt("/reels/", "example.com");
+  assert.equal(otherHost.overlay, undefined);
+  assert.equal(otherHost.requests.length, 0);
+  const instagram = await runAt("/reels/");
+  assert.equal(instagram.requests[0].host, "www.instagram.com");
   assert.equal((await runAt("/reels/", "www.instagram.com", false)).overlay, undefined);
 });
 

@@ -52,6 +52,7 @@ struct ContentView: View {
     @State private var newDomain = ""
     @State private var instagramSiteMode = AppGroupStore.shared.instagramSiteMode
     @State private var safariExtensionEnabled: Bool?
+    @State private var safariFilterLastSeenAt = AppGroupStore.shared.safariFilterLastSeenAt
     @State private var restrictionPickerSelection = FamilyActivitySelection()
     @State private var isDailyLimitPickerPresented = false
     @State private var isChoosingDailyLimitDuration = false
@@ -185,6 +186,8 @@ struct ContentView: View {
         .onChange(of: scenePhase) { newPhase in
             guard newPhase == .active else { return }
             statsReferenceDate = Date()
+            safariFilterLastSeenAt = AppGroupStore.shared.safariFilterLastSeenAt
+            Task { await refreshSafariExtensionStatus() }
         }
         .onChange(of: focusSession.completedPomodoroCycleID) { completedID in
             isPomodoroCompletionPresented = completedID != nil
@@ -590,6 +593,32 @@ struct ContentView: View {
             Text("Reminders need notification permission. Schedule blocking still works if notifications are off.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    private var safariFilterRecentlyConnected: Bool {
+        guard let safariFilterLastSeenAt else { return false }
+        return safariExtensionEnabled != false
+            && (0..<5 * 60).contains(Date().timeIntervalSince(safariFilterLastSeenAt))
+    }
+
+    private var safariFilterStatusMessage: String {
+        if safariExtensionEnabled == false {
+            return "Turn on Noxa Instagram Filter in Settings → Apps → Safari → Extensions, then allow access to instagram.com. You can choose Full Block if the filter stays unavailable."
+        }
+        if safariFilterRecentlyConnected {
+            return "Noxa recently connected to Instagram in Safari. Check Reels and Explore there; this connection alone cannot confirm that every page element was hidden."
+        }
+        return "Noxa has not recently connected to Instagram in Safari. Open the site, allow extension access, and refresh it. Choose Full Block if filtering remains unavailable."
+    }
+
+    private func refreshSafariExtensionStatus() async {
+        safariFilterLastSeenAt = AppGroupStore.shared.safariFilterLastSeenAt
+        if #available(iOS 26.2, *) {
+            let state = try? await SFSafariExtensionManager.stateOfExtension(
+                withIdentifier: "LycheeCorp.Noxa.SafariFilter"
+            )
+            safariExtensionEnabled = state?.isEnabled
         }
     }
 
@@ -1811,11 +1840,9 @@ struct ContentView: View {
                         Text("Experimental Safari filter: hides Reels and Explore while keeping the feed available. It does not change the Instagram app, and embedded Reels may still appear.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
-                        Text(safariExtensionEnabled == true
-                             ? "Safari extension is enabled. Allow it to access instagram.com in Safari; filtering still needs device testing."
-                             : "Enable Noxa Instagram Filter and allow instagram.com in Settings → Apps → Safari → Extensions.")
+                        Text(safariFilterStatusMessage)
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(safariFilterRecentlyConnected ? Color.secondary : Color.orange)
                         if websites.domains.contains(where: { $0 == "instagram.com" || $0 == "www.instagram.com" }) {
                             Text("Instagram is also in your website blocklist. Remove that independent block to keep the feed available.")
                                 .font(.footnote)
@@ -1839,12 +1866,7 @@ struct ContentView: View {
                 }
                 .noxaCard()
                 .task {
-                    if #available(iOS 26.2, *) {
-                        let state = try? await SFSafariExtensionManager.stateOfExtension(
-                            withIdentifier: "LycheeCorp.Noxa.SafariFilter"
-                        )
-                        safariExtensionEnabled = state?.isEnabled
-                    }
+                    await refreshSafariExtensionStatus()
                 }
 
                 settingsSectionTitle("Support & Legal")

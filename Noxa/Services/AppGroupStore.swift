@@ -27,6 +27,7 @@ final class AppGroupStore {
         static let focusMonitorReceipt = "noxa.focusMonitorReceipt"
         static let safariFilterEnabled = "noxa.safariFilterEnabled"
         static let safariFilterAllowedUntil = "noxa.safariFilterAllowedUntil"
+        static let safariFilterLastSeenAt = "noxa.safariFilterLastSeenAt"
         static let instagramSiteMode = "noxa.instagramSiteMode"
         static let manualShield = "noxa.manualShield"
         static let websiteShieldActive = "noxa.websiteShieldActive"
@@ -148,11 +149,19 @@ final class AppGroupStore {
         // The existing Safari native handler uses this boolean; only the
         // selective mode may change Instagram pages.
         defaults.set(mode == .distractionFree, forKey: Key.safariFilterEnabled)
+        if mode != .distractionFree {
+            defaults.removeObject(forKey: Key.safariFilterLastSeenAt)
+        }
     }
 
     func clearInstagramSiteMode() {
         defaults.removeObject(forKey: Key.instagramSiteMode)
         defaults.set(false, forKey: Key.safariFilterEnabled)
+        defaults.removeObject(forKey: Key.safariFilterLastSeenAt)
+    }
+
+    var safariFilterLastSeenAt: Date? {
+        defaults.object(forKey: Key.safariFilterLastSeenAt) as? Date
     }
 
     var safariFilterAllowedUntil: Date? {

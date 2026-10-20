@@ -20,7 +20,10 @@
   async function refreshPermission() {
     let nextEnabled = false;
     try {
-      const response = await browser.runtime.sendMessage({ type: "noxa.instagram.filterState" });
+      const response = await browser.runtime.sendMessage({
+        type: "noxa.instagram.filterState",
+        host
+      });
       nextEnabled = response?.enabled === true;
     } catch {
       // When Safari or native messaging is unavailable, leave Instagram alone.

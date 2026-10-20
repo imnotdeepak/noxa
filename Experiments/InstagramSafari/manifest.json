@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "Prototype that hides Instagram Reels and Explore in Safari.",
   "permissions": ["nativeMessaging"],
+  "host_permissions": ["*://www.instagram.com/*", "*://instagram.com/*"],
   "background": { "service_worker": "background.js" },
   "content_scripts": [
     {
