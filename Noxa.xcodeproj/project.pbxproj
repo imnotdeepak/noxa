@@ -16,13 +16,14 @@
 		00C100000000000000000001 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = 00C100000000000000000003 /* RevenueCat */; };
 		00C200000000000000000001 /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = 00C200000000000000000003 /* PostHog */; };
 		00D100000000000000000001 /* NoxaWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 00D100000000000000000002 /* NoxaWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		00D100000000000000000003 /* FocusActivityAttributes.swift in Noxa Sources */ = {isa = PBXBuildFile; fileRef = 00D100000000000000000004 /* FocusActivityAttributes.swift */; };
-		00D100000000000000000005 /* FocusActivityAttributes.swift in Widget Sources */ = {isa = PBXBuildFile; fileRef = 00D100000000000000000004 /* FocusActivityAttributes.swift */; };
+		00D100000000000000000003 /* Shared/FocusActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00D100000000000000000004 /* Shared/FocusActivityAttributes.swift */; };
+		00D100000000000000000005 /* Shared/FocusActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00D100000000000000000004 /* Shared/FocusActivityAttributes.swift */; };
 		00E100000000000000000001 /* NoxaSafariFilter.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 00E100000000000000000002 /* NoxaSafariFilter.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		00E100000000000000000003 /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00E100000000000000000004 /* SafariWebExtensionHandler.swift */; };
 		00E100000000000000000005 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 00E100000000000000000006 /* manifest.json */; };
 		00E100000000000000000007 /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = 00E100000000000000000008 /* background.js */; };
 		00E100000000000000000009 /* instagram-filter.js in Resources */ = {isa = PBXBuildFile; fileRef = 00E10000000000000000000A /* instagram-filter.js */; };
+		00F100000000000000000001 /* NoxaShieldConfiguration/ShieldRuleExplanation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00F100000000000000000002 /* NoxaShieldConfiguration/ShieldRuleExplanation.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -97,12 +98,13 @@
 		00431223304F9028003BCE77 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 		00A100000000000000000001 /* NoxaMonitor.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NoxaMonitor.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		00D100000000000000000002 /* NoxaWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NoxaWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		00D100000000000000000004 /* FocusActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/FocusActivityAttributes.swift; sourceTree = "<group>"; };
+		00D100000000000000000004 /* Shared/FocusActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/FocusActivityAttributes.swift; sourceTree = "<group>"; };
 		00E100000000000000000002 /* NoxaSafariFilter.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NoxaSafariFilter.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		00E100000000000000000004 /* SafariWebExtensionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariWebExtensionHandler.swift; sourceTree = "<group>"; };
 		00E100000000000000000006 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = manifest.json; sourceTree = "<group>"; };
 		00E100000000000000000008 /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = background.js; sourceTree = "<group>"; };
 		00E10000000000000000000A /* instagram-filter.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "instagram-filter.js"; sourceTree = "<group>"; };
+		00F100000000000000000002 /* NoxaShieldConfiguration/ShieldRuleExplanation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoxaShieldConfiguration/ShieldRuleExplanation.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -223,7 +225,8 @@
 		00E100000000000000000012 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
-			files = ();
+			files = (
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -239,7 +242,8 @@
 				00324851306C4E8600F0AC35 /* NoxaShieldConfiguration */,
 				00D100000000000000000008 /* NoxaWidgets */,
 				00E10000000000000000000D /* NoxaSafariFilter */,
-				00D100000000000000000004 /* FocusActivityAttributes.swift */,
+				00F100000000000000000002 /* NoxaShieldConfiguration/ShieldRuleExplanation.swift */,
+				00D100000000000000000004 /* Shared/FocusActivityAttributes.swift */,
 				00431222304F9028003BCE77 /* Frameworks */,
 				004310663048CD18003BCE77 /* Products */,
 			);
@@ -318,7 +322,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 004310863048CD19003BCE77 /* Build configuration list for PBXNativeTarget "Noxa" */;
 			buildPhases = (
-		004310613048CD18003BCE77 /* Sources */,
+				004310613048CD18003BCE77 /* Sources */,
 				004310623048CD18003BCE77 /* Frameworks */,
 				004310633048CD18003BCE77 /* Resources */,
 				00A10000000000000000000A /* Embed Foundation Extensions */,
@@ -442,8 +446,10 @@
 				00E100000000000000000012 /* Frameworks */,
 				00E100000000000000000013 /* Resources */,
 			);
-			buildRules = ();
-			dependencies = ();
+			buildRules = (
+			);
+			dependencies = (
+			);
 			name = NoxaSafariFilter;
 			productName = NoxaSafariFilter;
 			productReference = 00E100000000000000000002 /* NoxaSafariFilter.appex */;
@@ -581,7 +587,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				00D100000000000000000003 /* FocusActivityAttributes.swift in Noxa Sources */,
+				00D100000000000000000003 /* Shared/FocusActivityAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -589,6 +595,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				00F100000000000000000001 /* NoxaShieldConfiguration/ShieldRuleExplanation.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -610,7 +617,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				00D100000000000000000005 /* FocusActivityAttributes.swift in Widget Sources */,
+				00D100000000000000000005 /* Shared/FocusActivityAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

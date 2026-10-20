@@ -24,32 +24,34 @@ final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
     )
 
     override func configuration(shielding application: Application) -> ShieldConfiguration {
-        appShield
+        appShield(for: application, category: nil)
     }
 
     override func configuration(shielding application: Application, in category: ActivityCategory) -> ShieldConfiguration {
-        appShield
+        appShield(for: application, category: category)
     }
 
     override func configuration(shielding webDomain: WebDomain) -> ShieldConfiguration {
-        websiteShield
+        websiteShield(for: webDomain, category: nil)
     }
 
     override func configuration(shielding webDomain: WebDomain, in category: ActivityCategory) -> ShieldConfiguration {
-        websiteShield
+        websiteShield(for: webDomain, category: category)
     }
 
-    private var appShield: ShieldConfiguration {
+    private func appShield(for application: Application, category: ActivityCategory?) -> ShieldConfiguration {
         makeShield(
             title: "This app is blocked",
-            subtitle: "You chose this time for yourself. Take a breath and return to what matters."
+            subtitle: ShieldRuleExplanation.app(application, category: category)
+                ?? "You chose this time for yourself. Take a breath and return to what matters."
         )
     }
 
-    private var websiteShield: ShieldConfiguration {
+    private func websiteShield(for webDomain: WebDomain, category: ActivityCategory?) -> ShieldConfiguration {
         makeShield(
             title: "This website is blocked",
-            subtitle: "Pause before continuing. Protect the time you set aside for yourself."
+            subtitle: ShieldRuleExplanation.website(webDomain, category: category)
+                ?? "Pause before continuing. Protect the time you set aside for yourself."
         )
     }
 

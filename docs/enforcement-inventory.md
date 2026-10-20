@@ -39,8 +39,8 @@ The migration cannot always infer whether an old web-content filter came from a 
 
 - Environment: Xcode 27.0, iPhone 17 simulator on iOS 26.5. The active command-line developer directory points to Command Line Tools, so project commands use `/Applications/Xcode.app/Contents/Developer` explicitly.
 - The first test attempt exposed stale subscription test calls. After that test was updated, the next run exposed an onboarding test that skipped the required value-overview milestone. Both test expectations were brought into line with the current services.
-- The current branch has 64 passing unit tests and 3 previously passing simulator UI tests. Simulator Managed Settings stores read back as empty even after accepting a write, so physical-device testing is required for actual enforcement and migration.
-- A signed build was installed and launched on the paired iPhone. A launch-only device UI test passed, but a screen-query test was denied iPhone UI-automation permission. Actual Screen Time behavior remains unverified.
+- The current branch has 68 passing unit tests and 3 previously passing simulator UI tests. Simulator Managed Settings stores read back as empty even after accepting a write, so physical-device testing is required for actual enforcement and migration.
+- A signed build was installed and launched on the paired iPhone. Device UI automation can now capture a launch screenshot; actual Screen Time behavior remains unverified.
 
 ## Strict Mode first slice
 
@@ -73,6 +73,12 @@ The migration cannot always infer whether an old web-content filter came from a 
 - The focus screen distinguishes a started session from a matching receipt written by the DeviceActivity monitor after it applies the saved block settings. The receipt is cleared with the focus restrictions and cannot confirm that iOS visibly shielded a selected target; that still requires physical-device observation.
 - Widget taps still pass through the existing subscription, Screen Time authorization, target, Strict, and active-session checks in the app. An idle widget never starts blocking directly.
 - The new widget extension builds in the simulator, and the signed app with the extension installed and launched on the paired iPhone. Widget placement, countdown behavior while the app is closed, and Live Activity permission still need direct device observation.
+
+## Rule-aware shield first slice
+
+- The shield extension now reads the App Group's device-local focus, schedule, manual shield, website blocklist, and reached daily-limit records and matches the shielded app, category, or website against saved targets. A matching active focus session shows its planned end and entered intention; a matching schedule shows its name and next transition out of blocking when one is found. Other rules show a reason without a promised end time.
+- The message says other rules may still apply, including when one displayed rule ends. Unknown or stale rule state falls back to the generic shield. Four unit tests cover matching domains, expired focus state, overlapping focus and schedule rules, manual and website lists, and stale daily-limit events; the simulator build succeeds.
+- Physical-device shield rendering and timing still need observation. Validation monitor blocks use the generic shield.
 
 ## Instagram Safari prototype
 
