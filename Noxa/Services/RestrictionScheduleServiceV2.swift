@@ -163,6 +163,7 @@ final class RestrictionScheduleService: ObservableObject {
 
     func clearConfigurations() {
         configurations.forEach { coordinator.stop($0) }
+        clearOrphanShields(keeping: [])
         configurations.forEach { stopLegacyActivities(for: $0.id) }
         stopAllV2Activities()
         clearLegacyActivities(expected: [])
@@ -203,6 +204,8 @@ final class RestrictionScheduleService: ObservableObject {
             return
         }
 
+        clearOrphanShields(keeping: Set(configurations.map(\.id)))
+
         var expected: Set<DeviceActivityName> = []
         var failed = false
         for rule in configurations {
@@ -230,6 +233,21 @@ final class RestrictionScheduleService: ObservableObject {
         configurations.forEach { stopLegacyActivities(for: $0.id) }
         store.clearLegacyRestrictionSchedules()
         errorMessage = nil
+    }
+
+    private func clearOrphanShields(keeping currentIDs: Set<UUID>) {
+        let staleIDs = store.scheduleShieldOwners.subtracting(currentIDs)
+        for id in staleIDs {
+            ManagedSettingsStore(named: ScheduleRuleActivityNames.shield(ruleID: id))
+                .clearAllSettings()
+            let suffix = id.uuidString.lowercased()
+            center.stopMonitoring(center.activities.filter {
+                ($0.rawValue.hasPrefix(ScheduleRuleActivityNames.wakePrefix)
+                    && $0.rawValue.hasSuffix(suffix))
+                    || $0.rawValue == ScheduleRuleActivityNames.relaxation(ruleID: id).rawValue
+            })
+        }
+        store.scheduleShieldOwners = currentIDs
     }
 
     private func applyMaturedLegacyChanges(now: Date = Date()) {

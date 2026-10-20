@@ -4,6 +4,16 @@ import Testing
 @testable import Noxa
 
 struct ScheduleRuleTests {
+    @Test func persistedScheduleShieldOwnersClearWithLocalSchedules() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.ScheduleOwners.\(UUID())"))
+        let store = AppGroupStore(defaults: defaults)
+        let ids: Set<UUID> = [UUID(), UUID()]
+        store.scheduleShieldOwners = ids
+        #expect(AppGroupStore(defaults: defaults).scheduleShieldOwners == ids)
+        store.clearRestrictionSchedules()
+        #expect(store.scheduleShieldOwners.isEmpty)
+    }
+
     @Test func remindersDefaultOffWhenOlderArchiveIsDecoded() throws {
         let rule = ScheduleRule(
             name: "Old schedule",

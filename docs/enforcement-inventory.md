@@ -25,6 +25,7 @@ The migration cannot always infer whether an old web-content filter came from a 
 - The app and extension reevaluate a rule at its start/end wake times and at midnight for allowed-hour rules. The extension also wakes at the effective time of a migrated pending 24-hour change. Both use the device's current local time and recalculate state when a callback arrives late.
 - The app, Device Activity monitor, and shield extension now call the same `Shared/ScheduleWindow.swift` evaluator for local-time blocking decisions. This keeps overnight, weekday, and pending-relaxation behavior aligned across the three processes. The 69 unit tests pass, and the signed build with all extensions installed and launched on the paired iPhone. Background transition timing still needs direct physical observation.
 - Disabling or removing schedules and daily limits takes effect immediately, including during focus. A legacy pending schedule change retains its original effective date until the user explicitly changes the schedule.
+- The app now records which schedule IDs own named shield stores. On launch and schedule reconciliation it clears an orphaned schedule store and stale wake monitors if that rule no longer exists in the saved archive. The owner list is device-local and clears with account data.
 - Home shows each enabled schedule's name, current blocking status, next local-time change, and selected targets on tap.
 - This code is unverified on a physical device. Repeating wake points, overlapping stores, migration with active shields, locked-device callbacks, DST, and timezone changes must pass the device matrix before release. Apple warns that too many or tightly scheduled activities can make registration fail; the service reports those failures and retains legacy monitors during an unsuccessful migration.
 
@@ -40,7 +41,7 @@ The migration cannot always infer whether an old web-content filter came from a 
 
 - Environment: Xcode 27.0, iPhone 17 simulator on iOS 26.5. The active command-line developer directory points to Command Line Tools, so project commands use `/Applications/Xcode.app/Contents/Developer` explicitly.
 - The first test attempt exposed stale subscription test calls. After that test was updated, the next run exposed an onboarding test that skipped the required value-overview milestone. Both test expectations were brought into line with the current services.
-- The current branch has 71 passing unit tests and 3 previously passing simulator UI tests. Simulator Managed Settings stores read back as empty even after accepting a write, so physical-device testing is required for actual enforcement and migration.
+- The current branch has 76 passing unit tests and 3 previously passing simulator UI tests. Simulator Managed Settings stores read back as empty even after accepting a write, so physical-device testing is required for actual enforcement and migration.
 - A signed build was installed and launched on the paired iPhone. Device UI automation can now capture a launch screenshot; actual Screen Time behavior remains unverified.
 
 ## Strict Mode first slice
