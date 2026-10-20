@@ -39,10 +39,11 @@ enum RestrictionStoreMigration {
     }
 
     static func migrateIfNeeded(
-        store: AppGroupStore = .shared,
+        store: AppGroupStore? = nil,
         stores: Stores? = nil,
         validationMonitorIsRunning: Bool? = nil
     ) {
+        let store = store ?? .shared
         guard !store.hasMigratedRestrictionStores else { return }
 
         let stores = stores ?? .production
