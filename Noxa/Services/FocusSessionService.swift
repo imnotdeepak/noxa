@@ -55,6 +55,12 @@ final class FocusSessionService: ObservableObject {
         activeSession?.isStrict == true
     }
 
+    func monitorReceipt(for session: ActiveSessionRecord) -> FocusMonitorReceipt? {
+        guard let receipt = try? store.loadFocusMonitorReceipt(),
+              receipt.sessionID == session.id else { return nil }
+        return receipt
+    }
+
     var hasPomodoroCycle: Bool { pomodoroCycle != nil }
 
     var pomodoroBreakEndsAt: Date? {
@@ -166,6 +172,7 @@ final class FocusSessionService: ObservableObject {
         )
 
         do {
+            store.clearFocusMonitorReceipt()
             try store.saveFamilyActivitySelection(selection)
             try store.saveFocusSessionRestrictions(restrictionConfiguration)
             try saveSnapshot(engineState: .starting, session: record)

@@ -128,6 +128,13 @@ struct PendingScheduleSuggestion: Codable, Equatable {
     let plannedEndAt: Date
 }
 
+/// Receipt that the separate Screen Time monitor process reached the shield
+/// application path. It is not proof that a target was visibly blocked.
+struct FocusMonitorReceipt: Codable, Equatable {
+    let sessionID: UUID
+    let appliedAt: Date
+}
+
 /// The device-local restriction snapshot owned by an active focus session.
 /// Screen Time selections are opaque Apple-managed tokens and never leave the
 /// device. This configuration is separate from the user's editable blocklist

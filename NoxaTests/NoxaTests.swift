@@ -203,6 +203,18 @@ struct NoxaTests {
         #expect(try store.loadFocusSessionRestrictions() == nil)
     }
 
+    @Test @MainActor func focusMonitorReceiptClearsWithRestrictions() throws {
+        let suiteName = "NoxaTests.FocusMonitorReceipt.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let store = AppGroupStore(defaults: defaults)
+        let receipt = FocusMonitorReceipt(sessionID: UUID(), appliedAt: Date())
+        defaults.set(try JSONEncoder().encode(receipt), forKey: "noxa.focusMonitorReceipt")
+
+        #expect(try store.loadFocusMonitorReceipt() == receipt)
+        store.clearFocusSessionRestrictions()
+        #expect(try store.loadFocusMonitorReceipt() == nil)
+    }
+
     @Test @MainActor func activeFocusSessionAllowsAdditionsButRejectsRemovals() throws {
         let suiteName = "NoxaTests.FocusLock.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

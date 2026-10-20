@@ -58,15 +58,22 @@ private struct PersistedPomodoroCycle: Codable {
     let plan: PersistedPomodoroPlan
     let selection: FamilyActivitySelection
     let websiteDomains: [String]
+    let roundSessionIDs: [UUID]
 }
 
 private struct PersistedSessionStatus: Codable {
     let activeSession: ActiveStatus?
 
     struct ActiveStatus: Codable {
+        let id: UUID
         let plannedEndAt: Date
         let outcome: String
     }
+}
+
+private struct PersistedFocusMonitorReceipt: Codable {
+    let sessionID: UUID
+    let appliedAt: Date
 }
 
 private struct PersistedDailyLimitConfiguration: Codable {
@@ -207,6 +214,9 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
                 UserDefaults(suiteName: "group.LycheeCorp.Noxa")?.removeObject(
                     forKey: "noxa.focusSessionRestrictions"
                 )
+                UserDefaults(suiteName: "group.LycheeCorp.Noxa")?.removeObject(
+                    forKey: "noxa.focusMonitorReceipt"
+                )
             }
             let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa")
             if defaults?.bool(forKey: "noxa.restrictionStoresMigrated") != true {
@@ -244,6 +254,20 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
             reason: reason,
             to: focusSettingsStore
         )
+        if let snapshotData = defaults.data(forKey: "noxa.localSnapshot"),
+           let snapshot = try? JSONDecoder().decode(PersistedSessionStatus.self, from: snapshotData),
+           let session = snapshot.activeSession,
+           ["active", "start_pending"].contains(session.outcome),
+           session.plannedEndAt > Date() {
+            saveFocusMonitorReceipt(sessionID: session.id, defaults: defaults)
+        }
+    }
+
+    private func saveFocusMonitorReceipt(sessionID: UUID, defaults: UserDefaults) {
+        let receipt = PersistedFocusMonitorReceipt(sessionID: sessionID, appliedAt: Date())
+        if let data = try? JSONEncoder().encode(receipt) {
+            defaults.set(data, forKey: "noxa.focusMonitorReceipt")
+        }
     }
 
     private func loadPomodoroCycle() -> PersistedPomodoroCycle? {
@@ -299,12 +323,21 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
                 if defaults?.object(forKey: enforcementKey) == nil {
                     defaults?.set(now, forKey: enforcementKey)
                 }
+                if cycle.roundSessionIDs.indices.contains(round - 1), let defaults {
+                    saveFocusMonitorReceipt(
+                        sessionID: cycle.roundSessionIDs[round - 1],
+                        defaults: defaults
+                    )
+                }
                 return
             }
         }
         focusSettingsStore.clearAllSettings()
         UserDefaults(suiteName: "group.LycheeCorp.Noxa")?.removeObject(
             forKey: "noxa.focusSessionRestrictions"
+        )
+        UserDefaults(suiteName: "group.LycheeCorp.Noxa")?.removeObject(
+            forKey: "noxa.focusMonitorReceipt"
         )
         logger.info("Removed Pomodoro work shield during break or after completion")
     }

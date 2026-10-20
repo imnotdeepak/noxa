@@ -800,7 +800,7 @@ struct ContentView: View {
                         .font(NoxaTheme.font(24, weight: .bold, relativeTo: .title2))
                     Text(focusSession.pomodoroBreakEndsAt != nil
                          ? "The next work round starts automatically."
-                         : (focusSession.isActive ? "Noxa is protecting your time." : "Choose a duration and begin."))
+                         : (focusSession.isActive ? "Your focus session is running." : "Choose a duration and begin."))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(focusSession.isActive || focusSession.hasPomodoroCycle ? .leading : .center)
@@ -810,7 +810,7 @@ struct ContentView: View {
                     alignment: focusSession.isActive || focusSession.hasPomodoroCycle ? .leading : .center
                 )
                 if focusSession.isActive {
-                    Text("LIVE")
+                    Text("FOCUS")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.black)
                         .padding(.horizontal, 10)
@@ -854,9 +854,24 @@ struct ContentView: View {
                         }
                         .frame(width: 190, height: 190)
 
-                        Text("Blocked until \(activeSession.plannedEndAt.formatted(date: .omitted, time: .shortened))")
+                        Text("Session ends at \(activeSession.plannedEndAt.formatted(date: .omitted, time: .shortened))")
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(.secondary)
+
+                        if focusSession.monitorReceipt(for: activeSession) != nil {
+                            Label("Screen Time monitor applied your block settings.", systemImage: "checkmark.shield.fill")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Label("Block settings requested; waiting for the Screen Time monitor.", systemImage: "clock.arrow.circlepath")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            if context.date.timeIntervalSince(activeSession.startedAt) > 30 {
+                                Text("If selected apps are still available, check Screen Time access in Settings.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
 
                         if let round = focusSession.pomodoroRoundDescription {
                             Text(round)

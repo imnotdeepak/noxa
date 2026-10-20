@@ -24,6 +24,7 @@ final class AppGroupStore {
         static let localSnapshot = "noxa.localSnapshot"
         static let familyActivitySelection = "noxa.familyActivitySelection"
         static let focusSessionRestrictions = "noxa.focusSessionRestrictions"
+        static let focusMonitorReceipt = "noxa.focusMonitorReceipt"
         static let manualShield = "noxa.manualShield"
         static let websiteShieldActive = "noxa.websiteShieldActive"
         static let restrictionStoresMigrated = "noxa.restrictionStoresMigrated"
@@ -111,6 +112,16 @@ final class AppGroupStore {
 
     func clearFocusSessionRestrictions() {
         defaults.removeObject(forKey: Key.focusSessionRestrictions)
+        defaults.removeObject(forKey: Key.focusMonitorReceipt)
+    }
+
+    func loadFocusMonitorReceipt() throws -> FocusMonitorReceipt? {
+        guard let data = defaults.data(forKey: Key.focusMonitorReceipt) else { return nil }
+        return try JSONDecoder().decode(FocusMonitorReceipt.self, from: data)
+    }
+
+    func clearFocusMonitorReceipt() {
+        defaults.removeObject(forKey: Key.focusMonitorReceipt)
     }
 
     func loadManualShield() throws -> ManualShieldConfiguration? {
