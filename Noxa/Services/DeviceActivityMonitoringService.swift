@@ -388,11 +388,11 @@ final class DailyLimitService: ObservableObject {
     }
 }
 
-/// Keeps selected apps unavailable except during a user-defined daily window.
-/// Each half of a schedule has its own ManagedSettings store so overlapping
-/// schedules cannot accidentally clear one another's shields.
+/// Previous daily-window implementation retained while the versioned schedule
+/// migration is validated on a physical device. The app uses
+/// RestrictionScheduleService in RestrictionScheduleServiceV2.swift.
 @MainActor
-final class RestrictionScheduleService: ObservableObject {
+final class LegacyRestrictionScheduleService: ObservableObject {
     static let maximumConfigurations = 8
 
     @Published private(set) var configurations: [RestrictionScheduleConfiguration]

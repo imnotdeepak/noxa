@@ -16,6 +16,7 @@ private enum NoxaMonitorActivity {
     static let dailyLimitResetDayKey = "noxa.dailyLimitResetDay"
     static let scheduleActivityPrefix = "noxa.schedule."
     static let scheduleV2WakePrefix = "noxa.schedule.v2.wake."
+    static let scheduleV2RelaxationPrefix = "noxa.schedule.v2.relax."
     static let scheduleV2ShieldPrefix = "noxa.schedule.v2.shield."
     static let scheduleRelaxationActivityPrefix = "noxa.schedule.relax."
     static let pomodoroWorkActivityPrefix = "noxa.pomodoro.work."
@@ -170,7 +171,8 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
             } else {
                 logger.info("Restarted daily limit monitoring without resetting today's reached limits")
             }
-        } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleV2WakePrefix) {
+        } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleV2WakePrefix)
+                    || activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleV2RelaxationPrefix) {
             applyV2ScheduleShield(for: activity)
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleRelaxationActivityPrefix) {
             applyPendingScheduleRelaxation(for: activity)
@@ -213,7 +215,8 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
             logger.info("Removed focus shield when session ended")
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.pomodoroWorkActivityPrefix) {
             reconcilePomodoroShield(for: activity)
-        } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleV2WakePrefix) {
+        } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleV2WakePrefix)
+                    || activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleV2RelaxationPrefix) {
             applyV2ScheduleShield(for: activity)
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleRelaxationActivityPrefix) {
             logger.info("Pending schedule relaxation interval ended")

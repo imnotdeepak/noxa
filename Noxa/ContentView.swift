@@ -57,8 +57,12 @@ struct ContentView: View {
     @State private var isFocusStartReviewPresented = false
     @State private var firstFocusReviewPending = false
     @State private var scheduleName = ""
-    @State private var scheduleToRename: RestrictionScheduleConfiguration?
+    @State private var scheduleToEdit: ScheduleRule?
+    @State private var scheduleToRename: ScheduleRule?
     @State private var renamedScheduleName = ""
+    @State private var scheduleMode: ScheduleRule.Mode = .allowedHours
+    @State private var scheduleWeekdays: Set<Int> = Set(1...7)
+    @State private var scheduleCustomDomains = ""
     @State private var scheduleSelection = FamilyActivitySelection()
     @State private var scheduleAllowedStart = Calendar.current.date(from: DateComponents(hour: 21)) ?? Date()
     @State private var scheduleAllowedEnd = Calendar.current.date(from: DateComponents(hour: 22)) ?? Date()
@@ -407,6 +411,12 @@ struct ContentView: View {
                 TextField("Schedule name", text: $scheduleName)
                     .textInputAutocapitalization(.words)
                     .padding(.horizontal, 16)
+                scheduleTimingControls
+                    .padding(.horizontal, 16)
+                TextField("Websites, separated by commas (optional)", text: $scheduleCustomDomains)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .padding(.horizontal, 16)
                 if let errorMessage = schedules.errorMessage {
                     Text(errorMessage)
                         .font(.footnote)
@@ -415,32 +425,127 @@ struct ContentView: View {
                 }
                 FamilyActivityPicker(selection: $scheduleSelection)
             }
-            .navigationTitle("Choose schedule targets")
+            .navigationTitle(scheduleToEdit == nil ? "New schedule" : "Edit schedule")
             .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { isSchedulePickerPresented = false }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        schedules.add(
-                            name: scheduleName,
-                            selection: scheduleSelection,
-                            allowedStart: scheduleAllowedStart,
-                            allowedEnd: scheduleAllowedEnd
-                        )
+                        if var rule = scheduleToEdit {
+                            rule.name = scheduleName
+                            rule.mode = scheduleMode
+                            rule.selection = scheduleSelection
+                            rule.websiteDomains = Self.domains(from: scheduleCustomDomains)
+                            rule.weekdays = scheduleWeekdays
+                            rule.startMinutes = Self.minutesSinceMidnight(scheduleAllowedStart)
+                            rule.endMinutes = Self.minutesSinceMidnight(scheduleAllowedEnd)
+                            rule.pendingLegacyRelaxation = nil
+                            schedules.update(rule)
+                        } else {
+                            schedules.add(
+                                name: scheduleName,
+                                mode: scheduleMode,
+                                selection: scheduleSelection,
+                                websiteDomains: Self.domains(from: scheduleCustomDomains),
+                                weekdays: scheduleWeekdays,
+                                start: scheduleAllowedStart,
+                                end: scheduleAllowedEnd
+                            )
+                        }
                         if schedules.errorMessage == nil {
-                            scheduleName = ""
-                            scheduleSelection = FamilyActivitySelection()
                             isSchedulePickerPresented = false
                         }
                     }
                     .disabled(
                         scheduleName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            || scheduleWeekdays.isEmpty
                             || (scheduleSelection.applicationTokens.isEmpty
                             && scheduleSelection.categoryTokens.isEmpty
-                            && scheduleSelection.webDomainTokens.isEmpty)
+                            && scheduleSelection.webDomainTokens.isEmpty
+                            && Self.domains(from: scheduleCustomDomains).isEmpty)
                     )
                 }
             }
         }
         .preferredColorScheme(.dark)
+    }
+
+    private var scheduleTimingControls: some View {
+        VStack(spacing: 12) {
+            Picker("Schedule mode", selection: $scheduleMode) {
+                Text("Blocked hours").tag(ScheduleRule.Mode.blockedHours)
+                Text("Allowed hours").tag(ScheduleRule.Mode.allowedHours)
+            }
+            .pickerStyle(.segmented)
+
+            HStack(spacing: 5) {
+                ForEach(1...7, id: \.self) { weekday in
+                    Button(Self.weekdayName(weekday)) {
+                        if scheduleWeekdays.contains(weekday) {
+                            scheduleWeekdays.remove(weekday)
+                        } else {
+                            scheduleWeekdays.insert(weekday)
+                        }
+                    }
+                    .font(.caption.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .background(
+                        scheduleWeekdays.contains(weekday) ? NoxaTheme.accent : Color.white.opacity(0.08),
+                        in: Capsule()
+                    )
+                    .foregroundStyle(scheduleWeekdays.contains(weekday) ? .black : .white)
+                }
+            }
+
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(scheduleMode == .allowedHours ? "AVAILABLE FROM" : "BLOCK FROM")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+                    DatePicker("From", selection: $scheduleAllowedStart, displayedComponents: .hourAndMinute)
+                        .labelsHidden()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("UNTIL")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+                    DatePicker("Until", selection: $scheduleAllowedEnd, displayedComponents: .hourAndMinute)
+                        .labelsHidden()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private static func minutesSinceMidnight(_ date: Date) -> Int {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return (components.hour ?? 0) * 60 + (components.minute ?? 0)
+    }
+
+    private static func dateForScheduleMinute(_ minute: Int) -> Date {
+        Calendar.current.date(from: DateComponents(
+            year: 2001, month: 1, day: 1,
+            hour: minute / 60, minute: minute % 60
+        )) ?? Date()
+    }
+
+    private static func domains(from input: String) -> [String] {
+        input.split(whereSeparator: { $0 == "," || $0.isNewline })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    nonisolated private static func weekdayName(_ weekday: Int) -> String {
+        let names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        return (1...7).contains(weekday) ? names[weekday - 1] : ""
+    }
+
+    nonisolated private static func weekdaySummary(_ weekdays: Set<Int>) -> String {
+        if weekdays == Set(1...7) { return "Every day" }
+        return weekdays.sorted().map(weekdayName).joined(separator: ", ")
     }
 
     private var homeContent: some View {
@@ -549,21 +654,31 @@ struct ContentView: View {
                     .font(.headline)
 
                 ForEach(schedules.configurations.filter(\.isEnabled)) { configuration in
-                    let nowMinutes = Self.minutesSinceMidnight(context.date)
-                    let isBlocking = nowMinutes < configuration.allowedStartMinutes
-                        || nowMinutes >= configuration.allowedEndMinutes
+                    let isBlocking = ScheduleRuleEvaluator.isBlocking(
+                        configuration,
+                        at: context.date,
+                        calendar: .autoupdatingCurrent
+                    )
                     DisclosureGroup {
                         tokenRows(for: configuration.selection)
+                        ForEach(configuration.websiteDomains, id: \.self) { domain in
+                            Label(domain, systemImage: "globe")
+                                .font(.subheadline)
+                        }
                     } label: {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(configuration.name ?? "Allowed hours, every day")
+                            Text(configuration.name)
                                 .font(.subheadline.weight(.semibold))
-                            Text(isBlocking ? "Blocking selected targets" : "Allowing selected targets")
+                            Text(isBlocking
+                                 ? "Blocking selected targets"
+                                 : (configuration.mode == .allowedHours
+                                    ? "Within allowed hours" : "Outside blocked hours"))
                                 .font(.caption)
                                 .foregroundStyle(isBlocking ? NoxaTheme.warning : NoxaTheme.accent)
-                            if let nextChange = Self.nextLegacyScheduleChange(
+                            if let nextChange = ScheduleRuleEvaluator.nextChange(
                                 for: configuration,
-                                after: context.date
+                                after: context.date,
+                                calendar: .autoupdatingCurrent
                             ) {
                                 Text("Changes at \(nextChange.formatted(date: .abbreviated, time: .shortened))")
                                     .font(.caption)
@@ -575,29 +690,6 @@ struct ContentView: View {
             }
             .noxaCard()
         }
-    }
-
-    private static func minutesSinceMidnight(_ date: Date) -> Int {
-        let components = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute], from: date)
-        return (components.hour ?? 0) * 60 + (components.minute ?? 0)
-    }
-
-    private static func nextLegacyScheduleChange(
-        for configuration: RestrictionScheduleConfiguration,
-        after date: Date
-    ) -> Date? {
-        let calendar = Calendar.autoupdatingCurrent
-        return [configuration.allowedStartMinutes, configuration.allowedEndMinutes]
-            .compactMap { minutes in
-                calendar.nextDate(
-                    after: date,
-                    matching: DateComponents(hour: minutes / 60, minute: minutes % 60),
-                    matchingPolicy: .nextTime,
-                    repeatedTimePolicy: .first,
-                    direction: .forward
-                )
-            }
-            .min()
     }
 
     private var permissionCard: some View {
@@ -1262,7 +1354,7 @@ struct ContentView: View {
     private var scheduleCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Label("Allowed schedules", systemImage: "calendar.badge.clock")
+                Label("Schedules", systemImage: "calendar.badge.clock")
                     .font(.headline)
                 Spacer()
                 Text("\(schedules.configurations.count)/\(RestrictionScheduleService.maximumConfigurations)")
@@ -1270,34 +1362,20 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("Choose a daily window when selected apps, categories, or websites are available. Noxa blocks them before and after that window—even when the app is closed. Changes take effect immediately.")
+            Text("Choose blocked or allowed hours, the days they apply, and the apps, categories, or websites. Changes take effect immediately.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("AVAILABLE FROM")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.secondary)
-                    DatePicker("Available from", selection: $scheduleAllowedStart, displayedComponents: .hourAndMinute)
-                        .labelsHidden()
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("UNTIL")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.secondary)
-                    DatePicker("Until", selection: $scheduleAllowedEnd, displayedComponents: .hourAndMinute)
-                        .labelsHidden()
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
             Button("Add Schedule") {
                 schedules.clearError()
+                scheduleToEdit = nil
                 scheduleName = ""
+                scheduleCustomDomains = ""
                 scheduleSelection = FamilyActivitySelection()
+                scheduleMode = .allowedHours
+                scheduleWeekdays = Set(1...7)
+                scheduleAllowedStart = Self.dateForScheduleMinute(21 * 60)
+                scheduleAllowedEnd = Self.dateForScheduleMinute(22 * 60)
                 isSchedulePickerPresented = true
             }
             .buttonStyle(NoxaSecondaryButtonStyle())
@@ -1323,18 +1401,32 @@ struct ContentView: View {
                             .buttonStyle(.plain)
 
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(configuration.name ?? "Allowed hours, every day")
+                                Text(configuration.name)
                                     .font(.subheadline.weight(.semibold))
-                                Text("Available \(Self.timeLabel(minutes: configuration.allowedStartMinutes))–\(Self.timeLabel(minutes: configuration.allowedEndMinutes))")
+                                Text("\(configuration.mode == .allowedHours ? "Available" : "Blocked") \(Self.timeLabel(minutes: configuration.startMinutes))–\(Self.timeLabel(minutes: configuration.endMinutes))")
                                     .font(.caption)
-                                Text("Blocked outside this window every day")
+                                Text(Self.weekdaySummary(configuration.weekdays))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
+                            Button("Edit") {
+                                schedules.clearError()
+                                scheduleToEdit = configuration
+                                scheduleName = configuration.name
+                                scheduleMode = configuration.mode
+                                scheduleWeekdays = configuration.weekdays
+                                scheduleAllowedStart = Self.dateForScheduleMinute(configuration.startMinutes)
+                                scheduleAllowedEnd = Self.dateForScheduleMinute(configuration.endMinutes)
+                                scheduleSelection = configuration.selection
+                                scheduleCustomDomains = configuration.websiteDomains.joined(separator: ", ")
+                                isSchedulePickerPresented = true
+                            }
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(NoxaTheme.accent)
                             Button("Rename") {
                                 scheduleToRename = configuration
-                                renamedScheduleName = configuration.name ?? "Allowed hours, every day"
+                                renamedScheduleName = configuration.name
                             }
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
@@ -1346,8 +1438,12 @@ struct ContentView: View {
                         }
 
                         tokenRows(for: configuration.selection)
+                        ForEach(configuration.websiteDomains, id: \.self) { domain in
+                            Label(domain, systemImage: "globe")
+                                .font(.subheadline)
+                        }
 
-                        if let pending = configuration.pendingRelaxation {
+                        if let pending = configuration.pendingLegacyRelaxation {
                             HStack(alignment: .firstTextBaseline, spacing: 10) {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Label(

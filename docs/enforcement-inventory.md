@@ -18,33 +18,29 @@ The main app now gives focus, manual, website, daily-limit, schedule, and valida
 
 The migration cannot always infer whether an old web-content filter came from a manual shield or a separately applied website blocklist. It preserves an otherwise unowned old filter as a removable manual shield. A filter from a running validation monitor remains temporary. This avoids turning a monitor threshold into a permanent manual block.
 
-## Current schedule constraints
+## Current schedule implementation
 
-- A schedule is an allowed window every day; selected apps are blocked before and after it.
-- Creation accepts app, category, or website tokens, permits overlap with other schedules, and requires a same-day window of at least 15 minutes.
-- Users choose a name when creating a schedule and can rename it later. Older unnamed schedules display “Allowed hours, every day”; the versioned migration preserves a user-chosen name.
-- The home screen lists enabled schedule names, whether each currently blocks or allows its targets, and the next local-time change. Tapping a row shows its selected targets. This display covers the live legacy daily windows; weekday and overnight status will follow the versioned-rule activation.
-- Disabling or removing a schedule takes effect immediately, including during focus. Existing pending 24-hour changes retain their original date until the user explicitly changes the schedule; an explicit change clears that pending record.
-- Each schedule uses before/after monitor names and named stores. This is a useful foundation for the approved migration, but is not yet the new weekday/overnight/blocked-hours model.
-- A versioned `ScheduleRule` archive and migration reader now convert legacy rules into named, every-day allowed-hour rules while retaining IDs, targets, enabled state, and pending 24-hour changes. The pure local-time evaluator covers weekdays and overnight windows. The live schedule service and monitor still use the legacy format; the new rule model is not yet enforced or shown in the app.
-- The intended live transition uses one named shield store per rule and daily local-time wake points at the rule's start/end, plus midnight for allowed-hour rules. Each callback must reevaluate the current weekday and time before changing only that rule's store. The old before/after activity stores should be cleared only after the new store has the correct current shield. Physical-device testing must verify repeating wake points across sleep, DST, and timezone changes before enabling this path.
-- The v2 wake/store naming and the extension's callback reader are staged in code. The current app service still registers legacy before/after monitors; the v2 callback has no live activities until the service migration is wired in.
-- Daily limits can now be edited, disabled, removed, or stopped immediately, including during focus. Their independent Managed Settings store keeps a focus block in force when a daily limit changes.
+- The live schedule service now reads a versioned `ScheduleRule` archive and converts old rules into named “Allowed hours, every day” rules with the same IDs, targets, times, enabled state, and pending changes. It saves the new archive before registering new monitors, applies the new store, then clears legacy monitors and stores after all new registrations succeed.
+- Users can create and edit blocked or allowed hours, weekdays, overnight windows, names, and app/category/website targets. Multiple rules may select the same target. Each rule has its own named shield store; ending one rule does not clear another rule's shield.
+- The app and extension reevaluate a rule at its start/end wake times and at midnight for allowed-hour rules. The extension also wakes at the effective time of a migrated pending 24-hour change. Both use the device's current local time and recalculate state when a callback arrives late.
+- Disabling or removing schedules and daily limits takes effect immediately, including during focus. A legacy pending schedule change retains its original effective date until the user explicitly changes the schedule.
+- Home shows each enabled schedule's name, current blocking status, next local-time change, and selected targets on tap.
+- This code is unverified on a physical device. Repeating wake points, overlapping stores, migration with active shields, locked-device callbacks, DST, and timezone changes must pass the device matrix before release. Apple warns that too many or tightly scheduled activities can make registration fail; the service reports those failures and retains legacy monitors during an unsuccessful migration.
 
 ## First engineering slice
 
 1. Keep the current app behavior intact while introducing a versioned, device-local rule model and a pure evaluator that returns required targets and contributing rule IDs. The pure `RestrictionRuleEvaluator` and source-specific rule IDs are present. A versioned archive is present for schedules, while a unified persisted rule format remains to be added.
 2. Test the approved **any active block wins** rule with focus, daily-limit, and allowed/blocked schedule combinations. The new tests cover overlapping focus and daily-limit blocks, an allowed schedule window, and repeated callbacks. A Pomodoro break remains a later rule source.
 3. Add a reconciliation adapter that compares desired restrictions with each Noxa-owned store and updates only the owning store. The first part is complete: focus/manual/website stores are isolated and reconciled from their own saved state. A unified adapter across schedules, daily limits, and Pomodoro remains to be built.
-4. Define and test migration of existing schedules, including pending 24-hour disable/remove records, before writing a new schedule format. The migration reader and tests are present; switching live scheduling and extension callbacks to that format remains.
+4. Define and test migration of existing schedules, including pending 24-hour disable/remove records, before writing a new schedule format. The format, migration reader, live service, and extension callbacks are present; physical-device migration tests remain.
 5. Validate each enforcement transition on physical iPhones. Simulator tests verify local logic and UI, not Screen Time behavior.
 
 ## Baseline test finding
 
 - Environment: Xcode 27.0, iPhone 17 simulator on iOS 26.5. The active command-line developer directory points to Command Line Tools, so project commands use `/Applications/Xcode.app/Contents/Developer` explicitly.
 - The first test attempt exposed stale subscription test calls. After that test was updated, the next run exposed an onboarding test that skipped the required value-overview milestone. Both test expectations were brought into line with the current services.
-- The four-round integration has 49 passing unit tests and 3 passing UI tests. Simulator Managed Settings stores read back as empty even after accepting a write, so physical-device testing is required for actual enforcement and migration.
-- A full-suite rerun did not complete because the simulator UI-test runner timed out while loading Accessibility. An earlier full run executed UI tests, but failed on the onboarding test before that expectation was fixed. A clean UI-test result remains to be obtained; this is separate from physical-device Screen Time validation.
+- The current branch has 61 passing unit tests and 3 passing simulator UI tests. Simulator Managed Settings stores read back as empty even after accepting a write, so physical-device testing is required for actual enforcement and migration.
+- A signed build was installed and launched on the paired iPhone. A launch-only device UI test passed, but a screen-query test was denied iPhone UI-automation permission. Actual Screen Time behavior remains unverified.
 
 ## Strict Mode first slice
 

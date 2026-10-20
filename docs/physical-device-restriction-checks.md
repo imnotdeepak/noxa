@@ -15,6 +15,12 @@ Status: A signed build was installed and launched on the paired iPhone “iphony
 | Manual shield plus normal focus on the same target; end focus early | Manual block remains; focus-only targets release. |
 | Daily limit plus focus on the same target; focus reaches planned end | Daily-limit block remains until its own reset. |
 | Schedule plus focus overlap; allowed window begins during focus | Focus block remains until focus ends. |
+| Upgrade with an active daily allowed schedule | The new named “Allowed hours, every day” rule keeps the same block and release times; old segment stores clear after the new store is applied. |
+| Two schedules select the same app, and one allowed window opens | The other active blocked-hours or outside-allowed-hours rule keeps the app blocked. |
+| Blocked Monday 22:00–Tuesday 07:00, Tuesday unselected | The block starts Monday night, continues after midnight, and releases Tuesday at 07:00. |
+| Allowed Monday 22:00–Tuesday 07:00, Tuesday unselected | Monday outside the window is blocked; the overnight allowed window opens; Tuesday after 07:00 has no schedule block. |
+| Disable a schedule during an active focus session | Its store clears immediately, while the focus-owned store keeps the selected target blocked. |
+| Change device timezone or cross a daylight-saving transition | The next local-time boundary is shown correctly and shields follow the currently selected local weekdays and times. |
 | Upgrade with an active pre-migration focus session | Focus shield moves to `noxa.focus`, remains through the planned end, then releases without leaving a legacy shield. |
 | Strict enabled, then start a session longer than four hours | Review shows a four-hour maximum; active session has no early-end control and ends at its planned time. |
 | Toggle Strict during an already-running normal session | That session keeps its normal early-end flow; the next session uses the new setting. |

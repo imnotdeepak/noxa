@@ -12,7 +12,7 @@ enum ScheduleRuleArchiveError: Error {
 
 /// A local-time schedule. Weekdays use Calendar's Sunday = 1 ... Saturday = 7.
 struct ScheduleRule: Codable, Equatable, Identifiable, Sendable {
-    enum Mode: String, Codable, Sendable {
+    enum Mode: String, Codable, Hashable, Sendable {
         case blockedHours
         case allowedHours
     }
@@ -117,6 +117,47 @@ enum ScheduleRuleEvaluator {
             return withinWindow
         case .allowedHours:
             return startsToday && !withinWindow
+        }
+    }
+
+    static func nextChange(
+        for rule: ScheduleRule,
+        after date: Date,
+        calendar: Calendar
+    ) -> Date? {
+        guard rule.isEnabled else { return nil }
+        var candidates: Set<Date> = []
+        let startOfToday = calendar.startOfDay(for: date)
+        for dayOffset in 0...8 {
+            guard let day = calendar.date(byAdding: .day, value: dayOffset, to: startOfToday) else {
+                continue
+            }
+            for minute in dailyWakeMinutes(for: rule) {
+                let hour = minute / 60
+                let minutePart = minute % 60
+                for policy in [Calendar.RepeatedTimePolicy.first, .last] {
+                    guard let candidate = calendar.nextDate(
+                        after: day.addingTimeInterval(-1),
+                        matching: DateComponents(hour: hour, minute: minutePart, second: 0),
+                        matchingPolicy: .nextTime,
+                        repeatedTimePolicy: policy,
+                        direction: .forward
+                    ), calendar.isDate(candidate, inSameDayAs: day), candidate > date else {
+                        continue
+                    }
+                    candidates.insert(candidate)
+                }
+            }
+        }
+        if let transition = calendar.timeZone.nextDaylightSavingTimeTransition(after: date) {
+            candidates.insert(transition)
+        }
+        if let pending = rule.pendingLegacyRelaxation, pending.effectiveAt > date {
+            candidates.insert(pending.effectiveAt)
+        }
+        return candidates.sorted().first { candidate in
+            isBlocking(rule, at: candidate.addingTimeInterval(-1), calendar: calendar)
+                != isBlocking(rule, at: candidate.addingTimeInterval(1), calendar: calendar)
         }
     }
 }

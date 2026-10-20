@@ -5,6 +5,7 @@ import ManagedSettings
 
 enum ScheduleRuleActivityNames {
     static let wakePrefix = "noxa.schedule.v2.wake."
+    static let relaxationPrefix = "noxa.schedule.v2.relax."
     static let shieldPrefix = "noxa.schedule.v2.shield."
 
     static func wake(ruleID: UUID, minute: Int) -> DeviceActivityName {
@@ -13,6 +14,10 @@ enum ScheduleRuleActivityNames {
 
     static func shield(ruleID: UUID) -> ManagedSettingsStore.Name {
         ManagedSettingsStore.Name("\(shieldPrefix)\(ruleID.uuidString.lowercased())")
+    }
+
+    static func relaxation(ruleID: UUID) -> DeviceActivityName {
+        DeviceActivityName("\(relaxationPrefix)\(ruleID.uuidString.lowercased())")
     }
 
     static func wakes(for rule: ScheduleRule) -> [DeviceActivityName] {
@@ -28,6 +33,7 @@ final class ScheduleRuleMonitorCoordinator {
 
     func start(_ rule: ScheduleRule) throws {
         let names = ScheduleRuleActivityNames.wakes(for: rule)
+        let existingNames = Set(center.activities)
         do {
             for minute in ScheduleRuleEvaluator.dailyWakeMinutes(for: rule) {
                 let endMinute = (minute + 15) % 1_440
@@ -41,8 +47,30 @@ final class ScheduleRuleMonitorCoordinator {
                     during: schedule
                 )
             }
+            if let pending = rule.pendingLegacyRelaxation,
+               pending.effectiveAt > Date() {
+                let calendar = Calendar.autoupdatingCurrent
+                let end = pending.effectiveAt.addingTimeInterval(15 * 60)
+                try center.startMonitoring(
+                    ScheduleRuleActivityNames.relaxation(ruleID: rule.id),
+                    during: DeviceActivitySchedule(
+                        intervalStart: calendar.dateComponents(
+                            [.year, .month, .day, .hour, .minute, .second],
+                            from: pending.effectiveAt
+                        ),
+                        intervalEnd: calendar.dateComponents(
+                            [.year, .month, .day, .hour, .minute, .second],
+                            from: end
+                        ),
+                        repeats: false
+                    )
+                )
+            }
         } catch {
-            center.stopMonitoring(names)
+            center.stopMonitoring(
+                (names + [ScheduleRuleActivityNames.relaxation(ruleID: rule.id)])
+                    .filter { !existingNames.contains($0) }
+            )
             throw error
         }
         applyCurrentShield(for: rule)
@@ -65,7 +93,10 @@ final class ScheduleRuleMonitorCoordinator {
     }
 
     func stop(_ rule: ScheduleRule) {
-        center.stopMonitoring(ScheduleRuleActivityNames.wakes(for: rule))
+        center.stopMonitoring(
+            ScheduleRuleActivityNames.wakes(for: rule)
+                + [ScheduleRuleActivityNames.relaxation(ruleID: rule.id)]
+        )
         ManagedSettingsStore(named: ScheduleRuleActivityNames.shield(ruleID: rule.id))
             .clearAllSettings()
     }

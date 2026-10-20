@@ -143,6 +143,23 @@ struct ScheduleRuleTests {
         #expect(ScheduleRuleEvaluator.dailyWakeMinutes(for: blocked) == [7 * 60, 22 * 60])
     }
 
+    @Test func nextChangeFollowsOvernightAndSelectedWeekdays() {
+        let rule = ScheduleRule(
+            name: "Monday night",
+            mode: .blockedHours,
+            selection: FamilyActivitySelection(),
+            weekdays: [2],
+            startMinutes: 22 * 60,
+            endMinutes: 7 * 60
+        )
+        #expect(ScheduleRuleEvaluator.nextChange(for: rule, after: date(19, 21), calendar: calendar)
+            == date(19, 22))
+        #expect(ScheduleRuleEvaluator.nextChange(for: rule, after: date(19, 23), calendar: calendar)
+            == date(20, 7))
+        #expect(ScheduleRuleEvaluator.nextChange(for: rule, after: date(20, 12), calendar: calendar)
+            == date(26, 22))
+    }
+
     @Test @MainActor func dailyLimitEditsIgnoreAnOldHardLock() throws {
         let defaults = try #require(UserDefaults(suiteName: "NoxaTests.DailyLimitEdit.\(UUID())"))
         let store = AppGroupStore(defaults: defaults)
@@ -183,10 +200,11 @@ struct ScheduleRuleTests {
         try store.saveRestrictionSchedules([schedule])
 
         let service = RestrictionScheduleService(store: store)
-        service.setEnabled(false, for: schedule)
-        let updated = try #require(store.loadRestrictionSchedules().first)
+        let migrated = try #require(service.configurations.first)
+        service.setEnabled(false, for: migrated)
+        let updated = try #require(store.loadScheduleRules().first)
         #expect(!updated.isEnabled)
-        #expect(updated.pendingRelaxation == nil)
+        #expect(updated.pendingLegacyRelaxation == nil)
     }
 
     @Test @MainActor func renamedLegacyScheduleKeepsItsNameDuringMigration() throws {
@@ -200,8 +218,30 @@ struct ScheduleRuleTests {
         try store.saveRestrictionSchedules([schedule])
 
         let service = RestrictionScheduleService(store: store)
-        service.rename(schedule, to: "  Study hours  ")
+        let migrated = try #require(service.configurations.first)
+        service.rename(migrated, to: "  Study hours  ")
         #expect(service.configurations.first?.name == "Study hours")
         #expect(try store.loadScheduleRules().first?.name == "Study hours")
+    }
+
+    @Test @MainActor func disabledLegacyScheduleMigratesToVersionedArchive() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.ScheduleUpgrade.\(UUID())"))
+        let store = AppGroupStore(defaults: defaults)
+        let legacy = RestrictionScheduleConfiguration(
+            selection: FamilyActivitySelection(),
+            allowedStartMinutes: 9 * 60,
+            allowedEndMinutes: 17 * 60,
+            isEnabled: false
+        )
+        try store.saveRestrictionSchedules([legacy])
+
+        let service = RestrictionScheduleService(store: store)
+        service.reconcile()
+        let migrated = try #require(store.loadScheduleRules().first)
+        #expect(migrated.id == legacy.id)
+        #expect(migrated.name == "Allowed hours, every day")
+        #expect(migrated.mode == .allowedHours)
+        #expect(!migrated.isEnabled)
+        #expect(try store.loadRestrictionSchedules().isEmpty)
     }
 }

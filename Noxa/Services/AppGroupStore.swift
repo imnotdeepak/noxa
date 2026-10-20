@@ -203,6 +203,10 @@ final class AppGroupStore {
         defaults.removeObject(forKey: Key.scheduleRules)
     }
 
+    func clearLegacyRestrictionSchedules() {
+        defaults.removeObject(forKey: Key.restrictionSchedules)
+    }
+
     @MainActor func loadScheduleRules() throws -> [ScheduleRule] {
         if let data = defaults.data(forKey: Key.scheduleRules) {
             let archive = try JSONDecoder().decode(ScheduleRuleArchive.self, from: data)
