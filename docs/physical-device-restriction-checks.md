@@ -14,6 +14,8 @@ The Debug build records focus and Pomodoro `intervalDidStart`/`intervalDidEnd` c
 
 The diagnostic build was installed during break 2. At round 3's planned start, DoorDash remained available and the callback log and round-3 enforcement marker were both empty after device use. Reopening Noxa during round 3 restored its shield; the log then recorded a round-3 start and end callback about 0.25 seconds apart. A simulator test confirmed that a newly constructed future 15-minute `DeviceActivitySchedule` resolves to the intended `nextInterval`, but this does not establish physical callback delivery. The upgrade-interrupted cycle remains a failure; run a clean cycle without installing builds during it.
 
+The next Debug build also records iOS's registered `nextInterval` for future Pomodoro monitors under `noxa.debug.pomodoroMonitorSchedules` whenever Noxa schedules or reconciles the cycle. This is not yet installed in the active cycle. Inspect it during the clean run before concluding whether a missing callback comes from registration, interval calculation, or delivery.
+
 The app and monitor now use one shared writer for app, category, and website selections. A short iPhone check on this build still displayed the existing Dazz Cam schedule shield with the correct schedule name; it did not test a transition or release. Its “until 9:00 PM” wording was ambiguous late at night, so schedule shield messages now include the release date. A second iPhone check showed “until Oct 21, 2026 at 9:00 PM” on October 20. Repeat focus, schedule boundary, daily-limit, and overlap shield/release checks on this build before treating the refactor as physically validated.
 
 ## Observed scheduled-app check

@@ -526,6 +526,27 @@ final class FocusSessionService: ObservableObject {
                 )
             )
         }
+        recordPomodoroMonitorSchedule(cycleID: cycle.id)
+    }
+
+    private func recordPomodoroMonitorSchedule(cycleID: UUID) {
+        #if DEBUG
+        let entries = (2...PomodoroCyclePlan.roundCount).map { round in
+            let name = NoxaDeviceActivityConfiguration.pomodoroWorkActivityName(
+                cycleID: cycleID, round: round
+            )
+            guard let schedule = center.schedule(for: name) else {
+                return "\(round)|missing"
+            }
+            guard let interval = schedule.nextInterval else {
+                return "\(round)|no-next-interval"
+            }
+            return "\(round)|\(interval.start.timeIntervalSince1970)|\(interval.end.timeIntervalSince1970)"
+        }
+        UserDefaults(suiteName: "group.LycheeCorp.Noxa")?.set(
+            entries, forKey: "noxa.debug.pomodoroMonitorSchedules"
+        )
+        #endif
     }
 
     private func stopPomodoroMonitors(for cycle: PomodoroCycleRecord) {
