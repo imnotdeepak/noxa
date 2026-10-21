@@ -46,7 +46,7 @@ private struct PersistedPomodoroPlan: Codable {
     let breakMinutes: Int
 
     func workInterval(round: Int) -> DateInterval? {
-        guard (2...4).contains(round) else { return nil }
+        guard (1...4).contains(round) else { return nil }
         let work = TimeInterval(workMinutes * 60)
         let breakTime = TimeInterval(breakMinutes * 60)
         let start = startedAt.addingTimeInterval(TimeInterval(round - 1) * (work + breakTime))
@@ -286,13 +286,17 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
     }
 
     private func applyPersistedFocusShield(reason: String) {
-        guard let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa"),
-              let data = defaults.data(forKey: "noxa.focusSessionRestrictions"),
+        if let cycle = loadPomodoroCycle() {
+            // A focus callback may arrive late, after the Pomodoro phase has
+            // changed. Always use the cycle's current phase and saved targets.
+            reconcilePomodoroShield(cycle)
+            return
+        }
+        guard let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa") else { return }
+        guard let data = defaults.data(forKey: "noxa.focusSessionRestrictions"),
               let configuration = try? JSONDecoder().decode(
-                  PersistedFocusSessionConfiguration.self,
-                  from: data
-              )
-        else {
+                  PersistedFocusSessionConfiguration.self, from: data
+              ) else {
             logger.error("Could not load the immutable focus-session restrictions")
             return
         }
@@ -351,7 +355,7 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
 
     private func reconcilePomodoroShield(_ cycle: PersistedPomodoroCycle) {
         let now = Date()
-        for round in 2...4 {
+        for round in 1...4 {
             if cycle.plan.workInterval(round: round)?.contains(now) == true {
                 if let data = try? JSONEncoder().encode(PersistedFocusSessionConfiguration(
                     selection: cycle.selection,

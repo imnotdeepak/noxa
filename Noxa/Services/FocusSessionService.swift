@@ -406,6 +406,23 @@ final class FocusSessionService: ObservableObject {
         if let configuration = (try? store.loadFocusSessionRestrictions()) ?? nil {
             activeIntention = configuration.intention
             applyShield(configuration.selection, websiteDomains: configuration.websiteDomains)
+        } else if let cycle = pomodoroCycle,
+                  case .work(round: 1, _) = cycle.plan.phase(at: Date()) {
+            // A delayed focus-end callback can remove the shared snapshot
+            // while the first Pomodoro round is still active. Restore the
+            // cycle's immutable targets before reapplying its shield.
+            let configuration = FocusSessionRestrictionConfiguration(
+                selection: cycle.selection,
+                websiteDomains: cycle.websiteDomains,
+                intention: "Pomodoro · \(cycle.plan.workMinutes)/\(cycle.plan.breakMinutes)"
+            )
+            do {
+                try store.saveFocusSessionRestrictions(configuration)
+                activeIntention = configuration.intention
+                applyShield(configuration.selection, websiteDomains: configuration.websiteDomains)
+            } catch {
+                errorMessage = "The active Pomodoro blocklist could not be restored: \(error.localizedDescription)"
+            }
         } else if let selection = try? store.loadFamilyActivitySelection() {
             // Backward-compatible recovery for sessions created before the
             // immutable focus-session snapshot was introduced.
