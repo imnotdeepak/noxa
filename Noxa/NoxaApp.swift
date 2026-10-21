@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 @main
 struct NoxaApp: App {
@@ -133,6 +134,21 @@ struct NoxaApp: App {
             }
             .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
                 dailyLimits.reconcileDayBoundary()
+                schedules.reconcile()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+                // Local schedule windows and elapsed session deadlines may
+                // have changed while this process remained in the foreground.
+                focusSession.reconcile()
+                dailyLimits.reconcileDayBoundary()
+                schedules.reconcile()
+                Task {
+                    await FocusPresentationCoordinator.reconcile(session: focusSession.activeSession)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in
+                // Reevaluate local weekdays and clock times after travel.
+                schedules.reconcile()
             }
             .onChange(of: authentication.isAuthenticated) { isAuthenticated in
                 guard isAuthenticated else {
