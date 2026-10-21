@@ -236,7 +236,11 @@ final class RestrictionScheduleService: ObservableObject {
     }
 
     private func clearOrphanShields(keeping currentIDs: Set<UUID>) {
-        let staleIDs = store.scheduleShieldOwners.subtracting(currentIDs)
+        // A wake can survive a crash before its owner ID is persisted. Recover
+        // that ID from the registered activity so its separate shield store
+        // can also be cleared when the saved rule no longer exists.
+        let monitoredIDs = Set(center.activities.compactMap(ScheduleRuleActivityNames.ownerID))
+        let staleIDs = store.scheduleShieldOwners.union(monitoredIDs).subtracting(currentIDs)
         for id in staleIDs {
             ManagedSettingsStore(named: ScheduleRuleActivityNames.shield(ruleID: id))
                 .clearAllSettings()

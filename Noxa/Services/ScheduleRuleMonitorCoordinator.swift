@@ -20,6 +20,13 @@ enum ScheduleRuleActivityNames {
         DeviceActivityName("\(relaxationPrefix)\(ruleID.uuidString.lowercased())")
     }
 
+    static func ownerID(for activity: DeviceActivityName) -> UUID? {
+        let name = activity.rawValue
+        guard name.hasPrefix(wakePrefix) || name.hasPrefix(relaxationPrefix),
+              let suffix = name.split(separator: ".").last else { return nil }
+        return UUID(uuidString: String(suffix))
+    }
+
     static func wakes(for rule: ScheduleRule) -> [DeviceActivityName] {
         ScheduleRuleEvaluator.dailyWakeMinutes(for: rule)
             .map { wake(ruleID: rule.id, minute: $0) }

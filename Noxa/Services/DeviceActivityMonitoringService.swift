@@ -305,9 +305,19 @@ final class DailyLimitService: ObservableObject {
     /// midnight. The repeating DeviceActivity monitor remains registered, so
     /// today's usage begins counting again without relocking configuration.
     func reconcileDayBoundary(now: Date = Date()) {
-        guard isMonitoring else { return }
-
         let defaults = UserDefaults(suiteName: AppGroupStore.suiteName)
+        // A stop or authorization change can leave a daily-limit store behind
+        // if the app was interrupted during cleanup. A shield with no owning
+        // activity must not persist into the next launch.
+        isMonitoring = center.activities.contains(NoxaDeviceActivityConfiguration.dailyLimitActivityName)
+        guard isMonitoring else {
+            settingsStore.clearAllSettings()
+            defaults?.removeObject(forKey: NoxaDeviceActivityConfiguration.dailyLimitReachedEventsKey)
+            defaults?.removeObject(forKey: NoxaDeviceActivityConfiguration.dailyLimitResetDayKey)
+            isShieldActive = false
+            return
+        }
+
         let today = NoxaDeviceActivityConfiguration.dailyLimitDayStamp(for: now)
         guard defaults?.string(
             forKey: NoxaDeviceActivityConfiguration.dailyLimitResetDayKey

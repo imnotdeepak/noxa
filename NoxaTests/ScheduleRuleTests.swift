@@ -1,9 +1,23 @@
+import DeviceActivity
 import FamilyControls
 import Foundation
 import Testing
 @testable import Noxa
 
 struct ScheduleRuleTests {
+    @Test func recoversScheduleOwnerFromRegisteredWakeNames() {
+        let id = UUID()
+        #expect(ScheduleRuleActivityNames.ownerID(
+            for: ScheduleRuleActivityNames.wake(ruleID: id, minute: 540)
+        ) == id)
+        #expect(ScheduleRuleActivityNames.ownerID(
+            for: ScheduleRuleActivityNames.relaxation(ruleID: id)
+        ) == id)
+        #expect(ScheduleRuleActivityNames.ownerID(
+            for: DeviceActivityName("noxa.focus.session")
+        ) == nil)
+    }
+
     @Test func persistedScheduleShieldOwnersClearWithLocalSchedules() throws {
         let defaults = try #require(UserDefaults(suiteName: "NoxaTests.ScheduleOwners.\(UUID())"))
         let store = AppGroupStore(defaults: defaults)
