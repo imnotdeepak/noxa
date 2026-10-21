@@ -154,6 +154,7 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
 
     override func intervalDidStart(for activity: DeviceActivityName) {
         super.intervalDidStart(for: activity)
+        recordPomodoroBoundaryCallback("start", activity: activity)
         if activity == NoxaMonitorActivity.focusActivityName {
             applyPersistedFocusShield(reason: "focus session started")
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.pomodoroWorkActivityPrefix) {
@@ -221,6 +222,21 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         #endif
     }
 
+    private func recordPomodoroBoundaryCallback(
+        _ kind: String,
+        activity: DeviceActivityName
+    ) {
+        #if DEBUG
+        guard activity == NoxaMonitorActivity.focusActivityName
+                || activity.rawValue.hasPrefix(NoxaMonitorActivity.pomodoroWorkActivityPrefix),
+              let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa") else { return }
+        let key = "noxa.debug.pomodoroCallbacks"
+        var entries = defaults.stringArray(forKey: key) ?? []
+        entries.append("\(Date().timeIntervalSince1970)|\(kind)|\(activity.rawValue)")
+        defaults.set(Array(entries.suffix(60)), forKey: key)
+        #endif
+    }
+
     private func sendDailyLimitWarning(for event: DeviceActivityEvent.Name) {
         guard let idText = event.rawValue.split(separator: ".").last,
               let id = UUID(uuidString: String(idText)),
@@ -253,6 +269,7 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
 
     override func intervalDidEnd(for activity: DeviceActivityName) {
         super.intervalDidEnd(for: activity)
+        recordPomodoroBoundaryCallback("end", activity: activity)
         if activity == NoxaMonitorActivity.focusActivityName {
             if let cycle = loadPomodoroCycle() {
                 reconcilePomodoroShield(cycle)
