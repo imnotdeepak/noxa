@@ -1,3 +1,4 @@
+import DeviceActivity
 import Foundation
 import Testing
 @testable import Noxa
@@ -23,5 +24,22 @@ struct PomodoroCyclePlanTests {
         #expect(plan.breakMinutes == 5)
         #expect(plan.workInterval(round: 0) == nil)
         #expect(plan.workInterval(round: 5) == nil)
+    }
+
+    @Test func deviceActivityResolvesFutureRoundToPlannedInterval() throws {
+        let calendar = Calendar.current
+        let start = Date().addingTimeInterval(3_600)
+        let end = start.addingTimeInterval(900)
+        let components: Set<Calendar.Component> = [
+            .calendar, .year, .month, .day, .hour, .minute, .second
+        ]
+        let schedule = DeviceActivitySchedule(
+            intervalStart: calendar.dateComponents(components, from: start),
+            intervalEnd: calendar.dateComponents(components, from: end),
+            repeats: false
+        )
+        let resolved = try #require(schedule.nextInterval)
+        #expect(abs(resolved.start.timeIntervalSince(start)) < 1)
+        #expect(abs(resolved.end.timeIntervalSince(end)) < 1)
     }
 }
