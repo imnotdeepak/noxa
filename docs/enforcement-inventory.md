@@ -18,6 +18,8 @@ The main app now gives focus, manual, website, daily-limit, schedule, and valida
 
 The daily-limit service rereads the system's registered activity on launch and foreground. If the daily-limit activity is absent, it clears only the daily-limit store and its reached-state markers. This recovers an interrupted stop without touching focus, schedules, or manual shields. Its stale-store recovery still needs a physical interruption test.
 
+Settings now offers **Refresh Blocking** for a wrong or lingering shield. It reruns each rule owner's normal reconciliation path, preserving active Strict sessions and other active rules. The screen asks the user to check the affected app or site afterward because a successful refresh does not prove iOS displayed the shield.
+
 The migration cannot always infer whether an old web-content filter came from a manual shield or a separately applied website blocklist. It preserves an otherwise unowned old filter as a removable manual shield. A filter from a running validation monitor remains temporary. This avoids turning a monitor threshold into a permanent manual block.
 
 ## Current schedule implementation

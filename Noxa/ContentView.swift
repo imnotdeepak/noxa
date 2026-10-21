@@ -92,6 +92,7 @@ struct ContentView: View {
     @State private var selectedStatsRange = StatsRange.week
     @State private var statsReferenceDate = Date()
     @State private var isHomeBlocklistExpanded = false
+    @State private var didRepairRestrictions = false
     @FocusState private var isCustomDurationFieldFocused: Bool
 
     private var hasFocusRestrictions: Bool {
@@ -1895,6 +1896,31 @@ struct ContentView: View {
                 }
 
                 settingsSectionTitle("Support & Legal")
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("Blocking looks wrong?", systemImage: "arrow.clockwise")
+                        .font(.headline)
+                    Text("Refresh your active rules if something stays blocked after its rule ends, or if a selected app is not blocked.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Button("Refresh Blocking") {
+                        authorization.refresh()
+                        focusSession.reconcile()
+                        restrictions.reconcile()
+                        websites.reconcile()
+                        dailyLimits.reconcileDayBoundary()
+                        schedules.reconcile()
+                        InstagramSiteProtectionService.reconcile()
+                        didRepairRestrictions = true
+                    }
+                    .buttonStyle(NoxaSecondaryButtonStyle())
+                    if didRepairRestrictions {
+                        Text("Rules refreshed. Open the affected app or site to check its shield. If the problem remains, contact support.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .noxaCard()
 
                 SettingsSupportLinksView()
 
