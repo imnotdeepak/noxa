@@ -1,6 +1,6 @@
-# Enforcement inventory and first implementation slice
+# Enforcement inventory and implementation status
 
-Status: Pure rule evaluation and first store isolation slice, October 19, 2026. This describes current write paths, not physical-device proof of enforcement. The approved behavior is in `NOXA_PRODUCT_ROADMAP.md` and `product-roadmap-decisions.md`.
+Status: Roadmap implementation and selected iPhone checks, October 20, 2026. The approved behavior is in `NOXA_PRODUCT_ROADMAP.md` and `product-roadmap-decisions.md`. Each physical claim below names its observed target and state; the remaining release matrix is recorded in `physical-device-restriction-checks.md`.
 
 ## Current owners and stores
 
@@ -11,10 +11,10 @@ Status: Pure rule evaluation and first store isolation slice, October 19, 2026. 
 | Custom website domains | `WebsiteBlocklistService` applies and clears the domain filter, with saved active state | Focus callback applies the session's domain snapshot to the focus store | `noxa.websites` |
 | Validation usage monitor | `DeviceActivityMonitoringService` starts and stops the validation monitor | Threshold callback applies the persisted selection | `noxa.validation` |
 | Daily usage limits | `DailyLimitService` starts/stops monitoring, applies reached shields, and resets at day boundaries | Threshold callback unions reached limits and applies shields | `noxa.daily-limits` |
-| Daily allowed schedules | `RestrictionScheduleService` monitors the before/after segments and applies their current shields | Schedule callbacks apply and clear the segment | One named store per schedule segment |
+| Named allowed/blocked schedules | `RestrictionScheduleService` registers local-time wake points and applies each rule's current shield | Schedule callbacks reevaluate the rule and apply or clear its contribution | One named store per schedule rule |
 | Account deletion cleanup | `LocalDataCleanupService` invokes each service's cleanup path | None directly | All Noxa-owned stores through services |
 
-The main app now gives focus, manual, website, daily-limit, schedule, and validation-monitor rules separate named stores. The explicit shield has a saved activation snapshot; the website blocklist has a saved active flag. `RestrictionStoreMigration` moves a pre-update shield from `noxa.validation` at app launch. If an old validation monitor is still running, it retains that store until its stop path clears it. The extension clears the old store when a pre-migration focus session ends. Existing app and extension paths were updated together, but the actual Managed Settings transfer and overlapping blocks still need physical-device verification.
+The main app now gives focus, manual, website, daily-limit, schedule, and validation-monitor rules separate named stores. The explicit shield has a saved activation snapshot; the website blocklist has a saved active flag. `RestrictionStoreMigration` moves a pre-update shield from `noxa.validation` at app launch. If an old validation monitor is still running, it retains that store until its stop path clears it. The extension clears the old store when a pre-migration focus session ends. Store migration and release of overlapping blocks still need physical-device verification.
 
 The migration cannot always infer whether an old web-content filter came from a manual shield or a separately applied website blocklist. It preserves an otherwise unowned old filter as a removable manual shield. A filter from a running validation monitor remains temporary. This avoids turning a monitor threshold into a permanent manual block.
 
@@ -27,7 +27,7 @@ The migration cannot always infer whether an old web-content filter came from a 
 - Disabling or removing schedules and daily limits takes effect immediately, including during focus. A legacy pending schedule change retains its original effective date until the user explicitly changes the schedule.
 - The app now records which schedule IDs own named shield stores. On launch and schedule reconciliation it clears an orphaned schedule store and stale wake monitors if that rule no longer exists in the saved archive. The owner list is device-local and clears with account data.
 - Home shows each enabled schedule's name, current blocking status, next local-time change, and selected targets on tap.
-- This code is unverified on a physical device. Repeating wake points, overlapping stores, migration with active shields, locked-device callbacks, DST, and timezone changes must pass the device matrix before release. Apple warns that too many or tightly scheduled activities can make registration fail; the service reports those failures and retains legacy monitors during an unsuccessful migration.
+- One current scheduled app block and its named shield text were observed on the paired iPhone. Repeating wake points, release of overlapping stores, migration with active shields, locked-device callbacks, DST, and timezone changes still need physical checks before release. The service reports registration failures and retains legacy monitors during an unsuccessful migration.
 
 ## First engineering slice
 
@@ -42,7 +42,7 @@ The migration cannot always infer whether an old web-content filter came from a 
 - Environment: Xcode 27.0, iPhone 17 simulator on iOS 26.5. The active command-line developer directory points to Command Line Tools, so project commands use `/Applications/Xcode.app/Contents/Developer` explicitly.
 - The first test attempt exposed stale subscription test calls. After that test was updated, the next run exposed an onboarding test that skipped the required value-overview milestone. Both test expectations were brought into line with the current services.
 - The current branch has 76 passing unit tests and 3 previously passing simulator UI tests. Simulator Managed Settings stores read back as empty even after accepting a write, so physical-device testing is required for actual enforcement and migration.
-- A signed build was installed and launched on the paired iPhone. Device UI automation can now capture a launch screenshot; actual Screen Time behavior remains unverified.
+- Signed builds were installed and launched on the paired iPhone. Device UI automation observed a named app shield and Instagram's full-site web block and release. Those checks do not establish the rest of the release matrix.
 
 ## Strict Mode first slice
 
@@ -97,7 +97,7 @@ The migration cannot always infer whether an old web-content filter came from a 
 
 ## Daily limit warning candidate
 
-- Daily-limit monitoring now requests a warning callback about five minutes before each usage threshold. The monitor checks that the limit is still enabled and not already reached, deduplicates by limit and local day, and posts a local notification if notifications are allowed. This path signs for the paired iPhone. A physical UI test changed the existing Letterboxd limit to 10 minutes, started monitoring, kept Letterboxd in the foreground with repeated interactions for 6.5 minutes, then stopped monitoring and restored the original 15-minute limit. The UI test passed, but no warning callback marker appeared in the App Group preferences during the run. This may reflect Device Activity accounting or callback timing under automation; warning delivery remains unverified.
+- Daily-limit monitoring requests a warning callback about five minutes before each usage threshold. The monitor checks that the limit is still enabled and not already reached, deduplicates by limit and local day, and posts a local notification if notifications are allowed. The first signed build accidentally set `warningTime` on the validation monitor rather than the daily-limit monitor; this is corrected. On the paired iPhone, a temporary test used Fantasy outside the known schedule blocks, changed its 30-minute limit to 10 minutes, and recorded the warning and reached callbacks five minutes apart. It then stopped monitoring and restored 30 minutes. This verifies the callback path for that target, but the phone's displayed notification and other device states still need checks.
 
 ## Weekly schedule follow-through
 

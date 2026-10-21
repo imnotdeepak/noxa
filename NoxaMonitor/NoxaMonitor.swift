@@ -159,6 +159,7 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.pomodoroWorkActivityPrefix) {
             applyPomodoroShield(for: activity)
         } else if activity == NoxaMonitorActivity.dailyLimitActivityName {
+            recordDailyLimitCallback("interval-start")
             let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa")
             let today = NoxaMonitorActivity.dailyLimitDayStamp()
             if defaults?.string(forKey: NoxaMonitorActivity.dailyLimitResetDayKey) != today {
@@ -190,6 +191,7 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
     ) {
         super.eventDidReachThreshold(event, activity: activity)
         if activity == NoxaMonitorActivity.dailyLimitActivityName {
+            recordDailyLimitCallback("reached", event: event)
             applyDailyLimitShield(for: event)
         } else {
             applyPersistedShield(reason: "threshold reached")
@@ -202,7 +204,21 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
     ) {
         super.eventWillReachThresholdWarning(event, activity: activity)
         guard activity == NoxaMonitorActivity.dailyLimitActivityName else { return }
+        recordDailyLimitCallback("warning", event: event)
         sendDailyLimitWarning(for: event)
+    }
+
+    private func recordDailyLimitCallback(
+        _ kind: String,
+        event: DeviceActivityEvent.Name? = nil
+    ) {
+        #if DEBUG
+        guard let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa") else { return }
+        let key = "noxa.debug.dailyLimitCallbacks"
+        var entries = defaults.stringArray(forKey: key) ?? []
+        entries.append("\(Date().timeIntervalSince1970)|\(kind)|\(event?.rawValue ?? "")")
+        defaults.set(Array(entries.suffix(30)), forKey: key)
+        #endif
     }
 
     private func sendDailyLimitWarning(for event: DeviceActivityEvent.Name) {

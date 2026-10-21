@@ -1862,7 +1862,7 @@ struct ContentView: View {
                             InstagramSiteProtectionService.reconcile()
                         }
                     if instagramSiteMode == .distractionFree {
-                        Text("Experimental Safari filter: hides Reels and Explore while keeping the feed available. It does not change the Instagram app, and embedded Reels may still appear.")
+                        Text("Experimental Safari filter: aims to hide Reels and Explore while keeping the feed available. It does not change the Instagram app, and embedded Reels may still appear.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                         Text(safariFilterStatusMessage)

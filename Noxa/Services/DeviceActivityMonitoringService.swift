@@ -82,8 +82,7 @@ final class DeviceActivityMonitoringService: ObservableObject {
         let schedule = DeviceActivitySchedule(
             intervalStart: DateComponents(hour: 0, minute: 0),
             intervalEnd: DateComponents(hour: 23, minute: 59),
-            repeats: true,
-            warningTime: DateComponents(minute: 5)
+            repeats: true
         )
         let event = DeviceActivityEvent(
             applications: selection.applicationTokens,
@@ -211,7 +210,8 @@ final class DailyLimitService: ObservableObject {
         let schedule = DeviceActivitySchedule(
             intervalStart: DateComponents(hour: 0, minute: 0),
             intervalEnd: DateComponents(hour: 23, minute: 59),
-            repeats: true
+            repeats: true,
+            warningTime: DateComponents(minute: 5)
         )
         let events = Dictionary(uniqueKeysWithValues: active.map { configuration in
             (
