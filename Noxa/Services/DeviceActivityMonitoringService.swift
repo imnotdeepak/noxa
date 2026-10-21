@@ -383,19 +383,13 @@ final class DailyLimitService: ObservableObject {
             )
         }
 
-        var applications = Set<ApplicationToken>()
-        var categories = Set<ActivityCategoryToken>()
-        var webDomains = Set<WebDomainToken>()
-        for configuration in reachedConfigurations {
-            applications.formUnion(configuration.selection.applicationTokens)
-            categories.formUnion(configuration.selection.categoryTokens)
-            webDomains.formUnion(configuration.selection.webDomainTokens)
-        }
-
-        settingsStore.shield.applications = applications.isEmpty ? nil : applications
-        settingsStore.shield.applicationCategories = categories.isEmpty ? nil : .specific(categories)
-        settingsStore.shield.webDomains = webDomains.isEmpty ? nil : webDomains
-        isShieldActive = !applications.isEmpty || !categories.isEmpty || !webDomains.isEmpty
+        let selection = RestrictionStoreWriter.combinedSelection(
+            reachedConfigurations.map(\.selection)
+        )
+        RestrictionStoreWriter.apply(selection: selection, websiteDomains: [], to: settingsStore)
+        isShieldActive = !selection.applicationTokens.isEmpty
+            || !selection.categoryTokens.isEmpty
+            || !selection.webDomainTokens.isEmpty
     }
 }
 
@@ -639,15 +633,11 @@ final class LegacyRestrictionScheduleService: ObservableObject {
         guard let segment else { return }
         let name = NoxaDeviceActivityConfiguration.scheduleActivityName(for: configuration.id, segment: segment)
         let settings = ManagedSettingsStore(named: ManagedSettingsStore.Name(name.rawValue))
-        settings.shield.applications = configuration.selection.applicationTokens.isEmpty
-            ? nil
-            : configuration.selection.applicationTokens
-        settings.shield.applicationCategories = configuration.selection.categoryTokens.isEmpty
-            ? nil
-            : .specific(configuration.selection.categoryTokens)
-        settings.shield.webDomains = configuration.selection.webDomainTokens.isEmpty
-            ? nil
-            : configuration.selection.webDomainTokens
+        RestrictionStoreWriter.apply(
+            selection: configuration.selection,
+            websiteDomains: [],
+            to: settings
+        )
     }
 
     private static func minutesSinceMidnight(_ date: Date, calendar: Calendar) -> Int {

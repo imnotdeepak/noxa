@@ -61,14 +61,11 @@ enum RestrictionStoreMigration {
 
         if migrationPlan.copyLegacyToFocusFallback {
             if let configuration = (try? store.loadFocusSessionRestrictions()) ?? nil {
-                focus.shield.applications = configuration.selection.applicationTokens.isEmpty
-                    ? nil : configuration.selection.applicationTokens
-                focus.shield.applicationCategories = configuration.selection.categoryTokens.isEmpty
-                    ? nil : .specific(configuration.selection.categoryTokens)
-                focus.shield.webDomains = configuration.selection.webDomainTokens.isEmpty
-                    ? nil : configuration.selection.webDomainTokens
-                focus.webContent.blockedByFilter = configuration.websiteDomains.isEmpty
-                    ? nil : .specific(Set(configuration.websiteDomains.map(WebDomain.init(domain:))))
+                RestrictionStoreWriter.apply(
+                    selection: configuration.selection,
+                    websiteDomains: configuration.websiteDomains,
+                    to: focus
+                )
             } else {
                 // Preserve a legacy active session even if its restriction
                 // snapshot is unavailable; FocusSessionService will recover it.
@@ -81,14 +78,11 @@ enum RestrictionStoreMigration {
         }
 
         if let configuration = (try? store.loadManualShield()) ?? nil {
-            manual.shield.applications = configuration.selection.applicationTokens.isEmpty
-                ? nil : configuration.selection.applicationTokens
-            manual.shield.applicationCategories = configuration.selection.categoryTokens.isEmpty
-                ? nil : .specific(configuration.selection.categoryTokens)
-            manual.shield.webDomains = configuration.selection.webDomainTokens.isEmpty
-                ? nil : configuration.selection.webDomainTokens
-            manual.webContent.blockedByFilter = configuration.websiteDomains.isEmpty
-                ? nil : .specific(Set(configuration.websiteDomains.map(WebDomain.init(domain:))))
+            RestrictionStoreWriter.apply(
+                selection: configuration.selection,
+                websiteDomains: configuration.websiteDomains,
+                to: manual
+            )
         }
 
         if store.isWebsiteShieldActive,

@@ -2,6 +2,8 @@
 
 Status: On October 20, 2026, the current roadmap build installed and launched on the paired iPhone “iphony 5x.” UI automation observed a real Screen Time shield for Dazz Cam that named the active schedule and its 9:00 PM end time; a duplicate rule description was fixed and rechecked. Selecting Instagram Full Block produced Safari's “Website Not Allowed” page at `instagram.com/explore/`, and returning the setting to Off let that URL load again. Opening the widget's `noxa://focus/start` route displayed a one-hour review with selected targets, an end time, and the Strict warning before any session started. These are narrow physical observations; the full transition matrix, actual widget placement, Live Activity, and selective Safari filtering remain unverified. Simulator results do not prove Screen Time enforcement.
 
+The app and monitor now use one shared writer for app, category, and website selections. A short iPhone check on this build still displayed the existing Dazz Cam schedule shield with the correct schedule name; it did not test a transition or release. Its “until 9:00 PM” wording was ambiguous late at night, so schedule shield messages now include the release date. Repeat focus, schedule boundary, daily-limit, and overlap shield/release checks on this build before treating the refactor as physically validated.
+
 ## Observed scheduled-app check
 
 - Three active schedules shared the display name “Allowed hours, every day.” Two selected Dazz Cam and one selected Letterboxd. At the observed time they displayed “Blocking selected targets” and a 9:00 PM change.

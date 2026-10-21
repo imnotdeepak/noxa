@@ -155,4 +155,30 @@ import Testing
         #expect(message.components(separatedBy: "Allowed hours, every day").count == 2)
         #expect(message.contains("Other rules may still apply"))
     }
+
+    @Test func scheduleShieldIncludesDateWhenReleaseIsTomorrow() throws {
+        let defaults = try defaults()
+        let rule = ScheduleRule(
+            name: "Evening access",
+            mode: .allowedHours,
+            selection: FamilyActivitySelection(),
+            websiteDomains: ["example.com"],
+            startMinutes: 21 * 60,
+            endMinutes: 22 * 60
+        )
+        defaults.set(
+            try JSONEncoder().encode(ScheduleRuleArchive(version: 2, rules: [rule])),
+            forKey: "noxa.scheduleRules.v2"
+        )
+        let late = try #require(calendar.date(from: DateComponents(
+            year: 2026, month: 10, day: 20, hour: 23
+        )))
+        let nextRelease = try #require(calendar.date(from: DateComponents(
+            year: 2026, month: 10, day: 21, hour: 21
+        )))
+        let message = try #require(ShieldRuleExplanation.domain(
+            "example.com", defaults: defaults, now: late, calendar: calendar
+        ))
+        #expect(message.contains(nextRelease.formatted(date: .abbreviated, time: .shortened)))
+    }
 }

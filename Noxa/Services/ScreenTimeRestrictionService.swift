@@ -151,18 +151,11 @@ final class ScreenTimeRestrictionService: ObservableObject {
         to targetStore: ManagedSettingsStore? = nil
     ) {
         let targetStore = targetStore ?? settingsStore
-        targetStore.shield.applications = selection.applicationTokens.isEmpty
-            ? nil
-            : selection.applicationTokens
-        targetStore.shield.applicationCategories = selection.categoryTokens.isEmpty
-            ? nil
-            : .specific(selection.categoryTokens)
-        targetStore.shield.webDomains = selection.webDomainTokens.isEmpty
-            ? nil
-            : selection.webDomainTokens
-        targetStore.webContent.blockedByFilter = customDomains.isEmpty
-            ? nil
-            : .specific(Set(customDomains.map(WebDomain.init(domain:))))
+        RestrictionStoreWriter.apply(
+            selection: selection,
+            websiteDomains: customDomains,
+            to: targetStore
+        )
         if targetStore === settingsStore { isShieldActive = true }
     }
 

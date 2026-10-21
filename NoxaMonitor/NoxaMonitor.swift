@@ -422,22 +422,11 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         to targetStore: ManagedSettingsStore? = nil
     ) {
         let targetStore = targetStore ?? settingsStore
-        targetStore.shield.applications = selection.applicationTokens.isEmpty
-            ? nil
-            : selection.applicationTokens
-        targetStore.shield.applicationCategories = selection.categoryTokens.isEmpty
-            ? nil
-            : .specific(selection.categoryTokens)
-        targetStore.shield.webDomains = selection.webDomainTokens.isEmpty
-            ? nil
-            : selection.webDomainTokens
-        if !websiteDomains.isEmpty {
-            targetStore.webContent.blockedByFilter = .specific(
-                Set(websiteDomains.map(WebDomain.init(domain:)))
-            )
-        } else {
-            targetStore.webContent.blockedByFilter = nil
-        }
+        RestrictionStoreWriter.apply(
+            selection: selection,
+            websiteDomains: websiteDomains,
+            to: targetStore
+        )
         logger.info("Applied monitor shield: \(reason, privacy: .public)")
     }
 
@@ -465,18 +454,14 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
             return
         }
 
-        var applications = Set<ApplicationToken>()
-        var categories = Set<ActivityCategoryToken>()
-        var webDomains = Set<WebDomainToken>()
-        for configuration in reachedConfigurations {
-            applications.formUnion(configuration.selection.applicationTokens)
-            categories.formUnion(configuration.selection.categoryTokens)
-            webDomains.formUnion(configuration.selection.webDomainTokens)
-        }
-
-        dailyLimitSettingsStore.shield.applications = applications.isEmpty ? nil : applications
-        dailyLimitSettingsStore.shield.applicationCategories = categories.isEmpty ? nil : .specific(categories)
-        dailyLimitSettingsStore.shield.webDomains = webDomains.isEmpty ? nil : webDomains
+        let selection = RestrictionStoreWriter.combinedSelection(
+            reachedConfigurations.map(\.selection)
+        )
+        RestrictionStoreWriter.apply(
+            selection: selection,
+            websiteDomains: [],
+            to: dailyLimitSettingsStore
+        )
         logger.info("Applied daily limit shields for \(reachedConfigurations.count) reached configuration(s)")
     }
 
@@ -504,15 +489,11 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         }
 
         let store = ManagedSettingsStore(named: ManagedSettingsStore.Name(activity.rawValue))
-        store.shield.applications = schedule.selection.applicationTokens.isEmpty
-            ? nil
-            : schedule.selection.applicationTokens
-        store.shield.applicationCategories = schedule.selection.categoryTokens.isEmpty
-            ? nil
-            : .specific(schedule.selection.categoryTokens)
-        store.shield.webDomains = schedule.selection.webDomainTokens.isEmpty
-            ? nil
-            : schedule.selection.webDomainTokens
+        RestrictionStoreWriter.apply(
+            selection: schedule.selection,
+            websiteDomains: [],
+            to: store
+        )
         logger.info("Applied scheduled shield for \(activity.rawValue, privacy: .public)")
     }
 

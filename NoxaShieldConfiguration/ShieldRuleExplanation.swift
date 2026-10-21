@@ -75,7 +75,7 @@ enum ShieldRuleExplanation {
                 let name = rule.name.trimmingCharacters(in: .whitespacesAndNewlines)
                 let label = name.isEmpty ? "Schedule" : String(name.prefix(45))
                 if let end = rule.nextEnd(after: now, calendar: calendar) {
-                    reasons.append("\(label) until \(end.formatted(date: .omitted, time: .shortened)).")
+                    reasons.append("\(label) until \(end.formatted(date: .abbreviated, time: .shortened)).")
                 } else {
                     reasons.append("\(label) is active.")
                 }

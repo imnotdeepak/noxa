@@ -89,14 +89,11 @@ final class ScheduleRuleMonitorCoordinator {
             settings.clearAllSettings()
             return
         }
-        settings.shield.applications = rule.selection.applicationTokens.isEmpty
-            ? nil : rule.selection.applicationTokens
-        settings.shield.applicationCategories = rule.selection.categoryTokens.isEmpty
-            ? nil : .specific(rule.selection.categoryTokens)
-        settings.shield.webDomains = rule.selection.webDomainTokens.isEmpty
-            ? nil : rule.selection.webDomainTokens
-        settings.webContent.blockedByFilter = rule.websiteDomains.isEmpty
-            ? nil : .specific(Set(rule.websiteDomains.map(WebDomain.init(domain:))))
+        RestrictionStoreWriter.apply(
+            selection: rule.selection,
+            websiteDomains: rule.websiteDomains,
+            to: settings
+        )
     }
 
     func stop(_ rule: ScheduleRule) {

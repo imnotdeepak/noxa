@@ -490,7 +490,7 @@ This section tracks progress against the approved plan. A coded feature is not a
 
 | Area | Current state | Required before release |
 | --- | --- | --- |
-| Rule ownership and migration | Named stores, a cross-source requested-rule evaluator for Home status, schedule migration, orphaned-store recovery, and an in-app blocking refresh action are coded. | Finish unified store-write reconciliation and physical overlap, migration, restart, and permission checks. |
+| Rule ownership and migration | Named stores, a cross-source requested-rule evaluator for Home status, shared app/monitor store writes, schedule migration, orphaned-store recovery, and an in-app blocking refresh action are coded. | Verify live owner transitions, overlap, migration, restart, and permission changes on physical devices. |
 | Paid first use | Notification education, target suggestion and selection, first-session review, Strict offer, and one-time schedule suggestion are coded. | Validate the complete paid activation and recovery journey on an iPhone. |
 | Schedules | Named allowed/blocked windows, weekdays, overnight times, mixed targets, immediate edits, status, and optional reminders are coded. One named app shield was observed on the paired iPhone. | Check boundaries, overlap release, migration, local-time changes, and notification timing while the app is closed. |
 | Instagram Safari | Selective Reels/Explore prototype, Full Block, connection status, and broken-filter reporting are coded. Full Block and release were observed in Safari on the paired iPhone. | Test selective filtering on signed-in Instagram with Safari website permission, including direct links and useful feed functions. |

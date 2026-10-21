@@ -670,18 +670,11 @@ final class FocusSessionService: ObservableObject {
     }
 
     private func applyShield(_ selection: FamilyActivitySelection, websiteDomains: [String]) {
-        settingsStore.shield.applications = selection.applicationTokens.isEmpty
-            ? nil
-            : selection.applicationTokens
-        settingsStore.shield.applicationCategories = selection.categoryTokens.isEmpty
-            ? nil
-            : .specific(selection.categoryTokens)
-        settingsStore.shield.webDomains = selection.webDomainTokens.isEmpty
-            ? nil
-            : selection.webDomainTokens
-        settingsStore.webContent.blockedByFilter = websiteDomains.isEmpty
-            ? nil
-            : .specific(Set(websiteDomains.map(WebDomain.init(domain:))))
+        RestrictionStoreWriter.apply(
+            selection: selection,
+            websiteDomains: websiteDomains,
+            to: settingsStore
+        )
     }
 
     private func scheduleReconciliation(for session: ActiveSessionRecord) {
