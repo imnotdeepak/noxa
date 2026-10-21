@@ -2,9 +2,9 @@
 
 **Document type:** Product strategy and implementation roadmap
 
-**Status:** Product decisions approved; implementation and platform validation pending
+**Status:** Product decisions approved; implementation underway; release validation pending
 
-**Last updated:** October 18, 2026
+**Last updated:** October 20, 2026
 
 **Repository:** https://github.com/imnotdeepak/noxa
 
@@ -481,3 +481,21 @@ The near-term product bets are:
 3. **Simple optional commitment** — Strict focus sessions and automatic Pomodoro cycles that follow the user's chosen policy without silently weakening other rules.
 
 Reliability, clear onboarding after payment, and honest platform behavior support all three bets.
+
+---
+
+## 14. Implementation checkpoint — October 20, 2026
+
+This section tracks progress against the approved plan. A coded feature is not a release claim until its physical-device checks pass. Detailed observations and the remaining test matrix are in `docs/enforcement-inventory.md` and `docs/physical-device-restriction-checks.md` on the `codex/product-roadmap` branch.
+
+| Area | Current state | Required before release |
+| --- | --- | --- |
+| Rule ownership and migration | Named stores, a pure any-active-block-wins evaluator, schedule migration, and reconciliation for orphaned schedule stores are coded. | Finish live cross-rule reconciliation and physical overlap, migration, restart, and permission checks. |
+| Paid first use | Notification education, target suggestion and selection, first-session review, Strict offer, and one-time schedule suggestion are coded. | Validate the complete paid activation and recovery journey on an iPhone. |
+| Schedules | Named allowed/blocked windows, weekdays, overnight times, mixed targets, immediate edits, status, and optional reminders are coded. One named app shield was observed on the paired iPhone. | Check boundaries, overlap release, migration, local-time changes, and notification timing while the app is closed. |
+| Instagram Safari | Selective Reels/Explore prototype, Full Block, connection status, and broken-filter reporting are coded. Full Block and release were observed in Safari on the paired iPhone. | Test selective filtering on signed-in Instagram with Safari website permission, including direct links and useful feed functions. |
+| Strict and Pomodoro | Future-session Strict toggle, four-hour cap, warning, and automatic four-round cycle are coded. | Check enforcement and release across all rounds, breaks, termination, and permission changes on a device. |
+| Insights and convenience | Weekly schedule follow-through, rule-aware shields, Home and Lock Screen widgets, Live Activity, and reviewed Start Focus shortcut are coded. A named shield and the one-hour start review were observed on the paired iPhone. | Validate actual widget placement, countdown lifecycle, Live Activity, shortcut discovery, and accessibility. |
+| Daily-limit warnings | A five-minute threshold warning request and callback are coded. The initial test exposed a missing warning request on the daily monitor; this was fixed. On the paired iPhone, Fantasy's warning and reached callbacks arrived five minutes apart and the original limit was restored. | Confirm visible notification delivery with permission granted and check other device states. |
+
+The immediate backlog above remains unchecked as a release checklist because several entries combine code and physical validation. Do not mark a combined item complete from a passing simulator test or an isolated device observation.
