@@ -1,12 +1,15 @@
 import Foundation
 
 /// A stable reference to a rule that can require a Screen Time restriction.
-struct RestrictionRuleID: nonisolated Hashable {
-    enum Source: nonisolated Hashable {
+struct RestrictionRuleID: nonisolated Hashable, nonisolated Equatable {
+    enum Source: nonisolated Hashable, nonisolated Equatable {
         case focusSession
         case schedule
         case dailyLimit
         case pomodoro
+        case manualShield
+        case websiteBlocklist
+        case instagramFullBlock
     }
 
     let source: Source
@@ -33,6 +36,12 @@ struct EffectiveRestrictions<Target: Hashable> {
 
     var blockedTargets: Set<Target> {
         Set(ownersByTarget.keys)
+    }
+
+    var activeRuleIDs: Set<RestrictionRuleID> {
+        ownersByTarget.values.reduce(into: Set<RestrictionRuleID>()) { result, owners in
+            result.formUnion(owners)
+        }
     }
 
     func owners(for target: Target) -> Set<RestrictionRuleID> {

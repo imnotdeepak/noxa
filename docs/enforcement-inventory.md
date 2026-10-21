@@ -35,9 +35,9 @@ The migration cannot always infer whether an old web-content filter came from a 
 
 ## First engineering slice
 
-1. Keep the current app behavior intact while introducing a versioned, device-local rule model and a pure evaluator that returns required targets and contributing rule IDs. The pure `RestrictionRuleEvaluator` and source-specific rule IDs are present. A versioned archive is present for schedules, while a unified persisted rule format remains to be added.
+1. Keep the current app behavior intact while introducing a versioned, device-local rule model and a pure evaluator that returns required targets and contributing rule IDs. The `RestrictionOwnershipPlan` now normalizes saved focus/Pomodoro, schedule, reached daily-limit, manual shield, website-list, and Instagram Full Block requests into the pure evaluator. Home shows the number of active requesting rules and selected items, explicitly without claiming iOS displayed a shield. Daily-limit ownership ignores a previous day's reached markers. A versioned archive is present for schedules, while a unified persisted rule format remains to be added.
 2. Test the approved **any active block wins** rule with focus, daily-limit, and allowed/blocked schedule combinations. The new tests cover overlapping focus and daily-limit blocks, an allowed schedule window, and repeated callbacks. A Pomodoro break remains a later rule source.
-3. Add a reconciliation adapter that compares desired restrictions with each Noxa-owned store and updates only the owning store. The first part is complete: focus/manual/website stores are isolated and reconciled from their own saved state. A unified adapter across schedules, daily limits, and Pomodoro remains to be built.
+3. Add a reconciliation adapter that compares desired restrictions with each Noxa-owned store and updates only the owning store. Focus/manual/website stores are isolated and reconciled from their own saved state, and the new planner computes cross-source requested ownership for UI status and overlap tests. Store writes still live in source-specific services and extensions; a unified write adapter across schedules, daily limits, and Pomodoro remains to be built and physically validated.
 4. Define and test migration of existing schedules, including pending 24-hour disable/remove records, before writing a new schedule format. The format, migration reader, live service, and extension callbacks are present; physical-device migration tests remain.
 5. Validate each enforcement transition on physical iPhones. Simulator tests verify local logic and UI, not Screen Time behavior.
 
@@ -45,7 +45,7 @@ The migration cannot always infer whether an old web-content filter came from a 
 
 - Environment: Xcode 27.0, iPhone 17 simulator on iOS 26.5. The active command-line developer directory points to Command Line Tools, so project commands use `/Applications/Xcode.app/Contents/Developer` explicitly.
 - The first test attempt exposed stale subscription test calls. After that test was updated, the next run exposed an onboarding test that skipped the required value-overview milestone. Both test expectations were brought into line with the current services.
-- The current branch has 76 passing unit tests and 3 previously passing simulator UI tests. Simulator Managed Settings stores read back as empty even after accepting a write, so physical-device testing is required for actual enforcement and migration.
+- The current branch has 80 passing unit tests and 3 passing simulator UI tests. Simulator Managed Settings stores read back as empty even after accepting a write, so physical-device testing is required for actual enforcement and migration.
 - Signed builds were installed and launched on the paired iPhone. Device UI automation observed a named app shield and Instagram's full-site web block and release. Those checks do not establish the rest of the release matrix.
 
 ## Strict Mode first slice
@@ -102,6 +102,7 @@ The migration cannot always infer whether an old web-content filter came from a 
 ## Daily limit warning candidate
 
 - Daily-limit monitoring requests a warning callback about five minutes before each usage threshold. The monitor checks that the limit is still enabled and not already reached, deduplicates by limit and local day, and posts a local notification if notifications are allowed. The first signed build accidentally set `warningTime` on the validation monitor rather than the daily-limit monitor; this is corrected. On the paired iPhone, a temporary test used Fantasy outside the known schedule blocks, changed its 30-minute limit to 10 minutes, and recorded the warning and reached callbacks five minutes apart. It then stopped monitoring and restored 30 minutes. This verifies the callback path for that target, but the phone's displayed notification and other device states still need checks.
+- The daily-limit screen now explains that alerts need notification permission and may arrive late. Its permission status refreshes when Noxa returns to the foreground. Limit enforcement does not depend on notification permission.
 
 ## Weekly schedule follow-through
 

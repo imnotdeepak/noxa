@@ -40,6 +40,8 @@ final class AppGroupStore {
         static let pendingScheduleSuggestion = "noxa.pendingScheduleSuggestion"
         static let websiteBlocklist = "noxa.websiteBlocklist"
         static let dailyLimits = "noxa.dailyLimits"
+        static let dailyLimitReachedEvents = "noxa.dailyLimitReachedEvents"
+        static let dailyLimitResetDay = "noxa.dailyLimitResetDay"
         static let restrictionSchedules = "noxa.restrictionSchedules"
         static let scheduleRules = "noxa.scheduleRules.v2"
         static let pomodoroCycle = "noxa.pomodoroCycle"
@@ -270,6 +272,17 @@ final class AppGroupStore {
 
     func clearDailyLimitConfigurations() {
         defaults.removeObject(forKey: Key.dailyLimits)
+    }
+
+    func reachedDailyLimitEventNames(
+        at date: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Set<String> {
+        guard defaults.string(forKey: Key.dailyLimitResetDay)
+            == NoxaDeviceActivityConfiguration.dailyLimitDayStamp(for: date, calendar: calendar) else {
+            return []
+        }
+        return Set(defaults.stringArray(forKey: Key.dailyLimitReachedEvents) ?? [])
     }
 
     func loadRestrictionSchedules() throws -> [RestrictionScheduleConfiguration] {

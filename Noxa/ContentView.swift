@@ -189,6 +189,7 @@ struct ContentView: View {
             statsReferenceDate = Date()
             safariFilterLastSeenAt = AppGroupStore.shared.safariFilterLastSeenAt
             Task { await refreshSafariExtensionStatus() }
+            Task { await notifications.refreshAuthorizationStatus() }
         }
         .onChange(of: focusSession.completedPomodoroCycleID) { completedID in
             isPomodoroCompletionPresented = completedID != nil
@@ -661,6 +662,7 @@ struct ContentView: View {
                 }
 
                 focusSessionCard
+                homeActiveRulesCard
                 if schedules.enabledCount > 0 {
                     homeScheduleCard
                 }
@@ -781,11 +783,15 @@ struct ContentView: View {
                             Text(configuration.name)
                                 .font(.subheadline.weight(.semibold))
                             Text(isBlocking
-                                 ? "Blocking selected targets"
-                                 : (configuration.mode == .allowedHours
-                                    ? "Within allowed hours" : "Outside blocked hours"))
+                                 ? "This schedule blocks selected targets"
+                                 : "This schedule is not blocking now")
                                 .font(.caption)
                                 .foregroundStyle(isBlocking ? NoxaTheme.warning : NoxaTheme.accent)
+                            if !isBlocking {
+                                Text("Another rule may still block a selection.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                             if let nextChange = ScheduleRuleEvaluator.nextChange(
                                 for: configuration,
                                 after: context.date,
@@ -801,6 +807,60 @@ struct ContentView: View {
             }
             .noxaCard()
         }
+    }
+
+    private var homeActiveRulesCard: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            let plan = activeRestrictionPlan(at: context.date)
+            if !plan.activeRuleIDs.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Active blocking rules", systemImage: "shield.lefthalf.filled")
+                        .font(.headline)
+                    Text("\(plan.activeRuleIDs.count) \(plan.activeRuleIDs.count == 1 ? "rule requests" : "rules request") blocking for \(plan.blockedTargets.count) selected \(plan.blockedTargets.count == 1 ? "item" : "items").")
+                        .font(.subheadline)
+                    Text("Saved rules show what Noxa requested. Open a selected app or site to verify its shield.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .noxaCard()
+            }
+        }
+    }
+
+    private func activeRestrictionPlan(at date: Date) -> EffectiveRestrictions<RestrictionTarget> {
+        let localStore = AppGroupStore.shared
+        let focus: RestrictionOwnershipPlan.Focus?
+        if let session = focusSession.activeSession,
+           session.outcome == .active,
+           let configuration = try? localStore.loadFocusSessionRestrictions() {
+            focus = RestrictionOwnershipPlan.Focus(
+                id: session.id,
+                plannedEndAt: session.plannedEndAt,
+                isPomodoro: focusSession.hasPomodoroCycle,
+                restrictions: configuration
+            )
+        } else {
+            focus = nil
+        }
+
+        return RestrictionOwnershipPlan.evaluate(
+            .init(
+                focus: focus,
+                schedules: schedules.configurations,
+                dailyLimits: dailyLimits.configurations,
+                reachedDailyEventNames: localStore.reachedDailyLimitEventNames(at: date),
+                isDailyMonitoring: dailyLimits.isMonitoring,
+                manualShield: try? localStore.loadManualShield(),
+                blockedWebsiteDomains: websites.isBlocklistActive ? websites.domains : [],
+                instagramFullBlockRequested: InstagramSiteProtectionService.shouldApplyFullBlock(
+                    mode: localStore.instagramSiteMode,
+                    allowedUntil: localStore.safariFilterAllowedUntil,
+                    now: date
+                )
+            ),
+            at: date,
+            calendar: .autoupdatingCurrent
+        )
     }
 
     private var permissionCard: some View {
@@ -1390,6 +1450,12 @@ struct ContentView: View {
 
             Text("Give selected apps a daily allowance. Usage from earlier today counts. You can edit or stop limits at any time; other active blocks still apply.")
                 .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            Text(notifications.canSchedule
+                 ? "Noxa requests an alert about five minutes before a limit is reached. iOS may deliver it late."
+                 : "Enable notifications for approaching-limit alerts. Daily limits still work without alerts.")
+                .font(.footnote)
                 .foregroundStyle(.secondary)
 
             Button("Add App Limit") {
