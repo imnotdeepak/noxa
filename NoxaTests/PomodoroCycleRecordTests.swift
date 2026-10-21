@@ -55,6 +55,15 @@ struct PomodoroCycleRecordTests {
         )
         #expect(onlyFirstRound.map(\.id) == [firstID])
 
+        let lateSecondRound = cycle.verifiedCompletedSessions(
+            asOf: start.addingTimeInterval(3_301),
+            enforcedAt: { round in
+                guard let interval = cycle.plan.workInterval(round: round) else { return nil }
+                return round == 2 ? interval.start.addingTimeInterval(120) : interval.start
+            }
+        )
+        #expect(lateSecondRound.map(\.actualDurationSeconds) == [1_500, 1_380])
+
         let restored = try JSONDecoder().decode(
             PomodoroCycleRecord.self,
             from: JSONEncoder().encode(cycle)

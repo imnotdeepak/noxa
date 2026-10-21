@@ -49,9 +49,12 @@ struct PomodoroCycleRecord: nonisolated Codable, nonisolated Equatable, Sendable
             guard let interval = plan.workInterval(round: round),
                   interval.end <= date,
                   let appliedAt = enforcedAt(round),
+                  appliedAt < interval.end,
                   var session = session(for: round) else { return nil }
             session.outcome = .completed
-            session.actualDurationSeconds = session.plannedDurationSeconds
+            session.actualDurationSeconds = Int(
+                interval.end.timeIntervalSince(max(interval.start, appliedAt))
+            )
             session.lastRestrictionApplicationAt = appliedAt
             return session
         }
