@@ -84,6 +84,13 @@
       previousPath = location.pathname;
       updateRoute();
     }
+    if (enabled && !style.isConnected) {
+      (document.head || document.documentElement).appendChild(style);
+    }
+    if (enabled && isBlockedPath(location.pathname)
+        && !document.getElementById("noxa-instagram-route-block")) {
+      updateRoute();
+    }
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });
   window.addEventListener("popstate", updateRoute);

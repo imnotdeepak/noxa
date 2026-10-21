@@ -640,12 +640,12 @@ final class FocusSessionService: ObservableObject {
     }
 
     private func schedule(record: ActiveSessionRecord) throws {
-        // DeviceActivity invokes intervalDidStart immediately when the
-        // current date falls inside the scheduled interval. Starting at the
-        // current wall-clock time lets the main app apply the shield now while
-        // still giving the system a full 15-minute interval to schedule.
-        let start = Date()
-        guard record.plannedEndAt > start else {
+        // Keep the original interval when restoring a missing monitor. A
+        // fresh start-to-end interval can be shorter than DeviceActivity's
+        // 15-minute minimum even while the saved session is still active.
+        // DeviceActivity invokes intervalDidStart for the current interval.
+        let start = record.startedAt
+        guard record.plannedEndAt > Date() else {
             throw FocusSessionError.sessionEndInPast
         }
 

@@ -10,6 +10,7 @@ const backgroundScript = fs.readFileSync(path.join(__dirname, "background.js"), 
 async function runAt(pathname, hostname = "www.instagram.com", enabled = true) {
   const elements = new Map();
   const intervals = new Map();
+  let mutationObserver;
   let authorized = enabled;
   const requests = [];
   const makeElement = (tagName) => ({
@@ -19,10 +20,14 @@ async function runAt(pathname, hostname = "www.instagram.com", enabled = true) {
     append(...children) { this.children.push(...children); },
     appendChild(child) {
       this.children.push(child);
+      child.isConnected = true;
       if (child.id) elements.set(child.id, child);
     },
     setAttribute() {},
-    remove() { elements.delete(this.id); }
+    remove() {
+      this.isConnected = false;
+      elements.delete(this.id);
+    }
   });
   const body = makeElement("body");
   const document = {
@@ -40,7 +45,10 @@ async function runAt(pathname, hostname = "www.instagram.com", enabled = true) {
     } } },
     document,
     location: { pathname, hostname },
-    MutationObserver: class { observe() {} },
+    MutationObserver: class {
+      constructor(callback) { mutationObserver = callback; }
+      observe() {}
+    },
     window: { addEventListener() {} },
     setInterval(callback, milliseconds) { intervals.set(milliseconds, callback); }
   });
@@ -49,6 +57,10 @@ async function runAt(pathname, hostname = "www.instagram.com", enabled = true) {
     document,
     requests,
     overlay: elements.get("noxa-instagram-route-block"),
+    mutate() {
+      mutationObserver();
+      return elements.get("noxa-instagram-route-block");
+    },
     async setAuthorized(nextValue) {
       authorized = nextValue;
       intervals.get(60_000)?.();
@@ -85,6 +97,23 @@ test("an open Reels page is uncovered when Noxa access is revoked", async () => 
   const page = await runAt("/reels/");
   assert.ok(page.overlay);
   assert.equal(await page.setAuthorized(false), undefined);
+});
+
+test("Instagram cannot leave a blocked route exposed after replacing page nodes", async () => {
+  const page = await runAt("/reels/");
+  page.overlay.remove();
+  assert.equal(page.document.getElementById("noxa-instagram-route-block"), undefined);
+  assert.ok(page.mutate());
+});
+
+test("hidden Reels links are restored after Instagram replaces the style node", async () => {
+  const page = await runAt("/");
+  const style = page.document.head.children[0];
+  assert.ok(style.textContent.includes('/reel/'));
+  style.remove();
+  assert.equal(style.isConnected, false);
+  page.mutate();
+  assert.equal(style.isConnected, true);
 });
 
 test("background messaging fails closed when the native subscription check is unavailable", async () => {
