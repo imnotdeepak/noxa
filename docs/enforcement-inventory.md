@@ -63,6 +63,7 @@ The migration cannot always infer whether an old web-content filter came from a 
 - Every callback recalculates the current phase before touching the focus store. A late callback from an earlier interval therefore cannot release a newer work interval. Completed work is recorded in focus history only when a shield-application stamp exists for that round.
 - `FocusNotificationService` schedules halfway and one-minute-left break reminders, work-end notices, next-round notices, and a four-round completion prompt. The cycle runs without notification permission.
 - During a break, the user can stop the cycle; future monitors and pending cycle notifications are cancelled. Strict work intervals retain the no-early-end rule. The full transition matrix is in `physical-device-restriction-checks.md`.
+- Launch, foreground, and significant-time reconciliation now cancel queued Pomodoro and single-session notifications when recovery ends their saved session or cycle, including after Screen Time permission is revoked. This notification cleanup needs a physical permission-change check; it does not affect enforcement.
 
 ## Paid onboarding progress
 

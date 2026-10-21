@@ -107,7 +107,7 @@ struct NoxaApp: App {
                 await authentication.bootstrap()
                 await bindAccountServices()
                 await reconcileOnboardingAccount()
-                focusSession.reconcile()
+                reconcileFocusAndNotifications()
                 await FocusPresentationCoordinator.reconcile(session: focusSession.activeSession)
                 restrictions.reconcile()
                 websites.reconcile()
@@ -118,7 +118,7 @@ struct NoxaApp: App {
             .onChange(of: scenePhase) { newPhase in
                 guard newPhase == .active else { return }
                 InstagramSiteProtectionService.reconcile()
-                focusSession.reconcile()
+                reconcileFocusAndNotifications()
                 Task { await FocusPresentationCoordinator.reconcile(session: focusSession.activeSession) }
                 restrictions.reconcile()
                 websites.reconcile()
@@ -139,7 +139,7 @@ struct NoxaApp: App {
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
                 // Local schedule windows and elapsed session deadlines may
                 // have changed while this process remained in the foreground.
-                focusSession.reconcile()
+                reconcileFocusAndNotifications()
                 dailyLimits.reconcileDayBoundary()
                 schedules.reconcile()
                 Task {
@@ -221,6 +221,21 @@ struct NoxaApp: App {
             return .signIn
         }
         return mode
+    }
+
+    @MainActor
+    private func reconcileFocusAndNotifications() {
+        let previousCycleID = focusSession.pomodoroCycle?.id
+        let previousSessionID = focusSession.activeSession?.id
+        focusSession.reconcile()
+        if let previousCycleID,
+           focusSession.pomodoroCycle?.id != previousCycleID {
+            notifications.cancelPomodoroCycle(previousCycleID)
+        }
+        if let previousSessionID,
+           focusSession.activeSession?.id != previousSessionID {
+            notifications.cancel(for: previousSessionID)
+        }
     }
 
     private func bindAccountServices() async {
