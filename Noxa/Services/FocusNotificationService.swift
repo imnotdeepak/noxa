@@ -63,56 +63,6 @@ final class FocusNotificationService: ObservableObject {
         )
     }
 
-    func schedulePomodoro(for session: ActiveSessionRecord, breakMinutes: Int) async {
-        await refreshAuthorizationStatus()
-        guard canSchedule else { return }
-
-        cancel(for: session.id)
-        let breakTiming = PomodoroBreakTiming(
-            workEndsAt: session.plannedEndAt,
-            breakMinutes: breakMinutes
-        )
-        let focusComplete = UNMutableNotificationContent()
-        focusComplete.title = "Focus interval complete"
-        focusComplete.body = "Your apps are available. Take a \(breakMinutes)-minute break."
-        focusComplete.sound = .default
-        await add(
-            content: focusComplete,
-            date: breakTiming.startsAt,
-            identifier: completionIdentifier(for: session.id)
-        )
-
-        let halfway = UNMutableNotificationContent()
-        halfway.title = "Halfway through your break"
-        halfway.body = "Take a moment to recharge before your next focus interval."
-        halfway.sound = .default
-        await add(
-            content: halfway,
-            date: breakTiming.halfwayAt,
-            identifier: breakHalfwayIdentifier(for: session.id)
-        )
-
-        let almostOver = UNMutableNotificationContent()
-        almostOver.title = "1 minute left in your break"
-        almostOver.body = "Your next focus interval is coming up."
-        almostOver.sound = .default
-        await add(
-            content: almostOver,
-            date: breakTiming.oneMinuteRemainingAt,
-            identifier: breakWarningIdentifier(for: session.id)
-        )
-
-        let breakComplete = UNMutableNotificationContent()
-        breakComplete.title = "Break complete"
-        breakComplete.body = "Ready for another Pomodoro? Open Noxa when you’re ready to begin."
-        breakComplete.sound = .default
-        await add(
-            content: breakComplete,
-            date: breakTiming.endsAt,
-            identifier: breakIdentifier(for: session.id)
-        )
-    }
-
     func schedulePomodoroCycle(_ cycle: PomodoroCycleRecord) async {
         await refreshAuthorizationStatus()
         guard canSchedule else { return }

@@ -108,6 +108,7 @@ struct NoxaApp: App {
                 await bindAccountServices()
                 await reconcileOnboardingAccount()
                 reconcileFocusAndNotifications()
+                await restoreFocusNotificationsAfterLaunch()
                 await FocusPresentationCoordinator.reconcile(session: focusSession.activeSession)
                 restrictions.reconcile()
                 websites.reconcile()
@@ -235,6 +236,17 @@ struct NoxaApp: App {
         if let previousSessionID,
            focusSession.activeSession?.id != previousSessionID {
             notifications.cancel(for: previousSessionID)
+        }
+    }
+
+    @MainActor
+    private func restoreFocusNotificationsAfterLaunch() async {
+        await notifications.refreshAuthorizationStatus()
+        guard notifications.canSchedule else { return }
+        if let cycle = focusSession.pomodoroCycle {
+            await notifications.schedulePomodoroCycle(cycle)
+        } else if let session = focusSession.activeSession {
+            await notifications.schedule(for: session)
         }
     }
 
