@@ -204,7 +204,7 @@ final class FocusSessionService: ObservableObject {
             ))
             logger.info("Started focus session \(activeRecord.id.uuidString, privacy: .public)")
         } catch {
-            center.stopMonitoring([NoxaDeviceActivityConfiguration.focusActivityName])
+            stopFocusMonitors()
             settingsStore.clearAllSettings()
             store.clearFocusSessionRestrictions()
             activeIntention = nil
@@ -300,7 +300,7 @@ final class FocusSessionService: ObservableObject {
             errorMessage = "Could not record the session ending: \(error.localizedDescription)"
         }
 
-        center.stopMonitoring([NoxaDeviceActivityConfiguration.focusActivityName])
+        stopFocusMonitors()
         settingsStore.clearAllSettings()
         store.clearFocusSessionRestrictions()
         if completedSessionCount == 0 { store.clearPendingScheduleSuggestion() }
@@ -378,7 +378,7 @@ final class FocusSessionService: ObservableObject {
                 // is persisted but before DeviceActivity accepts the
                 // schedule. Treat that half-start as failed and remove any
                 // shield it may have applied so the lock cannot linger.
-                center.stopMonitoring([NoxaDeviceActivityConfiguration.focusActivityName])
+                stopFocusMonitors()
                 settingsStore.clearAllSettings()
                 store.clearFocusSessionRestrictions()
                 var failedSession = session
@@ -406,6 +406,12 @@ final class FocusSessionService: ObservableObject {
                     message: "The focus session could not be restored and was ended safely."
                 )
                 return
+            }
+        } else if !center.activities.contains(NoxaDeviceActivityConfiguration.focusReleaseActivityName) {
+            do {
+                try scheduleFocusReleaseMonitor(for: session)
+            } catch {
+                logger.error("Could not restore focus release wake: \(error.localizedDescription, privacy: .public)")
             }
         }
 
@@ -470,7 +476,7 @@ final class FocusSessionService: ObservableObject {
         store.pendingPomodoroCompletionID = nil
         pomodoroCycle = nil
         completedPomodoroCycleID = nil
-        center.stopMonitoring([NoxaDeviceActivityConfiguration.focusActivityName])
+        stopFocusMonitors()
         settingsStore.clearAllSettings()
         store.clearFocusSessionRestrictions()
         activeSession = nil
@@ -711,6 +717,46 @@ final class FocusSessionService: ObservableObject {
             NoxaDeviceActivityConfiguration.focusActivityName,
             during: schedule
         )
+        try scheduleFocusReleaseMonitor(for: record)
+    }
+
+    private func scheduleFocusReleaseMonitor(for record: ActiveSessionRecord) throws {
+        let calendar = Calendar.current
+        // Keep this wake separate from the primary end boundary so a missed
+        // intervalDidEnd has an independent later chance to clear the shield.
+        let releaseAt = record.plannedEndAt.addingTimeInterval(60)
+        let releaseStart = calendar.dateComponents(
+            [.calendar, .year, .month, .day, .hour, .minute, .second],
+            from: releaseAt
+        )
+        let releaseEnd = calendar.dateComponents(
+            [.calendar, .year, .month, .day, .hour, .minute, .second],
+            from: releaseAt.addingTimeInterval(15 * 60)
+        )
+        let releaseSchedule = DeviceActivitySchedule(
+            intervalStart: releaseStart,
+            intervalEnd: releaseEnd,
+            repeats: false
+        )
+        try center.startMonitoring(
+            NoxaDeviceActivityConfiguration.focusReleaseActivityName,
+            during: releaseSchedule
+        )
+        #if DEBUG
+        let next = center.schedule(for: NoxaDeviceActivityConfiguration.focusReleaseActivityName)?.nextInterval
+        UserDefaults(suiteName: "group.LycheeCorp.Noxa")?.set(
+            next.map { "\($0.start.timeIntervalSince1970)|\($0.end.timeIntervalSince1970)" }
+                ?? "no-next-interval",
+            forKey: "noxa.debug.focusReleaseNextInterval"
+        )
+        #endif
+    }
+
+    private func stopFocusMonitors() {
+        center.stopMonitoring([
+            NoxaDeviceActivityConfiguration.focusActivityName,
+            NoxaDeviceActivityConfiguration.focusReleaseActivityName
+        ])
     }
 
     private func applyShield(_ selection: FamilyActivitySelection, websiteDomains: [String]) {
@@ -735,7 +781,7 @@ final class FocusSessionService: ObservableObject {
         reconciliationTask?.cancel()
         let sessionTargets = (try? store.loadFocusSessionRestrictions()) ?? nil
         let hadCompletedSession = history.contains { $0.outcome.countsTowardFocusStatistics }
-        center.stopMonitoring([NoxaDeviceActivityConfiguration.focusActivityName])
+        stopFocusMonitors()
         settingsStore.clearAllSettings()
         store.clearFocusSessionRestrictions()
 
@@ -784,7 +830,7 @@ final class FocusSessionService: ObservableObject {
     }
 
     private func failPendingSession(_ session: ActiveSessionRecord) {
-        center.stopMonitoring([NoxaDeviceActivityConfiguration.focusActivityName])
+        stopFocusMonitors()
         settingsStore.clearAllSettings()
         store.clearFocusSessionRestrictions()
         if completedSessionCount == 0 { store.clearPendingScheduleSuggestion() }
@@ -804,7 +850,7 @@ final class FocusSessionService: ObservableObject {
             store.clearPomodoroRoundEnforcement(cycleID: pomodoroCycle.id)
             self.pomodoroCycle = nil
         }
-        center.stopMonitoring([NoxaDeviceActivityConfiguration.focusActivityName])
+        stopFocusMonitors()
         settingsStore.clearAllSettings()
         store.clearFocusSessionRestrictions()
         if completedSessionCount == 0 { store.clearPendingScheduleSuggestion() }

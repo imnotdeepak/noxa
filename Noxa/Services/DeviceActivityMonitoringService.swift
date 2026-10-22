@@ -14,6 +14,7 @@ enum NoxaDeviceActivityConfiguration {
     static let activityName = DeviceActivityName("noxa.validation.activity")
     static let thresholdEvent = DeviceActivityEvent.Name("noxa.validation.threshold")
     static let focusActivityName = DeviceActivityName("noxa.focus.session")
+    static let focusReleaseActivityName = DeviceActivityName("noxa.focus.release")
     static let pomodoroWorkActivityPrefix = "noxa.pomodoro.work"
     static let dailyLimitActivityName = DeviceActivityName("noxa.daily.limits")
     static let scheduleActivityPrefix = "noxa.schedule"

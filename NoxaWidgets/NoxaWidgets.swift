@@ -173,7 +173,7 @@ private struct FocusWidgetView: View {
                         Text(isBreak ? "Pomodoro break" : entry.isStrict ? "Strict session" : "Focus session")
                             .font(.caption)
                     } else {
-                        Text("Start a focus session")
+                        Text("Start Focus")
                             .font(.headline)
                         Text("One hour selected · change it before starting")
                             .font(.caption)

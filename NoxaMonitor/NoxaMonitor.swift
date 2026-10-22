@@ -12,6 +12,7 @@ import UserNotifications
 
 private enum NoxaMonitorActivity {
     static let focusActivityName = DeviceActivityName("noxa.focus.session")
+    static let focusReleaseActivityName = DeviceActivityName("noxa.focus.release")
     static let dailyLimitActivityName = DeviceActivityName("noxa.daily.limits")
     static let dailyLimitReachedEventsKey = "noxa.dailyLimitReachedEvents"
     static let dailyLimitResetDayKey = "noxa.dailyLimitResetDay"
@@ -157,6 +158,8 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         recordPomodoroBoundaryCallback("start", activity: activity)
         if activity == NoxaMonitorActivity.focusActivityName {
             applyPersistedFocusShield(reason: "focus session started")
+        } else if activity == NoxaMonitorActivity.focusReleaseActivityName {
+            releaseExpiredFocusShield()
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.pomodoroWorkActivityPrefix) {
             applyPomodoroShield(for: activity)
         } else if activity == NoxaMonitorActivity.dailyLimitActivityName {
@@ -228,6 +231,7 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
     ) {
         #if DEBUG
         guard activity == NoxaMonitorActivity.focusActivityName
+                || activity == NoxaMonitorActivity.focusReleaseActivityName
                 || activity.rawValue.hasPrefix(NoxaMonitorActivity.pomodoroWorkActivityPrefix),
               let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa") else { return }
         let key = "noxa.debug.pomodoroCallbacks"
@@ -289,6 +293,8 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
                 settingsStore.clearAllSettings()
             }
             logger.info("Removed focus shield when session ended")
+        } else if activity == NoxaMonitorActivity.focusReleaseActivityName {
+            releaseExpiredFocusShield()
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.pomodoroWorkActivityPrefix) {
             reconcilePomodoroShield(for: activity)
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleV2WakePrefix)
@@ -299,6 +305,18 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleActivityPrefix) {
             ManagedSettingsStore(named: ManagedSettingsStore.Name(activity.rawValue)).clearAllSettings()
             logger.info("Removed scheduled shield for \(activity.rawValue, privacy: .public)")
+        }
+    }
+
+    private func releaseExpiredFocusShield() {
+        if let cycle = loadPomodoroCycle() {
+            reconcilePomodoroShield(cycle)
+        } else if !hasUnexpiredFocusSession() {
+            focusSettingsStore.clearAllSettings()
+            let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa")
+            defaults?.removeObject(forKey: "noxa.focusSessionRestrictions")
+            defaults?.removeObject(forKey: "noxa.focusMonitorReceipt")
+            logger.info("Removed expired focus shield at release wake")
         }
     }
 
