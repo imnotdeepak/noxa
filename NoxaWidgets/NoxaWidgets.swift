@@ -150,7 +150,7 @@ private struct FocusWidgetView: View {
                 HStack(spacing: 8) {
                     Image(systemName: isBreak ? "cup.and.saucer" : isActive ? "timer" : "play.circle.fill")
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(isBreak ? "Pomodoro break" : isActive ? "Focus in progress" : "Start Focus")
+                        Text(isBreak ? "Break" : isActive ? "Focus" : "Start Focus")
                             .font(.headline)
                         if let end = timerEndAt {
                             Text(timerInterval: entry.date...end, countsDown: true, showsHours: false)
