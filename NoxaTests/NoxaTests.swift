@@ -488,7 +488,7 @@ struct NoxaTests {
         store.clearSnapshot()
     }
 
-    @Test func buildEightOnboardingProgressMigratesPastPricingPreview() throws {
+    @Test @MainActor func buildEightOnboardingProgressMigratesPastPricingPreview() throws {
         let legacyJSON = """
         {
           "hasSeenWelcome": true,
@@ -508,7 +508,7 @@ struct NoxaTests {
         #expect(!progress.hasSeenNotificationExplainer)
     }
 
-    @Test func completedExistingOnboardingIsNotReopenedForNotificationEducation() throws {
+    @Test @MainActor func completedExistingOnboardingIsNotReopenedForNotificationEducation() throws {
         let legacyJSON = """
         {
           "flowVersion": 3,
