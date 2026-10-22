@@ -392,7 +392,7 @@ User-defined rules
 - Test accessibility for onboarding, schedules, shields, Strict warnings, and recovery actions.
 - Do not claim a restriction is enforced based only on saved intent or last-known metadata.
 
-**Privacy:** Limit collection, keep Screen Time selection data appropriately on-device, describe what syncs through Supabase, and avoid sending detailed third-party app usage to a server unless needed and permitted.
+**Privacy:** Limit collection, keep Screen Time selection data appropriately on-device, describe what syncs through Supabase, and avoid sending detailed third-party app usage to a server unless needed and permitted. The Live Activity removal service is an approved narrow exception: it temporarily stores only a session UUID, timer dates, and per-activity Apple push token. Publish the disclosure in `docs/live-activity-privacy-update.md` before release.
 
 ---
 
@@ -499,3 +499,12 @@ This section tracks progress against the approved plan. A coded feature is not a
 | Daily-limit warnings | A five-minute threshold warning request and callback are coded. The initial test exposed a missing warning request on the daily monitor; this was fixed. On the paired iPhone, Fantasy's warning and reached callbacks arrived five minutes apart and the original limit was restored. | Confirm visible notification delivery with permission granted and check other device states. |
 
 The immediate backlog above remains unchecked as a release checklist because several entries combine code and physical validation. Do not mark a combined item complete from a passing simulator test or an isolated device observation.
+
+### Pre-device checkpoint — October 22, 2026
+
+The user requested that remaining code and off-device setup be completed before any more iPhone testing. Physical-device work is paused.
+
+- The app now requests a per-activity push token for a focus Live Activity, registers only its session ID and timer dates with an authenticated Supabase function, and removes the server record when it ends locally. It falls back to a local timer if push setup is unavailable.
+- A server-only dispatch function constructs Apple's end event with an immediate dismissal date. It claims due timers, retries transient APNs failures, and removes records after 24 hours. Its payload and retry rules pass local Node tests; the iOS app builds for the simulator.
+- The server path is **coded but not operational yet**. A signed development iOS build passes with the push entitlement. It still needs an APNs Auth Key, distribution-signing verification, Supabase function deployment and secrets, a scheduled dispatch job, and the published privacy-policy update. Setup instructions are in `supabase/README.md` and privacy copy in `docs/live-activity-privacy-update.md`. Apple push delivery can be delayed or missed when a device is offline, so exact-second removal cannot be guaranteed.
+- The full simulator test suite passed again after the push change, as did the backend payload tests, `git diff --check`, a signed Debug device build, and a signed Release configuration build using a development provisioning profile. App Store distribution signing and the server deployment remain separate gates.
