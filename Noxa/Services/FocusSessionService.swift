@@ -252,11 +252,17 @@ final class FocusSessionService: ObservableObject {
         do {
             try store.savePomodoroCycle(cycle)
             try schedulePomodoroMonitors(for: cycle)
-            store.markPomodoroRoundEnforced(
-                cycleID: cycle.id,
-                round: 1,
-                at: firstSession.lastRestrictionApplicationAt ?? firstSession.startedAt
-            )
+            // The app requests its initial shield before the cycle is saved.
+            // Credit that round only after the monitor confirms it applied
+            // the same session. A later monitor callback records the marker
+            // itself if it arrives after the cycle was saved.
+            if let receipt = monitorReceipt(for: firstSession) {
+                store.markPomodoroRoundEnforced(
+                    cycleID: cycle.id,
+                    round: 1,
+                    at: receipt.appliedAt
+                )
+            }
             pomodoroCycle = cycle
             acknowledgePomodoroCompletion()
             schedulePomodoroBoundaryReconciliation(for: firstSession.plannedEndAt)
