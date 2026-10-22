@@ -50,21 +50,30 @@ enum ShieldRuleExplanation {
         guard let defaults else { return nil }
         var reasons: [String] = []
 
-        if let snapshot: Snapshot = decode("noxa.localSnapshot", from: defaults),
-           let session = snapshot.activeSession,
-           snapshot.sessionEngineState == "active",
-           session.outcome == "active",
-           session.plannedEndAt > now,
-           let focus: FocusRestrictions = decode("noxa.focusSessionRestrictions", from: defaults),
+        if let focus: FocusRestrictions = decode("noxa.focusSessionRestrictions", from: defaults),
            matches(focus.selection, focus.websiteDomains) {
-            let end = session.plannedEndAt.formatted(date: .omitted, time: .shortened)
-            let intention = focus.intention?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .replacingOccurrences(of: "\n", with: " ")
-            if let intention, !intention.isEmpty {
-                reasons.append("Focus until \(end). \(String(intention.prefix(65)))")
+            let focusEnd: Date?
+            if let cycle: PomodoroShieldCycle = decode("noxa.pomodoroCycle", from: defaults) {
+                focusEnd = cycle.currentWorkEnd(at: now)
+            } else if let snapshot: Snapshot = decode("noxa.localSnapshot", from: defaults),
+                      let session = snapshot.activeSession,
+                      snapshot.sessionEngineState == "active",
+                      session.outcome == "active",
+                      session.plannedEndAt > now {
+                focusEnd = session.plannedEndAt
             } else {
-                reasons.append("Focus until \(end).")
+                focusEnd = nil
+            }
+            if let focusEnd {
+                let end = focusEnd.formatted(date: .omitted, time: .shortened)
+                let intention = focus.intention?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .replacingOccurrences(of: "\n", with: " ")
+                if let intention, !intention.isEmpty {
+                    reasons.append("Focus until \(end). \(String(intention.prefix(65)))")
+                } else {
+                    reasons.append("Focus until \(end).")
+                }
             }
         }
 
@@ -129,6 +138,27 @@ private struct Snapshot: Decodable {
 private struct Session: Decodable {
     let plannedEndAt: Date
     let outcome: String
+}
+
+private struct PomodoroShieldCycle: Decodable {
+    struct Plan: Decodable {
+        let startedAt: Date
+        let workMinutes: Int
+        let breakMinutes: Int
+    }
+
+    let plan: Plan
+
+    func currentWorkEnd(at date: Date) -> Date? {
+        let work = TimeInterval(plan.workMinutes * 60)
+        let rest = TimeInterval(plan.breakMinutes * 60)
+        for round in 1...4 {
+            let start = plan.startedAt.addingTimeInterval(TimeInterval(round - 1) * (work + rest))
+            let end = start.addingTimeInterval(work)
+            if date >= start && date < end { return end }
+        }
+        return nil
+    }
 }
 
 private struct FocusRestrictions: Decodable {

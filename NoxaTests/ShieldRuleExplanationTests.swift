@@ -47,6 +47,47 @@ import Testing
         #expect(ShieldRuleExplanation.domain("example.com", defaults: defaults, now: end, calendar: calendar) == nil)
     }
 
+    @Test func pomodoroExplanationUsesCurrentRoundWhileAppSnapshotIsStale() throws {
+        let defaults = try defaults()
+        let cycle = PomodoroCycleRecord(
+            plan: PomodoroCyclePlan(
+                startedAt: now.addingTimeInterval(-25 * 60),
+                workMinutes: 15,
+                breakMinutes: 5
+            ),
+            selection: FamilyActivitySelection(),
+            websiteDomains: ["example.com"],
+            isStrict: true,
+            firstSessionID: UUID()
+        )
+        let first = try #require(cycle.session(for: 1))
+        defaults.set(
+            try JSONEncoder().encode(NoxaLocalSnapshot(sessionEngineState: .active, activeSession: first)),
+            forKey: "noxa.localSnapshot"
+        )
+        defaults.set(try JSONEncoder().encode(cycle), forKey: "noxa.pomodoroCycle")
+        defaults.set(
+            try JSONEncoder().encode(FocusSessionRestrictionConfiguration(
+                selection: FamilyActivitySelection(),
+                websiteDomains: ["example.com"],
+                intention: "Pomodoro · 15/5"
+            )),
+            forKey: "noxa.focusSessionRestrictions"
+        )
+
+        let secondEnd = try #require(cycle.plan.workInterval(round: 2)).end
+        let message = try #require(ShieldRuleExplanation.domain(
+            "example.com", defaults: defaults, now: now, calendar: calendar
+        ))
+        #expect(message.contains("Focus until \(secondEnd.formatted(date: .omitted, time: .shortened))"))
+        #expect(message.contains("Pomodoro · 15/5"))
+
+        let secondBreak = secondEnd.addingTimeInterval(30)
+        #expect(ShieldRuleExplanation.domain(
+            "example.com", defaults: defaults, now: secondBreak, calendar: calendar
+        ) == nil)
+    }
+
     @Test func overlappingScheduleKeepsOtherRuleWarning() throws {
         let defaults = try defaults()
         let rule = ScheduleRule(

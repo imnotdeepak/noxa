@@ -205,10 +205,17 @@ private struct FocusLiveActivityWidget: Widget {
             HStack(spacing: 12) {
                 Image(systemName: context.attributes.isStrict ? "lock.fill" : "timer")
                 VStack(alignment: .leading) {
-                    Text(context.attributes.isStrict ? "Strict Focus" : "Focus")
-                        .font(.headline)
-                    Text(timerInterval: context.state.startedAt...context.state.plannedEndAt, countsDown: true)
-                        .font(.title.bold().monospacedDigit())
+                    if context.isStale {
+                        Text("Focus interval ended")
+                            .font(.headline)
+                        Text("Open Noxa for current status")
+                            .font(.subheadline)
+                    } else {
+                        Text(context.attributes.isStrict ? "Strict Focus" : "Focus")
+                            .font(.headline)
+                        Text(timerInterval: context.state.startedAt...context.state.plannedEndAt, countsDown: true)
+                            .font(.title.bold().monospacedDigit())
+                    }
                 }
                 Spacer()
             }
@@ -222,16 +229,26 @@ private struct FocusLiveActivityWidget: Widget {
                     Label("Focus", systemImage: "timer")
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Text(timerInterval: context.state.startedAt...context.state.plannedEndAt, countsDown: true)
-                        .monospacedDigit()
+                    if context.isStale {
+                        Text("Ended")
+                    } else {
+                        Text(timerInterval: context.state.startedAt...context.state.plannedEndAt, countsDown: true)
+                            .monospacedDigit()
+                    }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    Text(context.attributes.isStrict ? "Strict session" : "Focus session")
+                    Text(context.isStale
+                         ? "Open Noxa for current status"
+                         : context.attributes.isStrict ? "Strict session" : "Focus session")
                 }
             } compactLeading: {
                 Image(systemName: "timer")
             } compactTrailing: {
-                Text(context.state.plannedEndAt, style: .timer)
+                if context.isStale {
+                    Text("Done")
+                } else {
+                    Text(context.state.plannedEndAt, style: .timer)
+                }
             } minimal: {
                 Image(systemName: "timer")
             }
