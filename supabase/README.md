@@ -51,10 +51,15 @@ profiles. Create an APNs Auth Key with push access. Configure these Supabase
 Edge Function secrets (keep the private key and cron secret out of Git):
 
 - `APNS_TEAM_ID`: Apple Developer team ID.
-- `APNS_KEY_ID`: APNs Auth Key ID.
-- `APNS_PRIVATE_KEY`: full `.p8` key, with real or escaped newlines.
+- `APNS_SANDBOX_KEY_ID` and `APNS_SANDBOX_PRIVATE_KEY`: development APNs key ID and full `.p8` contents.
+- `APNS_PRODUCTION_KEY_ID` and `APNS_PRODUCTION_PRIVATE_KEY`: production APNs key ID and full `.p8` contents.
 - `APNS_BUNDLE_ID`: `LycheeCorp.Noxa`.
 - `NOXA_LIVE_ACTIVITY_CRON_SECRET`: a random server-only value.
+
+Separate topic-specific keys for `LycheeCorp.Noxa` keep sandbox and production
+access limited to this app. If your Apple team already has one APNs key valid
+for both environments, the dispatcher also accepts the older shared
+`APNS_KEY_ID` and `APNS_PRIVATE_KEY` secrets as a fallback.
 
 Deploy both functions:
 
@@ -69,7 +74,9 @@ every 30 seconds. Set header `x-noxa-cron-secret` to the same secret, and store
 that value in Supabase Vault rather than the SQL/job definition. The dispatch
 endpoint rejects requests without the secret. Monitor function logs and APNs
 errors. A missed network delivery is retried up to five times for transient
-errors, while the app also reconciles on foreground. This path gives prompt
+errors. If APNs reports `BadDeviceToken`, the dispatcher tries the other APNs
+environment once; this covers development-signed Release builds. The app also
+reconciles on foreground. This path gives prompt
 cleanup in normal connectivity; APNs cannot guarantee exact-second delivery.
 
 With Supabase `pg_cron`, `pg_net`, and Vault enabled, one way to create the job

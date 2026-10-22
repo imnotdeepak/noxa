@@ -5,6 +5,35 @@ import { deliveryStatus, endPayload } from "../_shared/liveActivity.mjs";
 const json = (status: number, body: object) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
+async function sendEndPush(
+  environment: "sandbox" | "production", token: string, bearer: string,
+  bundleID: string, payload: object,
+): Promise<{ status: number; reason: string }> {
+  const host = environment === "sandbox"
+    ? "https://api.sandbox.push.apple.com" : "https://api.push.apple.com";
+  try {
+    const response = await fetch(`${host}/3/device/${token}`, {
+      method: "POST",
+      headers: {
+        authorization: `bearer ${bearer}`,
+        "apns-topic": `${bundleID}.push-type.liveactivity`,
+        "apns-push-type": "liveactivity",
+        "apns-priority": "10",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    if (response.ok) return { status: response.status, reason: "" };
+    const errorBody = await response.json().catch(() => ({}));
+    return {
+      status: response.status,
+      reason: String(errorBody.reason ?? `http_${response.status}`).slice(0, 100),
+    };
+  } catch {
+    return { status: 503, reason: "network_error" };
+  }
+}
+
 Deno.serve(async (request) => {
   if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
   const secret = Deno.env.get("NOXA_LIVE_ACTIVITY_CRON_SECRET");
@@ -14,10 +43,22 @@ Deno.serve(async (request) => {
   const url = Deno.env.get("SUPABASE_URL");
   const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const team = Deno.env.get("APNS_TEAM_ID");
-  const keyID = Deno.env.get("APNS_KEY_ID");
-  const privateKey = Deno.env.get("APNS_PRIVATE_KEY")?.replace(/\\n/g, "\n");
   const bundleID = Deno.env.get("APNS_BUNDLE_ID");
-  if (!url || !service || !team || !keyID || !privateKey || !bundleID) {
+  const sharedKeyID = Deno.env.get("APNS_KEY_ID");
+  const sharedPrivateKey = Deno.env.get("APNS_PRIVATE_KEY");
+  const credentials = {
+    sandbox: {
+      keyID: Deno.env.get("APNS_SANDBOX_KEY_ID") ?? sharedKeyID,
+      privateKey: Deno.env.get("APNS_SANDBOX_PRIVATE_KEY") ?? sharedPrivateKey,
+    },
+    production: {
+      keyID: Deno.env.get("APNS_PRODUCTION_KEY_ID") ?? sharedKeyID,
+      privateKey: Deno.env.get("APNS_PRODUCTION_PRIVATE_KEY") ?? sharedPrivateKey,
+    },
+  };
+  if (!url || !service || !team || !bundleID ||
+      !credentials.sandbox.keyID || !credentials.sandbox.privateKey ||
+      !credentials.production.keyID || !credentials.production.privateKey) {
     return json(503, { error: "not_configured" });
   }
 
@@ -31,9 +72,14 @@ Deno.serve(async (request) => {
     .eq("status", "pending").lte("planned_end_at", now.toISOString())
     .order("planned_end_at", { ascending: true }).limit(25);
   if (loadError) return json(500, { error: "load_failed" });
-  const key = await importPKCS8(privateKey, "ES256");
-  const bearer = await new SignJWT({}).setProtectedHeader({ alg: "ES256", kid: keyID })
-    .setIssuer(team).setIssuedAt().sign(key);
+  const bearers = {} as Record<"sandbox" | "production", string>;
+  for (const environment of ["sandbox", "production"] as const) {
+    const credential = credentials[environment];
+    const key = await importPKCS8(credential.privateKey!.replace(/\\n/g, "\n"), "ES256");
+    bearers[environment] = await new SignJWT({})
+      .setProtectedHeader({ alg: "ES256", kid: credential.keyID! })
+      .setIssuer(team).setIssuedAt().sign(key);
+  }
   let sent = 0;
   let failed = 0;
 
@@ -45,39 +91,30 @@ Deno.serve(async (request) => {
     if (claimError || !claimed?.length) continue;
 
     const payload = endPayload(row.started_at, row.planned_end_at);
-    const host = row.apns_environment === "sandbox"
-      ? "https://api.sandbox.push.apple.com"
-      : "https://api.push.apple.com";
-    let status = 503;
-    let reason = "network_error";
-    try {
-      const response = await fetch(`${host}/3/device/${row.push_token}`, {
-        method: "POST",
-        headers: {
-          authorization: `bearer ${bearer}`,
-          "apns-topic": `${bundleID}.push-type.liveactivity`,
-          "apns-push-type": "liveactivity",
-          "apns-priority": "10",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-      status = response.status;
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        reason = String(errorBody.reason ?? `http_${status}`).slice(0, 100);
-      }
-    } catch { /* Retry a network failure on the next dispatch. */ }
+    let environment: "sandbox" | "production" = row.apns_environment === "sandbox"
+      ? "sandbox" : "production";
+    let result = await sendEndPush(
+      environment, row.push_token, bearers[environment], bundleID, payload,
+    );
+    // A development-signed Release build can carry a sandbox token. APNs is
+    // authoritative about the token's environment, so retry only this error.
+    if (result.status === 400 && result.reason === "BadDeviceToken") {
+      environment = environment === "sandbox" ? "production" : "sandbox";
+      result = await sendEndPush(
+        environment, row.push_token, bearers[environment], bundleID, payload,
+      );
+    }
 
     const attempts = row.attempts + 1;
-    const nextStatus = deliveryStatus(status, attempts);
+    const nextStatus = deliveryStatus(result.status, attempts);
     await admin.from("focus_live_activity_ends").update({
       status: nextStatus,
       attempts,
-      last_error: status === 200 ? null : reason,
+      apns_environment: environment,
+      last_error: result.status === 200 ? null : result.reason,
       updated_at: new Date().toISOString(),
     }).eq("user_id", row.user_id).eq("session_id", row.session_id).eq("status", "sending");
-    if (status === 200) sent++; else failed++;
+    if (result.status === 200) sent++; else failed++;
   }
 
   await admin.from("focus_live_activity_ends").delete()
