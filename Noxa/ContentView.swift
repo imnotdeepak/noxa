@@ -742,7 +742,7 @@ struct ContentView: View {
 
     private var hero: some View {
         VStack(spacing: 8) {
-            Text("TIME PROTECTED")
+            Text("FOCUS TIME")
                 .font(NoxaTheme.font(12, weight: .bold, relativeTo: .caption))
                 .tracking(1.6)
                 .foregroundStyle(NoxaTheme.accent)
@@ -752,7 +752,7 @@ struct ContentView: View {
                 .monospacedDigit()
                 .tracking(-1.5)
 
-            Text("\(dailyFocusMinutes == 1 ? "minute" : "minutes") protected today")
+            Text("\(dailyFocusMinutes == 1 ? "minute" : "minutes") focused today")
                 .font(NoxaTheme.font(16, weight: .medium, relativeTo: .subheadline))
                 .foregroundStyle(NoxaTheme.secondaryText)
         }
@@ -1742,7 +1742,7 @@ struct ContentView: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(spacing: 8) {
-                    Text("TIME PROTECTED")
+                    Text("FOCUS TIME")
                         .font(NoxaTheme.font(12, weight: .bold, relativeTo: .caption))
                         .tracking(1.6)
                         .foregroundStyle(NoxaTheme.accent)
@@ -1766,7 +1766,7 @@ struct ContentView: View {
                 }
 
                 HStack(spacing: 12) {
-                    statCard(title: "Time protected", value: Self.compactFocusTime(minutes: period.focusMinutes))
+                    statCard(title: "Focus time", value: Self.compactFocusTime(minutes: period.focusMinutes))
                     statCard(title: "Completed", value: "\(period.completedSessions)")
                 }
 
