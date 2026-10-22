@@ -50,6 +50,8 @@ DoorDash remained shielded late in round 4. Its `intervalDidEnd` callback arrive
 
 After the cycle completed and Noxa reconciled it, the new signed build containing those display fixes was installed and launched successfully. The completion prompt remained available. The changed shield text, widget timeline, and stale Live Activity presentation have not yet been observed on a fresh active cycle, so their physical checks remain open.
 
+A later Debug build recorded Noxa's notification authorization state after launch. The paired iPhone returned `authorized` (raw value 2). Thus notification permission was available after the cycle, but the earlier break-3 screenshots still cannot distinguish a quietly delivered notice from a scheduling or presentation failure. Verify pending requests and delivery in a future run before marking the notice check complete.
+
 The app and monitor now use one shared writer for app, category, and website selections. A short iPhone check on this build still displayed the existing Dazz Cam schedule shield with the correct schedule name; it did not test a transition or release. Its “until 9:00 PM” wording was ambiguous late at night, so schedule shield messages now include the release date. A second iPhone check showed “until Oct 21, 2026 at 9:00 PM” on October 20. Repeat focus, schedule boundary, daily-limit, and overlap shield/release checks on this build before treating the refactor as physically validated.
 
 ## Observed scheduled-app check

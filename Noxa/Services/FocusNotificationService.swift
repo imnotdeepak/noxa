@@ -19,6 +19,12 @@ final class FocusNotificationService: ObservableObject {
 
     func refreshAuthorizationStatus() async {
         authorizationStatus = await center.notificationSettings().authorizationStatus
+        #if DEBUG
+        UserDefaults(suiteName: "group.LycheeCorp.Noxa")?.set(
+            authorizationStatus.rawValue,
+            forKey: "noxa.debug.notificationAuthorizationStatus"
+        )
+        #endif
     }
 
     @discardableResult
