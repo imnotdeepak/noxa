@@ -16,6 +16,8 @@ The watch first found Noxa running again at **1:10:05 PM**, after the server acc
 
 After the finished-session capture, the owner tapped the placed Lock Screen Start Focus widget. It opened Noxa's **Review Focus** sheet. A screenshot showed the default **1h** duration, saved targets, planned end time, Strict warning, and separate Start Focus and Cancel controls. No session started from the widget tap alone. This closes the physical Lock Screen widget tap check.
 
+The iPhone's Shortcuts app listed Noxa with its **Start Focus** action. The owner ran that action once. It opened the same Review Focus sheet with a one-hour default, saved targets, planned end, Strict warning, and explicit Start/Cancel controls. No block began from running the shortcut alone. This closes shortcut discovery and reviewed-launch checks on this device.
+
 ### October 23 real-token delivery check
 
 A signed Debug build started a reviewed 15-minute Strict session at **12:24:14 PM EDT**, planned to end at **12:39:14 PM**. The UI test asserted the 15-minute duration before starting and then closed Noxa. Supabase received a 160-character sandbox Live Activity push token tied to that session. The Home widgets showed the active countdown. Noxa briefly returned to the foreground around 12:34 PM; it was closed again, and a process check then showed it stopped. The server record remained pending until expiry. At **12:39:26.674 PM**, the scheduled dispatcher reported `sent` on its first attempt with no APNs error, about 13 seconds after the planned end. The after-end screenshots showed App Library rather than Noxa. A later process check found Noxa running again, so the exact time it reopened is unknown.
