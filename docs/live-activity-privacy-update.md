@@ -1,7 +1,9 @@
-# Privacy policy update required before the push-enabled build ships
+# Live Activity privacy policy disclosure
 
-Add this disclosure to the published Noxa privacy policy at `noxaapp.com/privacy`
-before releasing the push-enabled Live Activity build:
+Published at `noxaapp.com/privacy` on October 23, 2026 through
+`imnotdeepak/noxaapp` pull request #1. The published policy also names the
+focus-session identifier and account association stored with the push token.
+The original approved disclosure draft was:
 
 > If you enable Live Activities, Noxa sends a temporary Apple Live Activity push
 > token and your focus timer's start and planned end times to our service. We
@@ -12,6 +14,5 @@ before releasing the push-enabled Live Activity build:
 > receives the push needed to end the Live Activity. If the service or network
 > is unavailable, Noxa removes the timer when you next open the app.
 
-The app already links to the published policy from onboarding and Settings.
-The website is outside this repository, so this file is the exact copy to
-publish alongside backend configuration, before public release.
+The app links to the published policy from onboarding and Settings. The website
+source is maintained separately from this iOS repository.

@@ -6,7 +6,7 @@ Status: The paired iPhone “iphony 5x” has now shown a named schedule shield,
 
 The Live Activity registration and dispatcher Edge Functions are deployed to the Noxa Supabase project. The `focus_live_activity_ends` table is present. Noxa-specific sandbox and production APNs keys are stored as Supabase secrets, and a 30-second database job invokes the dispatcher with a secret held in Supabase Vault. The job recorded a successful run and an HTTP 200 response; a direct authorized request returned `{"sent":0,"failed":0}`. Both endpoints rejected unauthenticated requests with HTTP 401. Apple Developer shows Push Notifications enabled for `LycheeCorp.Noxa`, and a fresh signed Debug iPhone build and its provisioning profile both contain the development `aps-environment` entitlement. The private keys and scheduler secret remain outside Git.
 
-This verifies the empty-queue server path. A physical iPhone session must still register a real Live Activity push token, end while Noxa stays closed, receive Apple's end push, and disappear from the Lock Screen. Repeat with a production-signed build before claiming release readiness. The public privacy-policy disclosure is being updated separately.
+This verifies the empty-queue server path. A physical iPhone session must still register a real Live Activity push token, end while Noxa stays closed, receive Apple's end push, and disappear from the Lock Screen. Repeat with a production-signed build before claiming release readiness. The updated privacy-policy disclosure is live at `noxaapp.com/privacy`.
 
 ## October 22 Safari, widget, and Strict-session follow-up
 
