@@ -121,7 +121,11 @@ enum ShieldRuleExplanation {
             distinctReasons.append(reason)
         }
         guard !distinctReasons.isEmpty else { return nil }
-        return distinctReasons.prefix(2).joined(separator: " ") + " Other rules may still apply."
+        let refreshHint = distinctReasons.count == 1 && distinctReasons[0].hasPrefix("Focus until ")
+            ? " If still blocked afterward, reopen the app or page."
+            : ""
+        return distinctReasons.prefix(2).joined(separator: " ")
+            + refreshHint + " Other rules may still apply."
     }
 
     private static func decode<T: Decodable>(_ key: String, from defaults: UserDefaults) -> T? {
