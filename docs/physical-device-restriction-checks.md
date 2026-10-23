@@ -6,7 +6,13 @@ Status: The paired iPhone “iphony 5x” has now shown a named schedule shield,
 
 The Live Activity registration and dispatcher Edge Functions are deployed to the Noxa Supabase project. The `focus_live_activity_ends` table is present. Noxa-specific sandbox and production APNs keys are stored as Supabase secrets, and a 30-second database job invokes the dispatcher with a secret held in Supabase Vault. The job recorded a successful run and an HTTP 200 response; a direct authorized request returned `{"sent":0,"failed":0}`. Both endpoints rejected unauthenticated requests with HTTP 401. Apple Developer shows Push Notifications enabled for `LycheeCorp.Noxa`, and a fresh signed Debug iPhone build and its provisioning profile both contain the development `aps-environment` entitlement. The private keys and scheduler secret remain outside Git.
 
-This verifies the empty-queue server path. A physical iPhone session must still register a real Live Activity push token, end while Noxa stays closed, receive Apple's end push, and disappear from the Lock Screen. Repeat with a production-signed build before claiming release readiness. The updated privacy-policy disclosure is live at `noxaapp.com/privacy`.
+The empty-queue server path passed. The real-token result below verifies registration and APNs acceptance while Noxa is closed, but the Lock Screen dismissal itself still needs a visible check. Repeat with a production-signed build before claiming release readiness. The updated privacy-policy disclosure is live at `noxaapp.com/privacy`.
+
+### October 23 real-token delivery check
+
+A signed Debug build started a reviewed 15-minute Strict session at **12:24:14 PM EDT**, planned to end at **12:39:14 PM**. The UI test asserted the 15-minute duration before starting and then closed Noxa. Supabase received a 160-character sandbox Live Activity push token tied to that session. The Home widgets showed the active countdown. Noxa briefly returned to the foreground around 12:34 PM; it was closed again before the planned end. The server record remained pending until expiry. At **12:39:26.674 PM**, the scheduled dispatcher reported `sent` on its first attempt with no APNs error, about 13 seconds after the planned end. Noxa was not running at expiry.
+
+This establishes successful registration and Apple APNs acceptance of a real end push while Noxa was closed. The phone remained on the Home/App Library screen in the captured after-end images, so those captures do **not** prove the Lock Screen Live Activity disappeared. A before-and-after Lock Screen observation without opening Noxa remains required. The app's actual restriction release was not checked in this run. The temporary UI test methods were removed after the session started; the repository is clean.
 
 ## October 22 Safari, widget, and Strict-session follow-up
 
