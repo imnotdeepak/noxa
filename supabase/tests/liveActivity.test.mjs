@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { deliveryStatus, endPayload } from "./liveActivity.mjs";
+import { deliveryStatus, endPayload } from "../functions/dispatch-focus-live-activity-ends/liveActivity.mjs";
 
 test("end payload uses ActivityKit's default Date encoding and immediate dismissal", () => {
   const payload = endPayload(

@@ -1,6 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { importPKCS8, SignJWT } from "npm:jose@5";
-import { deliveryStatus, endPayload } from "../_shared/liveActivity.mjs";
+import { deliveryStatus, endPayload } from "./liveActivity.mjs";
 
 const json = (status: number, body: object) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
