@@ -14,6 +14,8 @@ A signed Debug build started a reviewed 15-minute Strict session at **12:24:14 P
 
 This establishes successful registration and Apple APNs acceptance of a real end push while Noxa was closed. The phone remained on the Home/App Library screen in the captured after-end images, so those captures do **not** prove the Lock Screen Live Activity disappeared. A before-and-after Lock Screen observation without opening Noxa remains required. The app's actual restriction release was not checked in this run. The temporary UI test methods were removed after the session started; the repository is clean.
 
+A separate Release archive and internal TestFlight `.ipa` export succeeded on the Mac. The exported Noxa app's provisioning profile contains `aps-environment=production`, Family Controls, and the Noxa app group. This validates production signing setup, not production push delivery on an iPhone; the exported package was not uploaded or installed.
+
 ## October 22 Safari, widget, and Strict-session follow-up
 
 The owner enabled Noxa Instagram Filter in Safari and placed the Home and Lock Screen widgets. On the paired iPhone, Noxa's Instagram choice was initially Off. A temporary UI test selected **Hide Reels and Explore**. In signed-out Safari, direct `instagram.com/explore/` and `instagram.com/reels/` showed Noxa's “This part of Instagram is paused” overlay. Its Return to Instagram feed link opened the main route without that overlay. The Safari page was signed out, so this does not validate signed-in feed, messages, search, profiles, or embedded Reels. The local Safari script tests passed (7/7). A later check restored the in-app choice to Off and verified that Safari loaded `/explore/` without Noxa's overlay.
