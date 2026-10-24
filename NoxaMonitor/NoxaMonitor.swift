@@ -276,7 +276,9 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         recordPomodoroBoundaryCallback("end", activity: activity)
         if activity == NoxaMonitorActivity.focusActivityName {
             if let cycle = loadPomodoroCycle() {
-                reconcilePomodoroShield(cycle)
+                reconcilePomodoroShield(cycle, at: callbackDate(
+                    for: cycle.plan.workInterval(round: 1)?.end
+                ))
             } else if hasUnexpiredFocusSession() {
                 applyPersistedFocusShield(reason: "reconciled late focus-end callback")
             } else {
@@ -296,7 +298,7 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         } else if activity == NoxaMonitorActivity.focusReleaseActivityName {
             releaseExpiredFocusShield()
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.pomodoroWorkActivityPrefix) {
-            reconcilePomodoroShield(for: activity)
+            reconcilePomodoroShield(for: activity, ending: true)
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleV2WakePrefix)
                     || activity.rawValue.hasPrefix(NoxaMonitorActivity.scheduleV2RelaxationPrefix) {
             applyV2ScheduleShield(for: activity)
@@ -324,7 +326,9 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         if let cycle = loadPomodoroCycle() {
             // A focus callback may arrive late, after the Pomodoro phase has
             // changed. Always use the cycle's current phase and saved targets.
-            reconcilePomodoroShield(cycle)
+            reconcilePomodoroShield(cycle, at: callbackDate(
+                for: cycle.plan.workInterval(round: 1)?.start
+            ))
             return
         }
         guard let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa") else { return }
@@ -373,25 +377,41 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
     }
 
     private func applyPomodoroShield(for activity: DeviceActivityName) {
-        reconcilePomodoroShield(for: activity)
+        reconcilePomodoroShield(for: activity, ending: false)
     }
 
-    private func reconcilePomodoroShield(for activity: DeviceActivityName) {
+    private func reconcilePomodoroShield(for activity: DeviceActivityName, ending: Bool) {
         let parts = activity.rawValue.split(separator: ".")
         guard let idText = parts.dropLast().last,
               let id = UUID(uuidString: String(idText)),
+              let roundText = parts.last,
+              let round = Int(roundText),
               let cycle = loadPomodoroCycle(),
-              cycle.id == id else {
+              cycle.id == id,
+              let interval = cycle.plan.workInterval(round: round) else {
             logger.error("Skipped stale Pomodoro callback for \(activity.rawValue, privacy: .public)")
             return
         }
-        reconcilePomodoroShield(cycle)
+        reconcilePomodoroShield(cycle, at: callbackDate(
+            for: ending ? interval.end : interval.start
+        ))
     }
 
-    private func reconcilePomodoroShield(_ cycle: PersistedPomodoroCycle) {
-        let now = Date()
+    /// DeviceActivity schedules use whole-second components, while the saved
+    /// cycle keeps fractional seconds. A callback can therefore arrive just
+    /// before its intended boundary. Treat only that callback as occurring at
+    /// the boundary; delayed callbacks still use the actual current time.
+    private func callbackDate(for boundary: Date?) -> Date {
+        DeviceActivityBoundaryClock.effectiveDate(now: Date(), expectedBoundary: boundary)
+    }
+
+    private func reconcilePomodoroShield(
+        _ cycle: PersistedPomodoroCycle,
+        at phaseDate: Date = Date()
+    ) {
+        let appliedAt = Date()
         for round in 1...4 {
-            if cycle.plan.workInterval(round: round)?.contains(now) == true {
+            if cycle.plan.workInterval(round: round)?.contains(phaseDate) == true {
                 if let data = try? JSONEncoder().encode(PersistedFocusSessionConfiguration(
                     selection: cycle.selection,
                     websiteDomains: cycle.websiteDomains
@@ -409,7 +429,7 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
                 let enforcementKey = "noxa.pomodoro.enforced.\(cycle.id.uuidString.lowercased()).\(round)"
                 let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa")
                 if defaults?.object(forKey: enforcementKey) == nil {
-                    defaults?.set(now, forKey: enforcementKey)
+                    defaults?.set(appliedAt, forKey: enforcementKey)
                 }
                 if cycle.roundSessionIDs.indices.contains(round - 1), let defaults {
                     saveFocusMonitorReceipt(

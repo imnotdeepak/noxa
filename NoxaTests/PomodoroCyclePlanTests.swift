@@ -42,4 +42,19 @@ struct PomodoroCyclePlanTests {
         #expect(abs(resolved.start.timeIntervalSince(start)) < 1)
         #expect(abs(resolved.end.timeIntervalSince(end)) < 1)
     }
+
+    @Test func boundaryCallbackUsesSavedFractionalSecondOnlyWhenNearlyEarly() {
+        let boundary = Date(timeIntervalSince1970: 1_700_000_000.227887)
+        #expect(DeviceActivityBoundaryClock.effectiveDate(
+            now: boundary.addingTimeInterval(-0.025), expectedBoundary: boundary
+        ) == boundary)
+        let tooEarly = boundary.addingTimeInterval(-2)
+        #expect(DeviceActivityBoundaryClock.effectiveDate(
+            now: tooEarly, expectedBoundary: boundary
+        ) == tooEarly)
+        let late = boundary.addingTimeInterval(0.5)
+        #expect(DeviceActivityBoundaryClock.effectiveDate(
+            now: late, expectedBoundary: boundary
+        ) == late)
+    }
 }
