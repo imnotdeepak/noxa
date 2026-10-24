@@ -514,6 +514,20 @@ final class FocusSessionService: ObservableObject {
 
     private func schedulePomodoroMonitors(for cycle: PomodoroCycleRecord) throws {
         let calendar = Calendar.current
+        #if DEBUG
+        let registeredBefore = Set(center.activities)
+        let presence = (2...PomodoroCyclePlan.roundCount).map { round in
+            let name = NoxaDeviceActivityConfiguration.pomodoroWorkActivityName(
+                cycleID: cycle.id, round: round
+            )
+            return "\(round):\(registeredBefore.contains(name) ? 1 : 0)"
+        }.joined(separator: ",")
+        let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa")
+        let key = "noxa.debug.pomodoroMonitorPresenceBeforeScheduling"
+        var observations = defaults?.stringArray(forKey: key) ?? []
+        observations.append("\(Date().timeIntervalSince1970)|\(cycle.id.uuidString.lowercased())|\(presence)")
+        defaults?.set(Array(observations.suffix(20)), forKey: key)
+        #endif
         for round in 2...PomodoroCyclePlan.roundCount {
             guard let interval = cycle.plan.workInterval(round: round),
                   interval.end > Date() else { continue }

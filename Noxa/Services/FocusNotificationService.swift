@@ -89,7 +89,7 @@ final class FocusNotificationService: ObservableObject {
                 : "Focus round \(round) complete"
             workComplete.body = round == PomodoroCyclePlan.roundCount
                 ? "Your Pomodoro cycle is over. Would you like to start another one?"
-                : "Your apps are available for a \(cycle.plan.breakMinutes)-minute break."
+                : "Your \(cycle.plan.breakMinutes)-minute break has started. If an app stays blocked, open Noxa."
             workComplete.sound = .default
             await add(
                 content: workComplete,
@@ -114,7 +114,7 @@ final class FocusNotificationService: ObservableObject {
 
             let warning = UNMutableNotificationContent()
             warning.title = "1 minute left in your break"
-            warning.body = "Round \(round + 1) starts automatically in one minute."
+            warning.body = "Round \(round + 1) is due to start in one minute."
             warning.sound = .default
             await add(
                 content: warning,
@@ -123,8 +123,8 @@ final class FocusNotificationService: ObservableObject {
             )
 
             let nextRound = UNMutableNotificationContent()
-            nextRound.title = "Focus round \(round + 1) started"
-            nextRound.body = "Your next focus interval is scheduled."
+            nextRound.title = "Focus round \(round + 1) starting"
+            nextRound.body = "If your blocks have not appeared, open Noxa to refresh them."
             nextRound.sound = .default
             await add(
                 content: nextRound,
