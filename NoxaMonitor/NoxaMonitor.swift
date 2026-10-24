@@ -153,6 +153,36 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
     private let dailyLimitSettingsStore = ManagedSettingsStore(named: ManagedSettingsStore.Name("noxa.daily-limits"))
     private let logger = Logger(subsystem: "LycheeCorp.Noxa", category: "monitoring")
 
+    override func intervalWillStartWarning(for activity: DeviceActivityName) {
+        super.intervalWillStartWarning(for: activity)
+        recordPomodoroBoundaryCallback("will-start", activity: activity)
+        if activity == NoxaMonitorActivity.focusActivityName {
+            if let cycle = loadPomodoroCycle() {
+                reconcilePomodoroShield(cycle, at: callbackDate(
+                    for: cycle.plan.workInterval(round: 1)?.start,
+                    maxEarlySeconds: 3
+                ))
+            }
+        } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.pomodoroWorkActivityPrefix) {
+            reconcilePomodoroShield(for: activity, ending: false, maxEarlySeconds: 3)
+        }
+    }
+
+    override func intervalWillEndWarning(for activity: DeviceActivityName) {
+        super.intervalWillEndWarning(for: activity)
+        recordPomodoroBoundaryCallback("will-end", activity: activity)
+        if activity == NoxaMonitorActivity.focusActivityName {
+            if let cycle = loadPomodoroCycle() {
+                reconcilePomodoroShield(cycle, at: callbackDate(
+                    for: cycle.plan.workInterval(round: 1)?.end,
+                    maxEarlySeconds: 3
+                ))
+            }
+        } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.pomodoroWorkActivityPrefix) {
+            reconcilePomodoroShield(for: activity, ending: true, maxEarlySeconds: 3)
+        }
+    }
+
     override func intervalDidStart(for activity: DeviceActivityName) {
         super.intervalDidStart(for: activity)
         recordPomodoroBoundaryCallback("start", activity: activity)
@@ -380,7 +410,11 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         reconcilePomodoroShield(for: activity, ending: false)
     }
 
-    private func reconcilePomodoroShield(for activity: DeviceActivityName, ending: Bool) {
+    private func reconcilePomodoroShield(
+        for activity: DeviceActivityName,
+        ending: Bool,
+        maxEarlySeconds: TimeInterval = 1
+    ) {
         let parts = activity.rawValue.split(separator: ".")
         guard let idText = parts.dropLast().last,
               let id = UUID(uuidString: String(idText)),
@@ -393,7 +427,8 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
             return
         }
         reconcilePomodoroShield(cycle, at: callbackDate(
-            for: ending ? interval.end : interval.start
+            for: ending ? interval.end : interval.start,
+            maxEarlySeconds: maxEarlySeconds
         ))
     }
 
@@ -401,8 +436,15 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
     /// cycle keeps fractional seconds. A callback can therefore arrive just
     /// before its intended boundary. Treat only that callback as occurring at
     /// the boundary; delayed callbacks still use the actual current time.
-    private func callbackDate(for boundary: Date?) -> Date {
-        DeviceActivityBoundaryClock.effectiveDate(now: Date(), expectedBoundary: boundary)
+    private func callbackDate(
+        for boundary: Date?,
+        maxEarlySeconds: TimeInterval = 1
+    ) -> Date {
+        DeviceActivityBoundaryClock.effectiveDate(
+            now: Date(),
+            expectedBoundary: boundary,
+            maxEarlySeconds: maxEarlySeconds
+        )
     }
 
     private func reconcilePomodoroShield(

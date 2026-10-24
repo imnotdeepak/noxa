@@ -57,4 +57,16 @@ struct PomodoroCyclePlanTests {
             now: late, expectedBoundary: boundary
         ) == late)
     }
+
+    @Test func oneSecondWarningCanReconcileFractionalBoundaryWithoutMovingEarlierPhases() {
+        let boundary = Date(timeIntervalSince1970: 1_700_000_000.477)
+        let warning = boundary.addingTimeInterval(-1.477)
+        #expect(DeviceActivityBoundaryClock.effectiveDate(
+            now: warning, expectedBoundary: boundary, maxEarlySeconds: 3
+        ) == boundary)
+        let unrelatedEarlyCallback = boundary.addingTimeInterval(-4)
+        #expect(DeviceActivityBoundaryClock.effectiveDate(
+            now: unrelatedEarlyCallback, expectedBoundary: boundary, maxEarlySeconds: 3
+        ) == unrelatedEarlyCallback)
+    }
 }

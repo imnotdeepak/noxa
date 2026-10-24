@@ -543,12 +543,15 @@ final class FocusSessionService: ObservableObject {
                 [.calendar, .year, .month, .day, .hour, .minute, .second],
                 from: interval.end
             )
+            // Warning callbacks are an additional chance to reconcile a work
+            // boundary when the normal start/end callback is delayed.
             try center.startMonitoring(
                 name,
                 during: DeviceActivitySchedule(
                     intervalStart: start,
                     intervalEnd: end,
-                    repeats: false
+                    repeats: false,
+                    warningTime: DateComponents(second: 1)
                 )
             )
         }
@@ -725,7 +728,8 @@ final class FocusSessionService: ObservableObject {
         let schedule = DeviceActivitySchedule(
             intervalStart: startComponents,
             intervalEnd: endComponents,
-            repeats: false
+            repeats: false,
+            warningTime: DateComponents(second: 1)
         )
         try center.startMonitoring(
             NoxaDeviceActivityConfiguration.focusActivityName,
