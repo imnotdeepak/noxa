@@ -1,5 +1,19 @@
 # Physical-device restriction checks
 
+## October 24 Focus and schedule release retest
+
+A reviewed 15-minute Strict Focus session ran from **12:13:39 AM to 12:28:39 AM EDT** on the paired iPhone. During Focus, DoorDash and Dazz Cam were blocked, and Safari showed “Website Not Allowed” for `reddit.com`. DoorDash's shield named Focus, showed the planned end time, and included the new advice to reopen the app or page if it remained blocked afterward. The shared monitor receipt and Focus restriction snapshot matched the active session.
+
+Shortly after the planned end, DoorDash opened and the shared Focus restriction and monitor receipt were absent. The owner confirmed that `reddit.com` loaded while Dazz Cam remained blocked by its separate schedule. This verifies that the Focus-owned app and website restrictions cleared without removing the schedule restriction in this run. Noxa's process appeared near the boundary without an intentional user launch, so the run does not isolate which background callback performed cleanup. Earlier missed or delayed releases remain an open reliability concern.
+
+## October 24 accessibility audit
+
+An automated audit on the paired iPhone reached Home, Limits, Stats, Account, and the Focus start review. After expanding the tap areas for daily-limit controls and a website Remove button, and giving saved website names and the signed-in email contextual spoken labels, that route passed the audit categories other than contrast, Dynamic Type, and clipped text. The temporary audit UI test was removed after the run.
+
+The full simulator unit suite passed again after these edits: **83 passed, 0 failed** (`/tmp/noxa-roadmap-oct24-after-a11y.xcresult`).
+
+This is **not** a full accessibility pass. The complete audit reported contrast on translucent Home text despite a sampled foreground/background pair exceeding common contrast thresholds; it also flagged the focus duration buttons for Dynamic Type and a visually uncut Custom capsule for clipping. A separate Blocklist audit reported “Potentially inaccessible text” on its app-token list without identifying a specific element. Those categories and Blocklist need a targeted manual VoiceOver, large-text, and appearance check before the release quality item can close.
+
 ## October 23 signed-in Instagram Safari check
 
 With the owner signed in and Noxa's **Hide Reels and Explore** choice temporarily enabled, the paired iPhone showed the Instagram feed and messages without Noxa's overlay. Direct `/reels/` and `/explore/` showed the pause screen. The first run also paused `/explore/search/`, contradicting the planned useful-route behavior. The content script now exempts that search path and keeps its navigation link visible. After installing the revised build, signed-in Safari showed the search field, accepted a search query, and opened the owner's profile; Reels and Explore remained paused. All eight local Safari script tests passed. The temporary UI test methods were removed, and the Instagram choice was returned to **Off** in Noxa. Screenshots containing account content remain outside the repository.
