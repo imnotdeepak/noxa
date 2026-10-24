@@ -7,10 +7,10 @@
   const hiddenLinkSelector = [
     'a[href^="/reel/"]',
     'a[href^="/reels/"]',
-    'a[href^="/explore/"]',
+    'a[href^="/explore/"]:not([href^="/explore/search/"]):not([href="/explore/search"])',
     'a[href^="https://www.instagram.com/reel/"]',
     'a[href^="https://www.instagram.com/reels/"]',
-    'a[href^="https://www.instagram.com/explore/"]'
+    'a[href^="https://www.instagram.com/explore/"]:not([href^="https://www.instagram.com/explore/search/"]):not([href="https://www.instagram.com/explore/search"])'
   ].join(",");
 
   const style = document.createElement("style");
@@ -39,6 +39,7 @@
   }
 
   function isBlockedPath(pathname) {
+    if (/^\/explore\/search(?:\/|$)/i.test(pathname)) return false;
     return /^\/(?:reel|reels|explore)(?:\/|$)/i.test(pathname);
   }
 

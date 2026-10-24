@@ -1,5 +1,11 @@
 # Physical-device restriction checks
 
+## October 23 signed-in Instagram Safari check
+
+With the owner signed in and Noxa's **Hide Reels and Explore** choice temporarily enabled, the paired iPhone showed the Instagram feed and messages without Noxa's overlay. Direct `/reels/` and `/explore/` showed the pause screen. The first run also paused `/explore/search/`, contradicting the planned useful-route behavior. The content script now exempts that search path and keeps its navigation link visible. After installing the revised build, signed-in Safari showed the search field, accepted a search query, and opened the owner's profile; Reels and Explore remained paused. All eight local Safari script tests passed. The temporary UI test methods were removed, and the Instagram choice was returned to **Off** in Noxa. Screenshots containing account content remain outside the repository.
+
+This validates those routes on one signed-in account and current Instagram web layout. Embedded Reels in the feed, navigation after login, localization, Safari permission loss, and paid-access expiry still need physical checks. A visible feed post with video is not by itself proof that embedded Reels are filtered.
+
 ## October 23 Focus and schedule overlap, end-screen refresh
 
 On the current signed iPhone build, DoorDash opened before Focus while Dazz Cam showed its separate allowed-hours schedule shield. A reviewed 15-minute Strict session started at **2:06:03 PM EDT** and was due at **2:21:03 PM**. Noxa was closed. During Focus, DoorDash showed “Focus until 2:21 PM,” Dazz Cam's shield named both Focus and its schedule, and Safari blocked the selected `reddit.com` site. The iPhone also showed DoorDash blocked with 35 seconds remaining. This verifies that Focus added its restrictions without removing the schedule rule.
@@ -10,7 +16,7 @@ The owner suggested that an already-displayed shield might simply need to be lef
 
 The simulator suite passed **83 NoxaTests** on this branch before these physical checks. The temporary UI methods used to start the sessions were removed. A later code change adds “If still blocked afterward, reopen the app or page” to a Focus-only shield. The iOS Simulator and signed iPhone builds passed, and the new build was installed after the session ended. The revised copy has not yet been visually checked on the iPhone.
 
-Status: The paired iPhone “iphony 5x” has now shown a named schedule shield, Full Block in Safari, selective Reels/Explore filtering in signed-out Safari, actual Home widget idle/active/reset states and tap-through, Lock Screen widget tap-through and countdowns, Live Activity countdown and unattended clearance, Shortcuts reviewed launch, and multiple real Focus shields. A missed normal focus-end callback on October 22 left a Strict shield active for more than three minutes until Noxa opened; a later retest released automatically. A controlled third test then demonstrated the independent backup release when the normal cleanup was deliberately withheld. Signed-in Instagram, isolated push-only Live Activity dismissal, production push delivery, and the full transition matrix remain open. Simulator results do not prove Screen Time enforcement.
+Status: The paired iPhone “iphony 5x” has now shown a named schedule shield, Full Block in Safari, selective Reels/Explore filtering in signed-out and signed-in Safari, actual Home widget idle/active/reset states and tap-through, Lock Screen widget tap-through and countdowns, Live Activity countdown and unattended clearance, Shortcuts reviewed launch, and multiple real Focus shields. A missed normal focus-end callback on October 22 left a Strict shield active for more than three minutes until Noxa opened; a later retest released automatically. A controlled third test then demonstrated the independent backup release when the normal cleanup was deliberately withheld. Embedded Reels and Instagram filter failure states, isolated push-only Live Activity dismissal, production push delivery, and the full transition matrix remain open. Simulator results do not prove Screen Time enforcement.
 
 ## October 23 Live Activity server readiness
 

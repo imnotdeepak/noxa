@@ -79,9 +79,17 @@ test("direct Reels and Explore routes are covered, including a single reel", asy
 });
 
 test("the feed and useful routes stay available", async () => {
-  for (const route of ["/", "/direct/inbox/", "/accounts/edit/", "/myprofile/"]) {
+  for (const route of ["/", "/direct/inbox/", "/accounts/edit/", "/myprofile/", "/explore/search", "/explore/search/", "/explore/search/keyword/"]) {
     assert.equal((await runAt(route)).overlay, undefined, `${route} should stay available`);
   }
+});
+
+test("search links remain visible while Explore links are hidden", async () => {
+  const page = await runAt("/");
+  const css = page.document.head.children[0].textContent;
+  assert.ok(css.includes(':not([href^="/explore/search/"])'));
+  assert.ok(css.includes(':not([href="/explore/search"])'));
+  assert.ok(css.includes(':not([href^="https://www.instagram.com/explore/search/"])'));
 });
 
 test("the script ignores other hosts and fails closed without paid access", async () => {
