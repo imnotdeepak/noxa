@@ -12,9 +12,15 @@
     'a[href^="https://www.instagram.com/reels/"]',
     'a[href^="https://www.instagram.com/explore/"]:not([href^="https://www.instagram.com/explore/search/"]):not([href="https://www.instagram.com/explore/search"])'
   ].join(",");
+  const feedReelSelector = [
+    'article:has(a[href^="/reel/"])',
+    'article:has(a[href^="/reels/"])',
+    'article:has(a[href^="https://www.instagram.com/reel/"])',
+    'article:has(a[href^="https://www.instagram.com/reels/"])'
+  ].join(",");
 
   const style = document.createElement("style");
-  style.textContent = `${hiddenLinkSelector} { display: none !important; }`;
+  style.textContent = `${hiddenLinkSelector}, ${feedReelSelector} { display: none !important; }`;
   let enabled = false;
 
   async function refreshPermission() {
