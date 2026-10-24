@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import os
 import UserNotifications
 
 @MainActor
@@ -7,6 +8,7 @@ final class FocusNotificationService: ObservableObject {
     @Published private(set) var authorizationStatus: UNAuthorizationStatus = .notDetermined
 
     private let center: UNUserNotificationCenter
+    private let logger = Logger(subsystem: "LycheeCorp.Noxa", category: "notifications")
 
     init(center: UNUserNotificationCenter = .current()) {
         self.center = center
@@ -18,12 +20,17 @@ final class FocusNotificationService: ObservableObject {
     }
 
     func refreshAuthorizationStatus() async {
-        authorizationStatus = await center.notificationSettings().authorizationStatus
+        let settings = await center.notificationSettings()
+        authorizationStatus = settings.authorizationStatus
         #if DEBUG
-        UserDefaults(suiteName: "group.LycheeCorp.Noxa")?.set(
-            authorizationStatus.rawValue,
-            forKey: "noxa.debug.notificationAuthorizationStatus"
-        )
+        if let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa") {
+            defaults.set(settings.authorizationStatus.rawValue, forKey: "noxa.debug.notificationAuthorizationStatus")
+            defaults.set(settings.alertSetting.rawValue, forKey: "noxa.debug.notificationAlertSetting")
+            defaults.set(settings.lockScreenSetting.rawValue, forKey: "noxa.debug.notificationLockScreenSetting")
+            defaults.set(settings.notificationCenterSetting.rawValue, forKey: "noxa.debug.notificationCenterSetting")
+            defaults.set(settings.scheduledDeliverySetting.rawValue, forKey: "noxa.debug.notificationScheduledDeliverySetting")
+            defaults.set(settings.soundSetting.rawValue, forKey: "noxa.debug.notificationSoundSetting")
+        }
         #endif
     }
 
@@ -154,7 +161,11 @@ final class FocusNotificationService: ObservableObject {
             content: content,
             trigger: UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false)
         )
-        try? await center.add(request)
+        do {
+            try await center.add(request)
+        } catch {
+            logger.error("Could not schedule a focus notification: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     private func warningIdentifier(for sessionID: UUID) -> String {
