@@ -13,6 +13,50 @@ import Testing
 
 struct NoxaTests {
 
+    @Test @MainActor func manualShieldSnapshotPersistsSeparatelyFromEditableSelection() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.ManualShield.\(UUID().uuidString)"))
+        let store = AppGroupStore(defaults: defaults)
+        let configuration = ManualShieldConfiguration(
+            selection: FamilyActivitySelection(),
+            websiteDomains: ["reddit.com"]
+        )
+
+        try store.saveManualShield(configuration)
+        try store.saveFamilyActivitySelection(FamilyActivitySelection())
+        #expect(try store.loadManualShield() == configuration)
+
+        store.clearManualShield()
+        #expect(try store.loadManualShield() == nil)
+        #expect(try store.loadFamilyActivitySelection() != nil)
+    }
+
+    @Test @MainActor func manualShieldActivationAndRemovalUpdateDurableState() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.ManualActivation.\(UUID().uuidString)"))
+        let store = AppGroupStore(defaults: defaults)
+        let service = ScreenTimeRestrictionService(store: store)
+
+        service.applyShield(customDomains: ["reddit.com"])
+        #expect(try store.loadManualShield()?.websiteDomains == ["reddit.com"])
+
+        service.removeShield()
+        #expect(try store.loadManualShield() == nil)
+    }
+
+    @Test @MainActor func websiteBlocklistActivationSurvivesServiceRecreation() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.WebsiteActivation.\(UUID().uuidString)"))
+        let store = AppGroupStore(defaults: defaults)
+        let first = WebsiteBlocklistService(store: store)
+        #expect(first.addDomain("reddit.com"))
+        first.applyBlocklist()
+
+        let second = WebsiteBlocklistService(store: store)
+        #expect(second.isBlocklistActive)
+        #expect(store.isWebsiteShieldActive)
+
+        second.clearBlocklist()
+        #expect(!store.isWebsiteShieldActive)
+    }
+
     @Test @MainActor func localSnapshotRoundTripsThroughAppGroupStore() throws {
         let suiteName = "NoxaTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
@@ -85,6 +129,62 @@ struct NoxaTests {
         #expect(FocusSessionService.normalizedDurationMinutes(1) == 15)
         #expect(FocusSessionService.normalizedDurationMinutes(45) == 45)
         #expect(FocusSessionService.normalizedDurationMinutes(600) == 480)
+        #expect(FocusSessionService.normalizedDurationMinutes(600, strict: true) == 240)
+    }
+
+    @Test @MainActor func strictSettingPersistsButDoesNotRewriteAnExistingSession() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.StrictSetting.\(UUID().uuidString)"))
+        let store = AppGroupStore(defaults: defaults)
+        let existingSession = ActiveSessionRecord(
+            plannedEndAt: Date().addingTimeInterval(900),
+            plannedDurationSeconds: 900,
+            outcome: .active
+        )
+        var snapshot = NoxaLocalSnapshot()
+        snapshot.activeSession = existingSession
+        try store.saveSnapshot(snapshot)
+
+        let service = FocusSessionService(store: store)
+        #expect(!service.strictModeEnabled)
+        service.setStrictModeEnabled(true)
+
+        #expect(FocusSessionService(store: store).strictModeEnabled)
+        #expect(service.activeSession?.isStrict == false)
+        #expect(try store.loadSnapshot()?.activeSession?.isStrict == false)
+    }
+
+    @Test @MainActor func strictActiveSessionRejectsEarlyEnd() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.StrictEnd.\(UUID().uuidString)"))
+        let store = AppGroupStore(defaults: defaults)
+        let session = ActiveSessionRecord(
+            plannedEndAt: Date().addingTimeInterval(900),
+            plannedDurationSeconds: 900,
+            outcome: .active,
+            isStrict: true
+        )
+        var snapshot = NoxaLocalSnapshot()
+        snapshot.activeSession = session
+        try store.saveSnapshot(snapshot)
+
+        let service = FocusSessionService(store: store)
+        service.endEarly()
+
+        #expect(service.activeSession?.id == session.id)
+        #expect(try store.loadSnapshot()?.activeSession?.outcome == .active)
+        #expect(service.errorMessage?.contains("cannot end early") == true)
+    }
+
+    @Test func legacySessionWithoutStrictFieldDecodesAsNormal() throws {
+        let session = ActiveSessionRecord(
+            plannedEndAt: Date(timeIntervalSince1970: 1_700_001_500),
+            plannedDurationSeconds: 1_500
+        )
+        let encoded = try JSONEncoder().encode(session)
+        var object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        object.removeValue(forKey: "isStrict")
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+
+        #expect(try JSONDecoder().decode(ActiveSessionRecord.self, from: legacyData).isStrict == false)
     }
 
     @Test @MainActor func focusSessionRestrictionsRoundTripThroughAppGroupStore() throws {
@@ -103,7 +203,33 @@ struct NoxaTests {
         #expect(try store.loadFocusSessionRestrictions() == nil)
     }
 
-    @Test @MainActor func blocklistEditsAreRejectedDuringAnActiveFocusSession() throws {
+    @Test @MainActor func focusMonitorReceiptClearsWithRestrictions() throws {
+        let suiteName = "NoxaTests.FocusMonitorReceipt.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let store = AppGroupStore(defaults: defaults)
+        let receipt = FocusMonitorReceipt(sessionID: UUID(), appliedAt: Date())
+        defaults.set(try JSONEncoder().encode(receipt), forKey: "noxa.focusMonitorReceipt")
+
+        #expect(try store.loadFocusMonitorReceipt() == receipt)
+        store.clearFocusSessionRestrictions()
+        #expect(try store.loadFocusMonitorReceipt() == nil)
+    }
+
+    @Test @MainActor func safariFilterToggleAndEntitlementExpiryPersistSeparately() throws {
+        let suiteName = "NoxaTests.SafariFilter.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let store = AppGroupStore(defaults: defaults)
+
+        #expect(!store.isSafariFilterEnabled)
+        store.setSafariFilterEnabled(true)
+        #expect(store.isSafariFilterEnabled)
+        store.setSafariFilterAllowedUntil(Date().addingTimeInterval(3_600))
+        #expect((defaults.object(forKey: "noxa.safariFilterAllowedUntil") as? Date) != nil)
+        store.setSafariFilterAllowedUntil(nil)
+        #expect(defaults.object(forKey: "noxa.safariFilterAllowedUntil") == nil)
+    }
+
+    @Test @MainActor func activeFocusSessionAllowsAdditionsButRejectsRemovals() throws {
         let suiteName = "NoxaTests.FocusLock.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         let store = AppGroupStore(defaults: defaults)
@@ -114,11 +240,19 @@ struct NoxaTests {
             outcome: .active
         )
         try store.saveSnapshot(snapshot)
+        try store.saveFocusSessionRestrictions(
+            FocusSessionRestrictionConfiguration(selection: FamilyActivitySelection())
+        )
 
         let websites = WebsiteBlocklistService(store: store)
 
-        #expect(!websites.addDomain("reddit.com"))
-        #expect(websites.domains.isEmpty)
+        #expect(websites.addDomain("reddit.com"))
+        #expect(websites.domains == ["reddit.com"])
+        #expect(try store.loadFocusSessionRestrictions()?.websiteDomains == ["reddit.com"])
+
+        websites.removeDomain("reddit.com")
+
+        #expect(websites.domains == ["reddit.com"])
         #expect(websites.errorMessage == "Blocklist changes are locked until the focus session ends.")
     }
 
@@ -202,11 +336,70 @@ struct NoxaTests {
 
         #expect(statistics.completedSessions == 4)
         #expect(statistics.abandonedSessions == 2)
-        #expect(statistics.totalFocusMinutes == 90)
-        #expect(statistics.weeklyFocusMinutes == 60)
+        #expect(statistics.totalFocusMinutes == 95)
+        #expect(statistics.dailyFocusMinutes == 25)
+        #expect(statistics.weeklyFocusMinutes == 65)
+        #expect(statistics.monthlyFocusMinutes == 95)
+        #expect(statistics.yearlyFocusMinutes == 95)
         #expect(statistics.currentStreak == 3)
         #expect(statistics.longestStreak == 3)
         #expect(statistics.completionRate == 67)
+    }
+
+    @Test func focusPeriodStatisticsUseTheSelectedRollingWindow() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(secondsFromGMT: 0))
+        let now = try #require(calendar.date(from: DateComponents(
+            year: 2026, month: 9, day: 24, hour: 12
+        )))
+
+        func session(daysAgo: Int, outcome: SessionOutcome, minutes: Int) throws -> ActiveSessionRecord {
+            let start = try #require(calendar.date(byAdding: .day, value: -daysAgo, to: now))
+            return ActiveSessionRecord(
+                startedAt: start,
+                plannedEndAt: start.addingTimeInterval(TimeInterval(minutes * 60)),
+                plannedDurationSeconds: minutes * 60,
+                outcome: outcome,
+                actualDurationSeconds: minutes * 60
+            )
+        }
+
+        let history = try [
+            session(daysAgo: 2, outcome: .completed, minutes: 30),
+            session(daysAgo: 3, outcome: .endedEarly, minutes: 10),
+            session(daysAgo: 20, outcome: .completed, minutes: 60)
+        ]
+        let day = FocusStatistics.period(history: history, days: 1, now: now, calendar: calendar)
+        let week = FocusStatistics.period(history: history, days: 7, now: now, calendar: calendar)
+        let month = FocusStatistics.period(history: history, days: 30, now: now, calendar: calendar)
+
+        #expect(day.focusMinutes == 0)
+        #expect(day.completedSessions == 0)
+        #expect(day.abandonedSessions == 0)
+        #expect(day.focusedDays == 0)
+        #expect(week.focusMinutes == 40)
+        #expect(week.completedSessions == 1)
+        #expect(week.abandonedSessions == 1)
+        #expect(week.focusedDays == 1)
+        #expect(week.completionRate == 50)
+        #expect(month.focusMinutes == 100)
+        #expect(month.completedSessions == 2)
+    }
+
+    @Test func restrictionSchedulesRoundTripThroughAppGroupStore() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.Schedules.\(UUID().uuidString)"))
+        let store = AppGroupStore(defaults: defaults)
+        let schedule = RestrictionScheduleConfiguration(
+            selection: FamilyActivitySelection(),
+            allowedStartMinutes: 21 * 60,
+            allowedEndMinutes: 22 * 60
+        )
+
+        try store.saveRestrictionSchedules([schedule])
+
+        #expect(try store.loadRestrictionSchedules() == [schedule])
+        store.clearRestrictionSchedules()
+        #expect(try store.loadRestrictionSchedules().isEmpty)
     }
 
     @Test @MainActor func onboardingMilestonesPersistAcrossServiceInstances() throws {
@@ -215,13 +408,19 @@ struct NoxaTests {
         let firstService = OnboardingService(store: store)
 
         firstService.markWelcomeSeen()
+        firstService.saveName("Deepak")
         firstService.saveGoals(["Work", "Deep focus"])
         firstService.saveDistractions(["Web browsing"])
+        firstService.saveProblemTimes(["Evening"])
+        firstService.saveMotivations(["Being more present"])
 
         let secondService = OnboardingService(store: store)
         #expect(secondService.progress.hasSeenWelcome)
+        #expect(secondService.progress.hasCompletedName)
         #expect(secondService.progress.hasCompletedGoals)
         #expect(secondService.progress.hasCompletedDistractions)
+        #expect(secondService.progress.hasCompletedProblemTimes)
+        #expect(secondService.progress.hasCompletedMotivation)
         #expect(secondService.progress.draftPersonalizationAnswers == ["Work", "Deep focus"])
         #expect(secondService.progress.draftSetupConfiguration["distractions"] == "Web browsing")
         store.clearSnapshot()
@@ -236,11 +435,92 @@ struct NoxaTests {
         #expect(!service.progress.hasSeenCapabilitiesExplainer)
 
         #expect(service.markWelcomeSeen())
+        #expect(service.saveName("Deepak"))
         #expect(service.saveGoals(["Work"]))
         #expect(service.saveDistractions(["Social media"]))
+        #expect(service.saveProblemTimes(["Before bed"]))
+        #expect(service.saveMotivations(["Better sleep"]))
         #expect(service.completeCapabilitiesExplainer())
         #expect(service.progress.hasSeenCapabilitiesExplainer)
+        #expect(service.completeValueOverview())
+        #expect(service.completePricingPreview())
+        #expect(service.progress.hasSeenPricingPreview)
+        #expect(!service.completeInitialSetup())
+        #expect(service.completeNotificationExplainer())
+        #expect(service.progress.hasSeenNotificationExplainer)
+        #expect(service.completeInitialSetup())
+        #expect(service.completeFirstSessionPrompt())
+        #expect(!service.progress.hasSeenFirstFocusReview)
+        #expect(service.markFirstFocusReviewPresented())
+        #expect(service.progress.hasSeenFirstFocusReview)
         store.clearSnapshot()
+    }
+
+    @Test @MainActor func pricingPreviewRequiresCapabilitiesMilestone() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.PricingGate.\(UUID().uuidString)"))
+        let store = AppGroupStore(defaults: defaults)
+        let service = OnboardingService(store: store)
+
+        #expect(!service.completePricingPreview())
+        #expect(!service.progress.hasSeenPricingPreview)
+        store.clearSnapshot()
+    }
+
+    @Test @MainActor func onboardingProgressIsIsolatedWhenAccountsChange() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.OnboardingAccounts.\(UUID().uuidString)"))
+        let store = AppGroupStore(defaults: defaults)
+        let service = OnboardingService(store: store)
+        let firstUserID = UUID()
+        let secondUserID = UUID()
+
+        #expect(service.beginAuthentication(mode: AuthenticationView.Mode.createAccount.rawValue))
+        #expect(service.bind(to: firstUserID, remoteCompletion: false))
+        #expect(service.saveName("First User"))
+        #expect(service.progress.ownerUserID == firstUserID)
+
+        #expect(service.bind(to: secondUserID, remoteCompletion: false))
+        #expect(service.progress.ownerUserID == secondUserID)
+        #expect(!service.progress.hasCompletedName)
+        #expect(service.progress.hasSeenWelcome)
+
+        #expect(service.bind(to: secondUserID, remoteCompletion: true))
+        #expect(service.isComplete(for: secondUserID, remoteCompletion: true))
+        store.clearSnapshot()
+    }
+
+    @Test @MainActor func buildEightOnboardingProgressMigratesPastPricingPreview() throws {
+        let legacyJSON = """
+        {
+          "hasSeenWelcome": true,
+          "hasCompletedGoals": true,
+          "hasCompletedDistractions": true,
+          "hasSeenCapabilitiesExplainer": true,
+          "hasCompletedInitialSetup": false,
+          "hasSeenFirstSessionPrompt": false,
+          "draftPersonalizationAnswers": ["Work"],
+          "draftSetupConfiguration": {"distractions": "Social media"}
+        }
+        """
+
+        let progress = try JSONDecoder().decode(OnboardingProgress.self, from: Data(legacyJSON.utf8))
+
+        #expect(progress.hasSeenPricingPreview)
+        #expect(!progress.hasSeenNotificationExplainer)
+    }
+
+    @Test @MainActor func completedExistingOnboardingIsNotReopenedForNotificationEducation() throws {
+        let legacyJSON = """
+        {
+          "flowVersion": 3,
+          "hasSeenPricingPreview": true,
+          "hasCompletedInitialSetup": true,
+          "hasSeenFirstSessionPrompt": true
+        }
+        """
+        let progress = try JSONDecoder().decode(OnboardingProgress.self, from: Data(legacyJSON.utf8))
+        #expect(progress.isComplete)
+        #expect(!progress.hasSeenNotificationExplainer)
+        #expect(progress.hasSeenFirstFocusReview)
     }
 
     @Test @MainActor func failedOnboardingSaveDoesNotAdvanceInMemoryProgress() {
@@ -327,24 +607,18 @@ struct NoxaTests {
         #expect(SubscriptionService.productIDs.contains(SubscriptionService.annualProductID))
     }
 
-    @Test @MainActor func subscriptionRequiresReviewForEachNoxaAccount() throws {
+    @Test @MainActor func legacyLocalSubscriptionReviewCannotGrantAccess() throws {
         let defaults = try #require(UserDefaults(suiteName: "NoxaTests.\(UUID().uuidString)"))
         let firstAccount = UUID()
         let secondAccount = UUID()
-        let subscriptions = SubscriptionService(defaults: defaults)
 
-        #expect(!subscriptions.canEnterApp(for: firstAccount))
-        subscriptions.continueWithCurrentSubscription(for: firstAccount)
-        #expect(!subscriptions.canEnterApp(for: firstAccount))
-        #expect(subscriptions.reviewedAccountIDs.isEmpty)
-
-        // A local acknowledgement cannot grant access without a verified
-        // StoreKit entitlement, and it never applies to another account.
+        // Old local acknowledgements must not grant access under the current
+        // RevenueCat entitlement gate, including to another account.
         defaults.set([firstAccount.uuidString], forKey: "reviewedSubscriptionAccountIDs")
-        let reloaded = SubscriptionService(defaults: defaults)
-        #expect(reloaded.reviewedAccountIDs.contains(firstAccount.uuidString))
-        #expect(!reloaded.reviewedAccountIDs.contains(secondAccount.uuidString))
-        #expect(!reloaded.canEnterApp(for: firstAccount))
+        let subscriptions = SubscriptionService(defaults: defaults)
+        #expect(!subscriptions.canEnterApp(for: firstAccount))
+        #expect(!subscriptions.canEnterApp(for: secondAccount))
+        #expect(!subscriptions.canEnterApp(for: nil))
     }
 
     @Test @MainActor func cloudSessionPayloadPreservesOutcomeAndUsesStableIdentity() throws {

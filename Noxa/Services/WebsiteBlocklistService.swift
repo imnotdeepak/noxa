@@ -16,27 +16,26 @@ final class WebsiteBlocklistService: ObservableObject {
     static let maximumDomains = 50
 
     @Published private(set) var domains: [String]
+    @Published private(set) var isBlocklistActive: Bool
     @Published private(set) var errorMessage: String?
 
     private let store: AppGroupStore
-    private let settingsStore = ManagedSettingsStore(named: ManagedSettingsStore.Name("noxa.validation"))
+    private let settingsStore = ManagedSettingsStore(named: RestrictionStoreNames.websites)
+    private let focusSettingsStore = ManagedSettingsStore(named: RestrictionStoreNames.focus)
     private let logger = Logger(subsystem: "LycheeCorp.Noxa", category: "websites")
 
     init(store: AppGroupStore? = nil) {
         self.store = store ?? AppGroupStore.shared
         self.domains = (try? self.store.loadWebsiteBlocklist()) ?? []
+        self.isBlocklistActive = self.store.isWebsiteShieldActive
     }
 
     var isLockedForFocusSession: Bool {
-        store.hasActiveFocusSession()
+        store.hasActiveFocusSession() || store.hasActivePomodoroCycle()
     }
 
     @discardableResult
     func addDomain(_ input: String) -> Bool {
-        guard !isLockedForFocusSession else {
-            errorMessage = "Blocklist changes are locked until the focus session ends."
-            return false
-        }
         guard let domain = Self.normalize(input) else {
             errorMessage = "Enter a valid domain such as reddit.com."
             return false
@@ -50,10 +49,58 @@ final class WebsiteBlocklistService: ObservableObject {
             return false
         }
 
+        if isLockedForFocusSession {
+            guard store.hasActiveFocusSession() else {
+                errorMessage = "Changes can be made after this Pomodoro cycle ends."
+                return false
+            }
+            return addDomainToActiveSession(domain)
+        }
+
         domains.append(domain)
         domains.sort()
         persist()
         return true
+    }
+
+    /// Strengthens a running session without allowing any existing domain to
+    /// be removed. The monitor extension reads the same updated snapshot.
+    private func addDomainToActiveSession(_ domain: String) -> Bool {
+        do {
+            guard let current = try store.loadFocusSessionRestrictions() else {
+                errorMessage = "The active focus session could not be updated."
+                return false
+            }
+
+            let mergedDomains = Array(Set(current.websiteDomains + domains + [domain])).sorted()
+            guard mergedDomains.count <= Self.maximumDomains else {
+                errorMessage = "You can block up to \(Self.maximumDomains) custom domains at once."
+                return false
+            }
+
+            let updated = FocusSessionRestrictionConfiguration(
+                selection: current.selection,
+                websiteDomains: mergedDomains,
+                intention: current.intention
+            )
+            try store.saveFocusSessionRestrictions(updated)
+            if var cycle = try store.loadPomodoroCycle() {
+                cycle.websiteDomains = mergedDomains
+                try store.savePomodoroCycle(cycle)
+            }
+            try store.saveWebsiteBlocklist(mergedDomains)
+            domains = mergedDomains
+            focusSettingsStore.webContent.blockedByFilter = .specific(
+                Set(mergedDomains.map(WebDomain.init(domain:)))
+            )
+            errorMessage = nil
+            logger.info("Added a website restriction to the active focus session")
+            return true
+        } catch {
+            errorMessage = "Could not add the website: \(error.localizedDescription)"
+            logger.error("Active website addition failed: \(error.localizedDescription, privacy: .public)")
+            return false
+        }
     }
 
     func removeDomain(_ domain: String) {
@@ -83,6 +130,7 @@ final class WebsiteBlocklistService: ObservableObject {
         errorMessage = nil
         do {
             try store.saveWebsiteBlocklist(domains)
+            if isBlocklistActive { reconcile() }
         } catch {
             errorMessage = "Could not save the website list: \(error.localizedDescription)"
             logger.error("Website persistence failed: \(error.localizedDescription, privacy: .public)")
@@ -96,8 +144,12 @@ final class WebsiteBlocklistService: ObservableObject {
         }
         guard !domains.isEmpty else {
             settingsStore.webContent.blockedByFilter = nil
+            store.isWebsiteShieldActive = false
+            isBlocklistActive = false
             return
         }
+        store.isWebsiteShieldActive = true
+        isBlocklistActive = true
         settingsStore.webContent.blockedByFilter = .specific(Set(domains.map(WebDomain.init(domain:))))
         logger.info("Applied \(self.domains.count) custom website restriction(s)")
     }
@@ -108,6 +160,16 @@ final class WebsiteBlocklistService: ObservableObject {
             return
         }
         settingsStore.webContent.blockedByFilter = nil
+        store.isWebsiteShieldActive = false
+        isBlocklistActive = false
+    }
+
+    func reconcile() {
+        if domains.isEmpty { store.isWebsiteShieldActive = false }
+        isBlocklistActive = store.isWebsiteShieldActive
+        settingsStore.webContent.blockedByFilter = isBlocklistActive && !domains.isEmpty
+            ? .specific(Set(domains.map(WebDomain.init(domain:))))
+            : nil
     }
 
     func removeAllDomains(force: Bool = false) {

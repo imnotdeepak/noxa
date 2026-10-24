@@ -15,18 +15,25 @@ enum LocalDataCleanupService {
         restrictions: ScreenTimeRestrictionService,
         monitoring: DeviceActivityMonitoringService,
         dailyLimits: DailyLimitService,
+        schedules: RestrictionScheduleService,
         websites: WebsiteBlocklistService,
         cloudSync: CloudSyncService,
+        onboarding: OnboardingService,
         store: AppGroupStore? = nil
     ) {
         let store = store ?? AppGroupStore.shared
         monitoring.stop()
         dailyLimits.clearConfigurations()
+        schedules.clearConfigurations()
         restrictions.clearSelection(force: true)
         websites.removeAllDomains(force: true)
         focusSession.clearAllLocalData()
         cloudSync.clearState()
+        _ = onboarding.reset()
         store.clearCloudSyncState()
         store.clearCloudAccountCaches()
+        store.setSafariFilterAllowedUntil(nil)
+        store.clearInstagramSiteMode()
+        InstagramSiteProtectionService.reconcile(store: store)
     }
 }

@@ -26,16 +26,33 @@ final class AuthenticationService: ObservableObject {
     @Published private(set) var isBusy = false
     @Published private(set) var userID: UUID?
     @Published private(set) var userEmail: String?
+    @Published private(set) var displayName: String?
+    @Published private(set) var hasCompletedOnboarding = false
+    @Published private(set) var rememberedUserEmail: String?
+    @Published private(set) var rememberedDisplayName: String?
     @Published private(set) var confirmationEmail: String?
     @Published private(set) var requiresEmailConfirmation = false
     @Published var isPasswordRecoveryPresented = false
     @Published var message: String?
 
     private let client: SupabaseClient
+    private let defaults: UserDefaults
     private var authStateTask: Task<Void, Never>?
 
-    init(client: SupabaseClient? = nil) {
+    private enum RememberedAccountKey {
+        static let email = "noxa.rememberedAccount.email"
+        static let displayName = "noxa.rememberedAccount.displayName"
+    }
+
+    var hasRememberedAccount: Bool {
+        rememberedUserEmail != nil || rememberedDisplayName != nil
+    }
+
+    init(client: SupabaseClient? = nil, defaults: UserDefaults = .standard) {
         self.client = client ?? SupabaseProvider.client
+        self.defaults = defaults
+        rememberedUserEmail = defaults.string(forKey: RememberedAccountKey.email)
+        rememberedDisplayName = defaults.string(forKey: RememberedAccountKey.displayName)
         let authClient = self.client
         authStateTask = Task { [weak self] in
             for await change in authClient.auth.authStateChanges {
@@ -58,6 +75,8 @@ final class AuthenticationService: ObservableObject {
             isAuthenticated = false
             userID = nil
             userEmail = nil
+            displayName = nil
+            hasCompletedOnboarding = false
         }
     }
 
@@ -97,6 +116,8 @@ final class AuthenticationService: ObservableObject {
                 self.isAuthenticated = false
                 self.userID = nil
                 self.userEmail = nil
+                self.displayName = nil
+                self.hasCompletedOnboarding = false
                 self.confirmationEmail = validatedEmail
                 self.requiresEmailConfirmation = true
                 self.message = "Check your email to confirm your account, then return here to sign in."
@@ -138,11 +159,14 @@ final class AuthenticationService: ObservableObject {
     }
 
     func signOut() async {
+        rememberCurrentAccount()
         await perform {
             try await self.client.auth.signOut()
             self.isAuthenticated = false
             self.userID = nil
             self.userEmail = nil
+            self.displayName = nil
+            self.hasCompletedOnboarding = false
             self.confirmationEmail = nil
             self.requiresEmailConfirmation = false
             self.message = nil
@@ -159,9 +183,12 @@ final class AuthenticationService: ObservableObject {
         do {
             try await client.functions.invoke("delete-account")
             try? await client.auth.signOut()
+            forgetRememberedAccount()
             isAuthenticated = false
             userID = nil
             userEmail = nil
+            displayName = nil
+            hasCompletedOnboarding = false
             message = nil
             return true
         } catch {
@@ -210,6 +237,46 @@ final class AuthenticationService: ObservableObject {
         }
     }
 
+    func forgetRememberedAccount() {
+        rememberedUserEmail = nil
+        rememberedDisplayName = nil
+        defaults.removeObject(forKey: RememberedAccountKey.email)
+        defaults.removeObject(forKey: RememberedAccountKey.displayName)
+    }
+
+    /// Stores non-sensitive onboarding preferences in Supabase Auth metadata.
+    /// Local onboarding remains authoritative so an offline user is never
+    /// prevented from reaching the subscription screen.
+    @discardableResult
+    func syncOnboardingProfile(_ progress: OnboardingProgress) async -> Bool {
+        guard isAuthenticated else { return false }
+        let name = progress.draftSetupConfiguration["name"] ?? ""
+        let goals = progress.draftPersonalizationAnswers
+        let distractions = Self.answers(for: "distractions", in: progress)
+        let problemTimes = Self.answers(for: "problemTimes", in: progress)
+        let motivations = Self.answers(for: "motivations", in: progress)
+        var metadata: [String: AnyJSON] = [
+            "noxa_onboarding_complete": .bool(progress.isComplete),
+            "noxa_goals": .array(goals.map(AnyJSON.string)),
+            "noxa_distractions": .array(distractions.map(AnyJSON.string)),
+            "noxa_problem_times": .array(problemTimes.map(AnyJSON.string)),
+            "noxa_motivations": .array(motivations.map(AnyJSON.string))
+        ]
+        if !name.isEmpty {
+            metadata["full_name"] = .string(name)
+        }
+
+        do {
+            let user = try await client.auth.update(
+                user: .init(data: metadata)
+            )
+            apply(user: user)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     private func validatedEmail(_ email: String, password: String) -> String? {
         if let validationMessage = AuthenticationInputValidator.validate(email: email, password: password) {
             message = validationMessage
@@ -234,14 +301,43 @@ final class AuthenticationService: ObservableObject {
         isAuthenticated = true
         userID = session.user.id
         userEmail = session.user.email
+        apply(user: session.user)
+    }
+
+    private func apply(user: User) {
+        displayName = user.userMetadata["full_name"]?.stringValue
+        hasCompletedOnboarding = user.userMetadata["noxa_onboarding_complete"]?.boolValue ?? false
+        rememberCurrentAccount()
+    }
+
+    private func rememberCurrentAccount() {
+        if let email = userEmail?.trimmingCharacters(in: .whitespacesAndNewlines), !email.isEmpty {
+            rememberedUserEmail = email
+            defaults.set(email, forKey: RememberedAccountKey.email)
+        }
+        if let name = displayName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            rememberedDisplayName = name
+            defaults.set(name, forKey: RememberedAccountKey.displayName)
+        }
     }
 
     private func handleAuthChange(event: AuthChangeEvent, session: Session?) {
         switch event {
-        case .signedOut, .userDeleted:
+        case .signedOut:
             isAuthenticated = false
             userID = nil
             userEmail = nil
+            displayName = nil
+            hasCompletedOnboarding = false
+            confirmationEmail = nil
+            requiresEmailConfirmation = false
+        case .userDeleted:
+            forgetRememberedAccount()
+            isAuthenticated = false
+            userID = nil
+            userEmail = nil
+            displayName = nil
+            hasCompletedOnboarding = false
             confirmationEmail = nil
             requiresEmailConfirmation = false
         case .passwordRecovery:
@@ -268,6 +364,12 @@ final class AuthenticationService: ObservableObject {
             return "An account already exists for this email address."
         }
         return description
+    }
+
+    private static func answers(for key: String, in progress: OnboardingProgress) -> [String] {
+        progress.draftSetupConfiguration[key]?
+            .split(separator: "|")
+            .map(String.init) ?? []
     }
 }
 
