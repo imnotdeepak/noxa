@@ -496,6 +496,10 @@ final class FocusSessionService: ObservableObject {
         guard let pomodoroCycle,
               case .breakTime = pomodoroCycle.plan.phase(at: Date()) else { return }
         reconciliationTask?.cancel()
+        // The first round's backup release wake can outlive the work interval.
+        // Remove it before another cycle starts so a late callback cannot
+        // clear the next session's shield.
+        stopFocusMonitors()
         stopPomodoroMonitors(for: pomodoroCycle)
         store.clearPomodoroCycle()
         store.clearPomodoroRoundEnforcement(cycleID: pomodoroCycle.id)
