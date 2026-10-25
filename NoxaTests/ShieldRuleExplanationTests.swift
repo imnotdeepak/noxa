@@ -47,7 +47,7 @@ import Testing
         #expect(ShieldRuleExplanation.domain("example.com", defaults: defaults, now: end, calendar: calendar) == nil)
     }
 
-    @Test func pomodoroExplanationUsesCurrentRoundWhileAppSnapshotIsStale() throws {
+    @Test func pomodoroExplanationKeepsOneEndTimeAcrossRoundsWhenShieldIsCached() throws {
         let defaults = try defaults()
         let cycle = PomodoroCycleRecord(
             plan: PomodoroCyclePlan(
@@ -75,13 +75,21 @@ import Testing
             forKey: "noxa.focusSessionRestrictions"
         )
 
-        let secondEnd = try #require(cycle.plan.workInterval(round: 2)).end
-        let message = try #require(ShieldRuleExplanation.domain(
+        let cycleEnd = try #require(cycle.plan.workInterval(round: 4)).end
+        let secondMessage = try #require(ShieldRuleExplanation.domain(
             "example.com", defaults: defaults, now: now, calendar: calendar
         ))
-        #expect(message.contains("Focus until \(secondEnd.formatted(date: .omitted, time: .shortened))"))
-        #expect(message.contains("Pomodoro · 15/5"))
+        #expect(secondMessage.contains("cycle ends at \(cycleEnd.formatted(date: .omitted, time: .shortened))"))
+        #expect(secondMessage.contains("Apps open during breaks"))
 
+        let fourthRound = try #require(cycle.plan.workInterval(round: 4))
+        let fourthMessage = try #require(ShieldRuleExplanation.domain(
+            "example.com", defaults: defaults,
+            now: fourthRound.start.addingTimeInterval(30), calendar: calendar
+        ))
+        #expect(fourthMessage == secondMessage)
+
+        let secondEnd = try #require(cycle.plan.workInterval(round: 2)).end
         let secondBreak = secondEnd.addingTimeInterval(30)
         #expect(ShieldRuleExplanation.domain(
             "example.com", defaults: defaults, now: secondBreak, calendar: calendar

@@ -52,20 +52,17 @@ enum ShieldRuleExplanation {
 
         if let focus: FocusRestrictions = decode("noxa.focusSessionRestrictions", from: defaults),
            matches(focus.selection, focus.websiteDomains) {
-            let focusEnd: Date?
             if let cycle: PomodoroShieldCycle = decode("noxa.pomodoroCycle", from: defaults) {
-                focusEnd = cycle.currentWorkEnd(at: now)
+                if cycle.isWorking(at: now) {
+                    let end = cycle.plannedEndAt.formatted(date: .omitted, time: .shortened)
+                    reasons.append("Pomodoro focus. Apps open during breaks; cycle ends at \(end).")
+                }
             } else if let snapshot: Snapshot = decode("noxa.localSnapshot", from: defaults),
                       let session = snapshot.activeSession,
                       snapshot.sessionEngineState == "active",
                       session.outcome == "active",
                       session.plannedEndAt > now {
-                focusEnd = session.plannedEndAt
-            } else {
-                focusEnd = nil
-            }
-            if let focusEnd {
-                let end = focusEnd.formatted(date: .omitted, time: .shortened)
+                let end = session.plannedEndAt.formatted(date: .omitted, time: .shortened)
                 let intention = focus.intention?
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                     .replacingOccurrences(of: "\n", with: " ")
@@ -121,7 +118,9 @@ enum ShieldRuleExplanation {
             distinctReasons.append(reason)
         }
         guard !distinctReasons.isEmpty else { return nil }
-        let refreshHint = distinctReasons.count == 1 && distinctReasons[0].hasPrefix("Focus until ")
+        let refreshHint = distinctReasons.count == 1
+            && (distinctReasons[0].hasPrefix("Focus until ")
+                || distinctReasons[0].hasPrefix("Pomodoro focus."))
             ? " If still blocked afterward, reopen the app or page."
             : ""
         return distinctReasons.prefix(2).joined(separator: " ")
@@ -153,15 +152,20 @@ private struct PomodoroShieldCycle: Decodable {
 
     let plan: Plan
 
-    func currentWorkEnd(at date: Date) -> Date? {
+    var plannedEndAt: Date {
         let work = TimeInterval(plan.workMinutes * 60)
         let rest = TimeInterval(plan.breakMinutes * 60)
-        for round in 1...4 {
-            let start = plan.startedAt.addingTimeInterval(TimeInterval(round - 1) * (work + rest))
-            let end = start.addingTimeInterval(work)
-            if date >= start && date < end { return end }
+        return plan.startedAt.addingTimeInterval(4 * work + 3 * rest)
+    }
+
+    func isWorking(at date: Date) -> Bool {
+        let work = TimeInterval(plan.workMinutes * 60)
+        let rest = TimeInterval(plan.breakMinutes * 60)
+        guard work > 0, rest > 0 else { return false }
+        return (0..<4).contains { round in
+            let start = plan.startedAt.addingTimeInterval(Double(round) * (work + rest))
+            return start <= date && date < start.addingTimeInterval(work)
         }
-        return nil
     }
 }
 
