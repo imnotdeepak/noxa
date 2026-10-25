@@ -53,9 +53,9 @@ enum ShieldRuleExplanation {
         if let focus: FocusRestrictions = decode("noxa.focusSessionRestrictions", from: defaults),
            matches(focus.selection, focus.websiteDomains) {
             if let cycle: PomodoroShieldCycle = decode("noxa.pomodoroCycle", from: defaults) {
-                if cycle.isWorking(at: now) {
-                    let end = cycle.plannedEndAt.formatted(date: .omitted, time: .shortened)
-                    reasons.append("Pomodoro focus. Apps open during breaks; cycle ends at \(end).")
+                if let workEnd = cycle.currentWorkEnd(at: now) {
+                    let end = workEnd.formatted(date: .omitted, time: .shortened)
+                    reasons.append("This focus session ends at \(end). Apps open during breaks.")
                 }
             } else if let snapshot: Snapshot = decode("noxa.localSnapshot", from: defaults),
                       let session = snapshot.activeSession,
@@ -118,11 +118,14 @@ enum ShieldRuleExplanation {
             distinctReasons.append(reason)
         }
         guard !distinctReasons.isEmpty else { return nil }
-        let refreshHint = distinctReasons.count == 1
-            && (distinctReasons[0].hasPrefix("Focus until ")
-                || distinctReasons[0].hasPrefix("Pomodoro focus."))
-            ? " If still blocked afterward, reopen the app or page."
-            : ""
+        let refreshHint: String
+        if distinctReasons.count == 1 && distinctReasons[0].hasPrefix("This focus session ends at ") {
+            refreshHint = " After a break, reopen the app or page to update this time."
+        } else if distinctReasons.count == 1 && distinctReasons[0].hasPrefix("Focus until ") {
+            refreshHint = " If still blocked afterward, reopen the app or page."
+        } else {
+            refreshHint = ""
+        }
         return distinctReasons.prefix(2).joined(separator: " ")
             + refreshHint + " Other rules may still apply."
     }
@@ -152,20 +155,16 @@ private struct PomodoroShieldCycle: Decodable {
 
     let plan: Plan
 
-    var plannedEndAt: Date {
+    func currentWorkEnd(at date: Date) -> Date? {
         let work = TimeInterval(plan.workMinutes * 60)
         let rest = TimeInterval(plan.breakMinutes * 60)
-        return plan.startedAt.addingTimeInterval(4 * work + 3 * rest)
-    }
-
-    func isWorking(at date: Date) -> Bool {
-        let work = TimeInterval(plan.workMinutes * 60)
-        let rest = TimeInterval(plan.breakMinutes * 60)
-        guard work > 0, rest > 0 else { return false }
-        return (0..<4).contains { round in
+        guard work > 0, rest > 0 else { return nil }
+        for round in 0..<4 {
             let start = plan.startedAt.addingTimeInterval(Double(round) * (work + rest))
-            return start <= date && date < start.addingTimeInterval(work)
+            let end = start.addingTimeInterval(work)
+            if start <= date && date < end { return end }
         }
+        return nil
     }
 }
 

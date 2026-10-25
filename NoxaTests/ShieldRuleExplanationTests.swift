@@ -47,7 +47,7 @@ import Testing
         #expect(ShieldRuleExplanation.domain("example.com", defaults: defaults, now: end, calendar: calendar) == nil)
     }
 
-    @Test func pomodoroExplanationKeepsOneEndTimeAcrossRoundsWhenShieldIsCached() throws {
+    @Test func pomodoroExplanationShowsCurrentFocusSessionEnd() throws {
         let defaults = try defaults()
         let cycle = PomodoroCycleRecord(
             plan: PomodoroCyclePlan(
@@ -75,21 +75,23 @@ import Testing
             forKey: "noxa.focusSessionRestrictions"
         )
 
-        let cycleEnd = try #require(cycle.plan.workInterval(round: 4)).end
+        let secondEnd = try #require(cycle.plan.workInterval(round: 2)).end
         let secondMessage = try #require(ShieldRuleExplanation.domain(
             "example.com", defaults: defaults, now: now, calendar: calendar
         ))
-        #expect(secondMessage.contains("cycle ends at \(cycleEnd.formatted(date: .omitted, time: .shortened))"))
+        #expect(secondMessage.contains("This focus session ends at \(secondEnd.formatted(date: .omitted, time: .shortened))"))
         #expect(secondMessage.contains("Apps open during breaks"))
+        #expect(secondMessage.contains("After a break, reopen the app or page to update this time"))
 
         let fourthRound = try #require(cycle.plan.workInterval(round: 4))
+        let fourthEnd = fourthRound.end
         let fourthMessage = try #require(ShieldRuleExplanation.domain(
             "example.com", defaults: defaults,
             now: fourthRound.start.addingTimeInterval(30), calendar: calendar
         ))
-        #expect(fourthMessage == secondMessage)
+        #expect(fourthMessage.contains("This focus session ends at \(fourthEnd.formatted(date: .omitted, time: .shortened))"))
+        #expect(fourthMessage != secondMessage)
 
-        let secondEnd = try #require(cycle.plan.workInterval(round: 2)).end
         let secondBreak = secondEnd.addingTimeInterval(30)
         #expect(ShieldRuleExplanation.domain(
             "example.com", defaults: defaults, now: secondBreak, calendar: calendar

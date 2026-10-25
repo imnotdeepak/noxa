@@ -1,5 +1,11 @@
 # Physical-device restriction checks
 
+## October 24 late-evening four-round Pomodoro retest
+
+A Strict 15/5 cycle ran from **10:15:13 PM to 11:30:13 PM EDT** on the paired iPhone. A brief automated stop-control check launched Noxa during the first break, so this was not a wholly untouched background run. Noxa was closed for the later transitions. The saved Device Activity trace recorded each work start and end. The Focus restriction was absent by 6–7 seconds after each break began, present by about 7 seconds after each later work round began, and absent by about 7 seconds after the final end. The owner confirmed DoorDash opened immediately during the first break. Screenshots showed DoorDash blocked during rounds two, three, and four, and usable during break three. No fifth work round started.
+
+The round-four DoorDash shield incorrectly retained round three's **11:10 PM** end time while the block itself was active. This is a shield display issue separate from the observed enforcement transitions. An interim build displayed the whole-cycle end time, but the owner clarified that the shield should display when the current focus session ends. The next code revision calculates each work round's end separately. Its wording and shield refresh behavior still need a live iPhone observation. Repeat boundaries with the phone locked and already displaying a shield before making a broad timing guarantee.
+
 ## October 24 Focus and schedule release retest
 
 A reviewed 15-minute Strict Focus session ran from **12:13:39 AM to 12:28:39 AM EDT** on the paired iPhone. During Focus, DoorDash and Dazz Cam were blocked, and Safari showed “Website Not Allowed” for `reddit.com`. DoorDash's shield named Focus, showed the planned end time, and included the new advice to reopen the app or page if it remained blocked afterward. The shared monitor receipt and Focus restriction snapshot matched the active session.
