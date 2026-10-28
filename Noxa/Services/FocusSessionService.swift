@@ -23,6 +23,9 @@ final class FocusSessionService: ObservableObject {
     @Published private(set) var hasOfferedStrictMode: Bool
     @Published private(set) var pomodoroCycle: PomodoroCycleRecord?
     @Published private(set) var completedPomodoroCycleID: UUID?
+    /// True while a session or Pomodoro cycle is waiting for Screen Time
+    /// access to return. iOS has lifted the blocks; the end time still runs.
+    @Published private(set) var isPausedForScreenTimeAccess = false
 
     private let store: AppGroupStore
     private let center = DeviceActivityCenter()
@@ -139,6 +142,8 @@ final class FocusSessionService: ObservableObject {
             errorMessage = "Screen Time access is required before starting a focus session."
             return
         }
+        store.endScreenTimeAccessPause()
+        isPausedForScreenTimeAccess = false
         guard activeSession == nil else {
             errorMessage = "A focus session is already active."
             return
@@ -356,14 +361,21 @@ final class FocusSessionService: ObservableObject {
         }
 
         // Authorization can be revoked in Settings while Noxa is suspended.
-        // Apple's tokens are no longer enforceable after revocation, so do not
-        // leave a persisted session looking active or keep the blocklist lock.
+        // iOS lifts every block while access is off but keeps Noxa's saved
+        // settings, and restores them if access returns. Keep the session so
+        // opening Noxa can't turn a temporary bypass into a cancelled session.
         if !Self.isAuthorizationApproved(authorizationCenter.authorizationStatus) {
             if session.outcome == .active {
-                interrupt(
-                    session: session,
-                    message: "Screen Time access was revoked. Re-enable it to start another focus session."
-                )
+                guard session.plannedEndAt > Date() else {
+                    finish(session: session, recovered: recoverStale)
+                    return
+                }
+                store.beginScreenTimeAccessPause()
+                isPausedForScreenTimeAccess = true
+                activeSession = session
+                activeIntention = ((try? store.loadFocusSessionRestrictions()) ?? nil)?.intention
+                scheduleReconciliation(for: session)
+                return
             } else if session.outcome == .startPending {
                 failPendingSession(session)
             } else {
@@ -371,6 +383,9 @@ final class FocusSessionService: ObservableObject {
             }
             return
         }
+
+        store.endScreenTimeAccessPause()
+        isPausedForScreenTimeAccess = false
 
         guard session.outcome == .active else {
             if session.outcome == .startPending {
@@ -484,6 +499,8 @@ final class FocusSessionService: ObservableObject {
         history = []
         errorMessage = nil
         store.clearSnapshot()
+        store.clearScreenTimeAccessPauses()
+        isPausedForScreenTimeAccess = false
         store.isStrictModeEnabled = false
         store.hasOfferedStrictMode = false
         store.hasOfferedScheduleSuggestion = false
@@ -591,22 +608,34 @@ final class FocusSessionService: ObservableObject {
     }
 
     private func reconcilePomodoro(_ cycle: PomodoroCycleRecord, now: Date = Date()) {
-        guard Self.isAuthorizationApproved(authorizationCenter.authorizationStatus) else {
-            let message = "Screen Time access was revoked. The Pomodoro cycle was stopped."
-            if let session = (try? store.loadSnapshot())?.activeSession,
-               session.outcome == .active {
-                interrupt(session: session, message: message)
-                return
+        if !Self.isAuthorizationApproved(authorizationCenter.authorizationStatus),
+           cycle.plan.phase(at: now) != .complete {
+            // Keep the cycle on its schedule. iOS restores the work block if
+            // access returns during a work round; overlapping rounds are
+            // recorded as interrupted once the cycle is reconciled again.
+            store.beginScreenTimeAccessPause(at: now)
+            isPausedForScreenTimeAccess = true
+            pomodoroCycle = cycle
+            switch cycle.plan.phase(at: now) {
+            case let .work(round, endsAt):
+                activeSession = cycle.session(for: round)
+                activeIntention = "Pomodoro · \(cycle.plan.workMinutes)/\(cycle.plan.breakMinutes)"
+                schedulePomodoroBoundaryReconciliation(for: endsAt)
+            case let .breakTime(_, endsAt):
+                activeSession = nil
+                activeIntention = nil
+                schedulePomodoroBoundaryReconciliation(for: endsAt)
+            case let .scheduled(startsAt):
+                schedulePomodoroBoundaryReconciliation(for: startsAt)
+            case .complete:
+                break
             }
-            stopPomodoroMonitors(for: cycle)
-            store.clearPomodoroCycle()
-            pomodoroCycle = nil
-            settingsStore.clearAllSettings()
-            activeSession = nil
-            activeIntention = nil
-            errorMessage = message
             return
         }
+        if Self.isAuthorizationApproved(authorizationCenter.authorizationStatus) {
+            store.endScreenTimeAccessPause(at: now)
+        }
+        isPausedForScreenTimeAccess = false
 
         var snapshot = (try? store.loadSnapshot()) ?? NoxaLocalSnapshot()
         let hadCompletedSession = snapshot.sessionHistory.contains {
@@ -619,12 +648,16 @@ final class FocusSessionService: ObservableObject {
                 errorMessage = "A Pomodoro work interval could not be restored: \(error.localizedDescription)"
             }
         }
+        let accessPauses = store.loadScreenTimeAccessPauses()
         for completed in cycle.verifiedCompletedSessions(
             asOf: now,
             enforcedAt: { store.pomodoroRoundEnforcedAt(cycleID: cycle.id, round: $0) }
         )
         where !snapshot.sessionHistory.contains(where: { $0.id == completed.id }) {
-            snapshot.sessionHistory.insert(completed, at: 0)
+            snapshot.sessionHistory.insert(
+                Self.applyingAccessPauses(accessPauses, to: completed, now: now),
+                at: 0
+            )
         }
         snapshot.sessionHistory = Array(snapshot.sessionHistory.prefix(100))
         let phase = cycle.plan.phase(at: now)
@@ -808,14 +841,33 @@ final class FocusSessionService: ObservableObject {
         store.clearFocusSessionRestrictions()
 
         var completedRecord = session
-        completedRecord.outcome = recovered ? .recoveredStale : .completed
-        completedRecord.actualDurationSeconds = completedRecord.plannedDurationSeconds
+        let interval = DateInterval(start: session.startedAt, end: max(session.startedAt, session.plannedEndAt))
+        let pausedAt = ScreenTimeAccessPause.firstOverlap(with: interval, store.loadScreenTimeAccessPauses())
+        if let pausedAt {
+            completedRecord.outcome = .interrupted
+            completedRecord.actualDurationSeconds = Self.measuredDurationSeconds(
+                startedAt: session.startedAt,
+                endedAt: pausedAt,
+                plannedDurationSeconds: session.plannedDurationSeconds
+            )
+        } else {
+            completedRecord.outcome = recovered ? .recoveredStale : .completed
+            completedRecord.actualDurationSeconds = completedRecord.plannedDurationSeconds
+        }
         completedRecord.lastCleanupAttemptAt = Date()
+        if Self.isAuthorizationApproved(authorizationCenter.authorizationStatus) {
+            store.endScreenTimeAccessPause()
+        }
+        isPausedForScreenTimeAccess = false
         do {
             try saveSnapshot(engineState: .idle, session: completedRecord)
             activeSession = nil
             activeIntention = nil
             history = (try? store.loadSnapshot())?.sessionHistory ?? history
+            guard pausedAt == nil else {
+                logger.info("Focus session \(completedRecord.id.uuidString, privacy: .public) ended after a Screen Time access pause")
+                return
+            }
             if !hadCompletedSession, let sessionTargets {
                 saveFirstScheduleSuggestion(
                     for: completedRecord,
@@ -919,6 +971,27 @@ final class FocusSessionService: ObservableObject {
         }
         try store.saveSnapshot(snapshot)
         history = snapshot.sessionHistory
+    }
+
+    /// A Pomodoro round that overlapped a Screen Time access pause was not
+    /// enforced throughout, so it is kept in history as interrupted.
+    static func applyingAccessPauses(
+        _ pauses: [ScreenTimeAccessPause],
+        to round: ActiveSessionRecord,
+        now: Date = Date()
+    ) -> ActiveSessionRecord {
+        let interval = DateInterval(start: round.startedAt, end: max(round.startedAt, round.plannedEndAt))
+        guard let pausedAt = ScreenTimeAccessPause.firstOverlap(with: interval, pauses, now: now) else {
+            return round
+        }
+        var interrupted = round
+        interrupted.outcome = .interrupted
+        interrupted.actualDurationSeconds = measuredDurationSeconds(
+            startedAt: round.startedAt,
+            endedAt: pausedAt,
+            plannedDurationSeconds: round.plannedDurationSeconds
+        )
+        return interrupted
     }
 
     static func measuredDurationSeconds(

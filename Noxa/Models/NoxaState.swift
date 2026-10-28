@@ -119,6 +119,35 @@ struct ActiveSessionRecord: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+/// A stretch of time when Noxa had no Screen Time access. iOS lifts every
+/// block while access is off, so overlapping sessions count as interrupted.
+struct ScreenTimeAccessPause: Codable, Equatable, Sendable {
+    let startedAt: Date
+    var endedAt: Date?
+
+    static func overlaps(
+        _ interval: DateInterval,
+        _ pauses: [ScreenTimeAccessPause],
+        now: Date = Date()
+    ) -> Bool {
+        pauses.contains { pause in
+            pause.startedAt < interval.end && (pause.endedAt ?? now) > interval.start
+        }
+    }
+
+    /// The first instant a pause cut into the interval, for measured duration.
+    static func firstOverlap(
+        with interval: DateInterval,
+        _ pauses: [ScreenTimeAccessPause],
+        now: Date = Date()
+    ) -> Date? {
+        pauses
+            .filter { $0.startedAt < interval.end && ($0.endedAt ?? now) > interval.start }
+            .map { max($0.startedAt, interval.start) }
+            .min()
+    }
+}
+
 /// A device-local copy of the first completed session's targets, retained
 /// only until the user accepts or dismisses the recurring-schedule offer.
 struct PendingScheduleSuggestion: Codable, Equatable {

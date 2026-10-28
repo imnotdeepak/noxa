@@ -45,6 +45,7 @@ final class AppGroupStore {
         static let restrictionSchedules = "noxa.restrictionSchedules"
         static let scheduleRules = "noxa.scheduleRules.v2"
         static let pomodoroCycle = "noxa.pomodoroCycle"
+        static let screenTimeAccessPauses = "noxa.screenTimeAccessPauses"
         static let pendingPomodoroCompletion = "noxa.pendingPomodoroCompletion"
         static let cloudSyncState = "noxa.cloudSyncState"
         static let cloudAccountCaches = "noxa.cloudAccountCaches"
@@ -342,6 +343,40 @@ final class AppGroupStore {
         set {
             defaults.set(newValue.map(\.uuidString).sorted(), forKey: Key.scheduleShieldOwners)
         }
+    }
+
+    func loadScreenTimeAccessPauses() -> [ScreenTimeAccessPause] {
+        guard let data = defaults.data(forKey: Key.screenTimeAccessPauses) else { return [] }
+        return (try? JSONDecoder().decode([ScreenTimeAccessPause].self, from: data)) ?? []
+    }
+
+    var isScreenTimeAccessPaused: Bool {
+        loadScreenTimeAccessPauses().last.map { $0.endedAt == nil } ?? false
+    }
+
+    /// Opens a pause unless one is already open. Older entries are trimmed.
+    func beginScreenTimeAccessPause(at date: Date = Date()) {
+        var pauses = loadScreenTimeAccessPauses()
+        guard pauses.last?.endedAt != nil || pauses.isEmpty else { return }
+        pauses.append(ScreenTimeAccessPause(startedAt: date, endedAt: nil))
+        saveScreenTimeAccessPauses(Array(pauses.suffix(20)))
+    }
+
+    func endScreenTimeAccessPause(at date: Date = Date()) {
+        var pauses = loadScreenTimeAccessPauses()
+        guard let last = pauses.indices.last, pauses[last].endedAt == nil else { return }
+        pauses[last].endedAt = date
+        saveScreenTimeAccessPauses(pauses)
+    }
+
+    private func saveScreenTimeAccessPauses(_ pauses: [ScreenTimeAccessPause]) {
+        if let data = try? JSONEncoder().encode(pauses) {
+            defaults.set(data, forKey: Key.screenTimeAccessPauses)
+        }
+    }
+
+    func clearScreenTimeAccessPauses() {
+        defaults.removeObject(forKey: Key.screenTimeAccessPauses)
     }
 
     func loadPomodoroCycle() throws -> PomodoroCycleRecord? {
