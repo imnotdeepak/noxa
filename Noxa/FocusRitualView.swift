@@ -1,48 +1,8 @@
 import Combine
 import SwiftUI
 
-struct FocusStartRitualView: View {
-    @Environment(\.dismiss) private var dismiss
-    let durationMinutes: Int
-    let onStart: (String) -> Void
-    @State private var intention = ""
-
-    var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 24) {
-                Spacer()
-                Image(systemName: "scope")
-                    .font(.system(size: 42))
-                    .foregroundStyle(.secondary)
-                Text("Choose your intention")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                Text("Give the next \(durationMinutes) minutes a purpose before distractions disappear.")
-                    .foregroundStyle(.secondary)
-
-                TextField("What will you focus on?", text: $intention, axis: .vertical)
-                    .lineLimit(2...4)
-                    .textFieldStyle(.roundedBorder)
-
-                Button("Commit to This Session") {
-                    onStart(intention.trimmingCharacters(in: .whitespacesAndNewlines))
-                    dismiss()
-                }
-                .buttonStyle(NoxaPrimaryButtonStyle())
-                .disabled(intention.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                Spacer()
-            }
-            .padding(24)
-            .background(NoxaTheme.background.ignoresSafeArea())
-            .preferredColorScheme(.dark)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-            }
-        }
-    }
-}
-
+/// Only reachable for sessions started by older versions without a
+/// commitment; every new Focus session runs until its planned end.
 struct EndSessionRitualView: View {
     private static let pauseDuration = 60
 

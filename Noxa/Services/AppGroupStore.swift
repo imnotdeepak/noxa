@@ -36,8 +36,10 @@ final class AppGroupStore {
         static let manualShield = "noxa.manualShield"
         static let websiteShieldActive = "noxa.websiteShieldActive"
         static let restrictionStoresMigrated = "noxa.restrictionStoresMigrated"
-        static let strictModeEnabled = "noxa.strictModeEnabled"
-        static let hasOfferedStrictMode = "noxa.hasOfferedStrictMode"
+        // Retired: every new session is committed. Kept only so they can be
+        // removed with the rest of an account's local data.
+        static let legacyStrictModeEnabled = "noxa.strictModeEnabled"
+        static let legacyHasOfferedStrictMode = "noxa.hasOfferedStrictMode"
         static let hasOfferedScheduleSuggestion = "noxa.hasOfferedScheduleSuggestion"
         static let pendingScheduleSuggestion = "noxa.pendingScheduleSuggestion"
         static let websiteBlocklist = "noxa.websiteBlocklist"
@@ -230,14 +232,9 @@ final class AppGroupStore {
         set { defaults.set(newValue, forKey: Key.restrictionStoresMigrated) }
     }
 
-    var isStrictModeEnabled: Bool {
-        get { defaults.bool(forKey: Key.strictModeEnabled) }
-        set { defaults.set(newValue, forKey: Key.strictModeEnabled) }
-    }
-
-    var hasOfferedStrictMode: Bool {
-        get { defaults.bool(forKey: Key.hasOfferedStrictMode) }
-        set { defaults.set(newValue, forKey: Key.hasOfferedStrictMode) }
+    func clearLegacyStrictModePreference() {
+        defaults.removeObject(forKey: Key.legacyStrictModeEnabled)
+        defaults.removeObject(forKey: Key.legacyHasOfferedStrictMode)
     }
 
     var hasOfferedScheduleSuggestion: Bool {

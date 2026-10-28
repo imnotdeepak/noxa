@@ -25,7 +25,8 @@ import Testing
             startedAt: now.addingTimeInterval(-300),
             plannedEndAt: end,
             plannedDurationSeconds: 2_100,
-            outcome: .active
+            outcome: .active,
+            isStrict: true
         )
         defaults.set(
             try JSONEncoder().encode(NoxaLocalSnapshot(sessionEngineState: .active, activeSession: session)),
@@ -43,6 +44,7 @@ import Testing
         let matching = ShieldRuleExplanation.domain("www.example.com", defaults: defaults, now: now, calendar: calendar)
         #expect(matching?.contains("Focus until") == true)
         #expect(matching?.contains("Write the outline") == true)
+        #expect(matching?.contains("Can't end early in Noxa.") == true)
         #expect(ShieldRuleExplanation.domain("notexample.com", defaults: defaults, now: now, calendar: calendar) == nil)
         #expect(ShieldRuleExplanation.domain("example.com", defaults: defaults, now: end, calendar: calendar) == nil)
     }
@@ -231,5 +233,31 @@ import Testing
             "example.com", defaults: defaults, now: late, calendar: calendar
         ))
         #expect(message.contains(nextRelease.formatted(date: .abbreviated, time: .shortened)))
+    }
+
+    @Test func legacyNormalSessionShieldDoesNotClaimCommitment() throws {
+        let defaults = try defaults()
+        let session = ActiveSessionRecord(
+            startedAt: now.addingTimeInterval(-300),
+            plannedEndAt: now.addingTimeInterval(1_800),
+            plannedDurationSeconds: 2_100,
+            outcome: .active,
+            isStrict: false
+        )
+        defaults.set(
+            try JSONEncoder().encode(NoxaLocalSnapshot(sessionEngineState: .active, activeSession: session)),
+            forKey: "noxa.localSnapshot"
+        )
+        defaults.set(
+            try JSONEncoder().encode(FocusSessionRestrictionConfiguration(
+                selection: FamilyActivitySelection(),
+                websiteDomains: ["example.com"]
+            )),
+            forKey: "noxa.focusSessionRestrictions"
+        )
+
+        let message = ShieldRuleExplanation.domain("example.com", defaults: defaults, now: now, calendar: calendar)
+        #expect(message?.contains("Focus until") == true)
+        #expect(message?.contains("Can't end early") == false)
     }
 }

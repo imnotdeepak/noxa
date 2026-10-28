@@ -66,10 +66,12 @@ enum ShieldRuleExplanation {
                 let intention = focus.intention?
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                     .replacingOccurrences(of: "\n", with: " ")
+                // Sessions from older versions may still allow an early end.
+                let commitment = session.isStrict == true ? " Can't end early in Noxa." : ""
                 if let intention, !intention.isEmpty {
-                    reasons.append("Focus until \(end). \(String(intention.prefix(65)))")
+                    reasons.append("Focus until \(end).\(commitment) \(String(intention.prefix(65)))")
                 } else {
-                    reasons.append("Focus until \(end).")
+                    reasons.append("Focus until \(end).\(commitment)")
                 }
             }
         }
@@ -144,6 +146,7 @@ private struct Snapshot: Decodable {
 private struct Session: Decodable {
     let plannedEndAt: Date
     let outcome: String
+    let isStrict: Bool?
 }
 
 private struct PomodoroShieldCycle: Decodable {

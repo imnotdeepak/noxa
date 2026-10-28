@@ -170,7 +170,7 @@ private struct FocusWidgetView: View {
                         Text(timerInterval: entry.date...end, countsDown: true, showsHours: false)
                             .font(.title.bold().monospacedDigit())
                             .minimumScaleFactor(0.6)
-                        Text(isBreak ? "Pomodoro break" : entry.isStrict ? "Strict session" : "Focus session")
+                        Text(isBreak ? "Pomodoro break" : "Focus session")
                             .font(.caption)
                     } else {
                         Text("Start Focus")
@@ -182,7 +182,7 @@ private struct FocusWidgetView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             }
         }
-        .widgetURL(URL(string: isActive ? "noxa://focus/active" : "noxa://focus/home"))
+        .widgetURL(URL(string: isActive ? "noxa://focus/active" : "noxa://focus/start"))
     }
 }
 
@@ -211,7 +211,7 @@ private struct FocusLiveActivityWidget: Widget {
                         Text("Open Noxa for current status")
                             .font(.subheadline)
                     } else {
-                        Text(context.attributes.isStrict ? "Strict Focus" : "Focus")
+                        Text("Focus")
                             .font(.headline)
                         Text(timerInterval: context.state.startedAt...context.state.plannedEndAt, countsDown: true)
                             .font(.title.bold().monospacedDigit())
@@ -239,7 +239,7 @@ private struct FocusLiveActivityWidget: Widget {
                 DynamicIslandExpandedRegion(.bottom) {
                     Text(context.isStale
                          ? "Open Noxa for current status"
-                         : context.attributes.isStrict ? "Strict session" : "Focus session")
+                         : "Focus session")
                 }
             } compactLeading: {
                 Image(systemName: "timer")

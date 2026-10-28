@@ -2,6 +2,25 @@
 
 **October 27 scope update:** The owner removed Instagram Full Block from the intended product. Do not count its former device check as remaining testing. Its implementation was removed from the code on October 27: Settings offers only Off and Hide Reels and Explore, and a saved Full Block choice loads as Off.
 
+## October 28 release-readiness matrix
+
+Baseline: branch `codex/product-roadmap`, last commit `ee621f3`, plus uncommitted work for always-committed Focus, locked schedules, Insights wording, and the `ContentView` split. Unit tests passed on the iPhone 18 Pro simulator (iOS 27.0) on October 28. Simulator results don't count as physical-device passes.
+
+| Area | Status | What's left |
+| --- | --- | --- |
+| Always-committed Focus | Passed on paired iPhone | None on this build. Checked: no Strict toggle or prompt, "Ready to commit?" review, no early end, Custom 300 capped to 240, single Pomodoro confirmation with stop only during breaks, shield "Can't end early in Noxa.", and the idle widget opening the same review (after the route fix below). |
+| Locked schedules | Passed on paired iPhone | None on this build. Checked: lock toggle and next-window text for Blocked hours only, existing schedules unlocked, "Lock this block now?" confirmation, disable/remove/edit refused while locked, rename allowed, recovery-screen Stop Schedules skipping the locked rule, release at the window's end with Noxa force-quit, and Focus keeping an overlapping app blocked after the schedule ended. The overnight window was not retested on this build; the owner had checked it earlier. |
+| Insights wording | Passed on paired iPhone | None. |
+| `ContentView` split | Passed on paired iPhone | None. Every tab and sheet behaved as before. |
+| Paid access expiry | Open | Needs a sandbox account: Focus during expiry, Instagram app block release with Noxa closed. |
+| Brand-new paid account | Open | Onboarding → Screen Time permission → targets → committed first Focus → completed session. |
+| Upgrade from the App Store version | Open | Old allowed-window schedule with active restrictions; an old non-Strict session keeps its early end. |
+| Production-signed Live Activity push cleanup | Open | TestFlight build on a physical iPhone. |
+| Accessibility and privacy | Partly done | Blocklist labels fixed in `ee621f3`. Still open: contrast, the account-deletion flow, and the PostHog deletion gap. |
+| Repeated schedule boundary releases | Open | Repeat across locked/foreground states and record late callbacks rather than hiding them. |
+
+Paired-iPhone results, October 28: the owner ran the checks above on "iphony 5x". The first run found that tapping the idle widget opened Home with one hour selected instead of the review, because the redesign had pointed the widget at the `noxa://focus/home` route. The widget now uses `noxa://focus/start`, and a widget start first clears a finished Pomodoro. After reinstalling, the widget opened the review. Sign Out stays disabled while a Focus session or Pomodoro runs; that is intended. The recovery-screen check was run with only a locked schedule active.
+
 ## October 27–28 paired-iPhone checks
 
 The owner reported these results on “iphony 5x” from the Debug build installed at 2:13 PM on October 27 (Full Block removed):
@@ -312,7 +331,7 @@ The app and monitor now use one shared writer for app, category, and website sel
 | Revoke Screen Time authorization mid-cycle | The cycle is stopped and Noxa reports the interruption without leaving an app-controlled stale shield. |
 | Complete the first focus session after force-quitting Noxa, then reopen it | The one-time recurring-schedule offer appears with the completed session's targets after subscription and authorization recover. The editor lets the user choose name, days, hours, and mode before saving. |
 | End the first focus session early | No recurring-schedule offer appears. A later first completed session uses its own targets. |
-| Tap an idle Home or Lock Screen widget | Noxa opens Home with one hour selected. The user can change duration there, then review targets, the time the session ends, and the Strict warning before confirming. No block starts on the widget tap alone. |
+| Tap an idle Home or Lock Screen widget | Noxa opens the "Ready to commit?" review with one hour selected, the saved targets, the end time and the can't-end-early note. The user can change the duration there before confirming. No block starts on the widget tap alone. |
 | Start and end a focus session with widgets placed | Home and Lock Screen widgets show the correct countdown, then return to Start. The Live Activity appears when permitted and clears at the end or on recovery. |
 | Tap the widget with no subscription, targets, or Screen Time access | Noxa shows the correct paywall or setup path and does not claim a session started. |
 | Enable the Instagram Safari extension and allow instagram.com after subscribing | With Distraction-Free selected, direct Reels and Explore routes show the return-to-feed screen. The feed, messages, search, and profiles stay usable. Confirm embedded Reels separately; the prototype may miss them. |

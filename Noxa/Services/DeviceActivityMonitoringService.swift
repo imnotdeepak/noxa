@@ -22,8 +22,8 @@ enum NoxaDeviceActivityConfiguration {
     static let dailyLimitResetDayKey = "noxa.dailyLimitResetDay"
     static let scheduleRelaxationActivityPrefix = "noxa.schedule.relax"
     static let minimumFocusSessionMinutes = 15
-    static let maximumFocusSessionMinutes = 480
-    static let maximumStrictFocusSessionMinutes = 240
+    /// Every new Focus session is committed, so one four-hour cap applies.
+    static let maximumFocusSessionMinutes = 240
 
     static func dailyLimitEventName(for id: UUID) -> DeviceActivityEvent.Name {
         DeviceActivityEvent.Name("noxa.daily.limit.\(id.uuidString.lowercased())")

@@ -128,29 +128,41 @@ struct NoxaTests {
     @Test @MainActor func focusSessionDurationStaysWithinDeviceActivityBounds() {
         #expect(FocusSessionService.normalizedDurationMinutes(1) == 15)
         #expect(FocusSessionService.normalizedDurationMinutes(45) == 45)
-        #expect(FocusSessionService.normalizedDurationMinutes(600) == 480)
-        #expect(FocusSessionService.normalizedDurationMinutes(600, strict: true) == 240)
+        #expect(FocusSessionService.normalizedDurationMinutes(240) == 240)
+        #expect(FocusSessionService.normalizedDurationMinutes(600) == 240)
     }
 
-    @Test @MainActor func strictSettingPersistsButDoesNotRewriteAnExistingSession() throws {
-        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.StrictSetting.\(UUID().uuidString)"))
+    @Test @MainActor func legacyNormalSessionCanStillEndEarlyAfterUpgrade() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.LegacyEnd.\(UUID().uuidString)"))
         let store = AppGroupStore(defaults: defaults)
-        let existingSession = ActiveSessionRecord(
+        // Started by a version that had a Strict Mode toggle, with it off.
+        let session = ActiveSessionRecord(
+            startedAt: Date().addingTimeInterval(-300),
             plannedEndAt: Date().addingTimeInterval(900),
-            plannedDurationSeconds: 900,
-            outcome: .active
+            plannedDurationSeconds: 1_200,
+            outcome: .active,
+            isStrict: false
         )
         var snapshot = NoxaLocalSnapshot()
-        snapshot.activeSession = existingSession
+        snapshot.activeSession = session
         try store.saveSnapshot(snapshot)
 
         let service = FocusSessionService(store: store)
-        #expect(!service.strictModeEnabled)
-        service.setStrictModeEnabled(true)
+        service.endEarly()
 
-        #expect(FocusSessionService(store: store).strictModeEnabled)
-        #expect(service.activeSession?.isStrict == false)
-        #expect(try store.loadSnapshot()?.activeSession?.isStrict == false)
+        #expect(service.activeSession == nil)
+        #expect(service.history.first?.id == session.id)
+        #expect(service.history.first?.outcome == .endedEarly)
+    }
+
+    @Test func retiredStrictModePreferenceIsCleared() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.StrictPref.\(UUID().uuidString)"))
+        let store = AppGroupStore(defaults: defaults)
+        defaults.set(true, forKey: "noxa.strictModeEnabled")
+        defaults.set(true, forKey: "noxa.hasOfferedStrictMode")
+        store.clearLegacyStrictModePreference()
+        #expect(defaults.object(forKey: "noxa.strictModeEnabled") == nil)
+        #expect(defaults.object(forKey: "noxa.hasOfferedStrictMode") == nil)
     }
 
     @Test @MainActor func strictActiveSessionRejectsEarlyEnd() throws {
@@ -171,7 +183,7 @@ struct NoxaTests {
 
         #expect(service.activeSession?.id == session.id)
         #expect(try store.loadSnapshot()?.activeSession?.outcome == .active)
-        #expect(service.errorMessage?.contains("cannot end early") == true)
+        #expect(service.errorMessage?.contains("can't end early") == true)
     }
 
     @Test func legacySessionWithoutStrictFieldDecodesAsNormal() throws {

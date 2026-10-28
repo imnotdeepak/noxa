@@ -29,12 +29,14 @@ struct ScheduleRule: Codable, Equatable, Identifiable, Sendable {
     var isEnabled: Bool
     var notifyAtStart: Bool
     var notifyAtEnd: Bool
+    /// Blocked hours only: the active window can't be weakened in Noxa.
+    var lockWhileActive: Bool
     var pendingLegacyRelaxation: PendingScheduleRelaxation?
 
     private enum CodingKeys: String, CodingKey {
         case id, name, mode, selection, websiteDomains, weekdays
         case startMinutes, endMinutes, createdAt, isEnabled
-        case notifyAtStart, notifyAtEnd, pendingLegacyRelaxation
+        case notifyAtStart, notifyAtEnd, lockWhileActive, pendingLegacyRelaxation
     }
 
     init(
@@ -50,6 +52,7 @@ struct ScheduleRule: Codable, Equatable, Identifiable, Sendable {
         isEnabled: Bool = true,
         notifyAtStart: Bool = false,
         notifyAtEnd: Bool = false,
+        lockWhileActive: Bool = false,
         pendingLegacyRelaxation: PendingScheduleRelaxation? = nil
     ) {
         self.id = id
@@ -64,6 +67,7 @@ struct ScheduleRule: Codable, Equatable, Identifiable, Sendable {
         self.isEnabled = isEnabled
         self.notifyAtStart = notifyAtStart
         self.notifyAtEnd = notifyAtEnd
+        self.lockWhileActive = lockWhileActive
         self.pendingLegacyRelaxation = pendingLegacyRelaxation
     }
 
@@ -81,6 +85,8 @@ struct ScheduleRule: Codable, Equatable, Identifiable, Sendable {
         isEnabled = try values.decode(Bool.self, forKey: .isEnabled)
         notifyAtStart = try values.decodeIfPresent(Bool.self, forKey: .notifyAtStart) ?? false
         notifyAtEnd = try values.decodeIfPresent(Bool.self, forKey: .notifyAtEnd) ?? false
+        // Schedules saved before the lock existed stay unlocked.
+        lockWhileActive = try values.decodeIfPresent(Bool.self, forKey: .lockWhileActive) ?? false
         pendingLegacyRelaxation = try values.decodeIfPresent(
             PendingScheduleRelaxation.self, forKey: .pendingLegacyRelaxation
         )

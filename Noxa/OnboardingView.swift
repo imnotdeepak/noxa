@@ -1016,9 +1016,3 @@ struct OnboardingView: View {
     }
 
 }
-
-private extension ScreenTimeAuthorizationState {
-    var isApproved: Bool {
-        self == .approved || self == .approvedWithDataAccess
-    }
-}

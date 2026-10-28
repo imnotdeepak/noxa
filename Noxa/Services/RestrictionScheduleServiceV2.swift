@@ -52,7 +52,8 @@ final class RestrictionScheduleService: ObservableObject {
         start: Date,
         end: Date,
         notifyAtStart: Bool = false,
-        notifyAtEnd: Bool = false
+        notifyAtEnd: Bool = false,
+        lockWhileActive: Bool = false
     ) {
         errorMessage = nil
         guard configurations.count < Self.maximumConfigurations else {
@@ -69,7 +70,8 @@ final class RestrictionScheduleService: ObservableObject {
             startMinutes: Self.minutesSinceMidnight(start, calendar: calendar),
             endMinutes: Self.minutesSinceMidnight(end, calendar: calendar),
             notifyAtStart: notifyAtStart,
-            notifyAtEnd: notifyAtEnd
+            notifyAtEnd: notifyAtEnd,
+            lockWhileActive: lockWhileActive
         )
         guard let normalized = validated(rule) else { return }
         configurations.append(normalized)
@@ -81,6 +83,9 @@ final class RestrictionScheduleService: ObservableObject {
         guard let index = configurations.firstIndex(where: { $0.id == configuration.id }),
               let normalized = validated(configuration) else { return }
         let previous = configurations[index]
+        guard allowsChange(previous, decision: ScheduleCommitmentPolicy.update(
+            from: previous, to: normalized, at: Date(), calendar: .autoupdatingCurrent
+        )) else { return }
         configurations[index] = normalized
         let affectsCommitment = previous.mode != normalized.mode
             || previous.selection != normalized.selection
@@ -110,7 +115,13 @@ final class RestrictionScheduleService: ObservableObject {
     }
 
     func setEnabled(_ enabled: Bool, for configuration: ScheduleRule) {
+        errorMessage = nil
         guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
+        if !enabled {
+            guard allowsChange(configurations[index], decision: ScheduleCommitmentPolicy.removal(
+                of: configurations[index], at: Date(), calendar: .autoupdatingCurrent
+            )) else { return }
+        }
         let wasEnabled = configurations[index].isEnabled
         configurations[index].isEnabled = enabled
         configurations[index].pendingLegacyRelaxation = nil
@@ -124,7 +135,11 @@ final class RestrictionScheduleService: ObservableObject {
     }
 
     func remove(_ configuration: ScheduleRule) {
-        guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
+        errorMessage = nil
+        guard let index = configurations.firstIndex(where: { $0.id == configuration.id }),
+              allowsChange(configurations[index], decision: ScheduleCommitmentPolicy.removal(
+                  of: configurations[index], at: Date(), calendar: .autoupdatingCurrent
+              )) else { return }
         recordImmediateLegacyStop(for: configuration.id, remove: true)
         coordinator.stop(configuration)
         stopLegacyActivities(for: configuration.id)
@@ -141,7 +156,17 @@ final class RestrictionScheduleService: ObservableObject {
     func requestDisableAll() {
         guard configurations.contains(where: \.isEnabled) else { return }
         var changes: [ScheduleCommitmentEvent] = []
+        var lockedMessage: String?
         for index in configurations.indices where configurations[index].isEnabled {
+            // Locked windows end on their own; every other schedule stops now.
+            if let end = ScheduleCommitmentPolicy.lockedUntil(
+                configurations[index], at: Date(), calendar: .autoupdatingCurrent
+            ) {
+                lockedMessage = ScheduleCommitmentPolicy.lockedMessage(
+                    name: configurations[index].name, until: end
+                )
+                continue
+            }
             recordImmediateLegacyStop(for: configurations[index].id, remove: false)
             coordinator.stop(configurations[index])
             stopLegacyActivities(for: configurations[index].id)
@@ -150,6 +175,19 @@ final class RestrictionScheduleService: ObservableObject {
             changes.append(ScheduleCommitmentEvent(rule: configurations[index]))
         }
         persistAndReschedule(recording: changes)
+        if let lockedMessage { errorMessage = lockedMessage }
+    }
+
+    /// The release time of a rule's active locked window, if any.
+    func lockedUntil(_ configuration: ScheduleRule, at date: Date = Date()) -> Date? {
+        let saved = configurations.first { $0.id == configuration.id } ?? configuration
+        return ScheduleCommitmentPolicy.lockedUntil(saved, at: date, calendar: .autoupdatingCurrent)
+    }
+
+    private func allowsChange(_ rule: ScheduleRule, decision: ScheduleCommitmentPolicy.Decision) -> Bool {
+        guard case .locked(let end) = decision else { return true }
+        errorMessage = ScheduleCommitmentPolicy.lockedMessage(name: rule.name, until: end)
+        return false
     }
 
     func reconcile() {
@@ -351,6 +389,8 @@ final class RestrictionScheduleService: ObservableObject {
         }
         var normalized = rule
         normalized.name = String(name.prefix(50))
+        // Allowed hours can block open-endedly, so the lock is Blocked hours only.
+        normalized.lockWhileActive = rule.lockWhileActive && ScheduleCommitmentPolicy.canLock(rule.mode)
         normalized.websiteDomains = Array(Set(normalizedDomains)).sorted()
         return normalized
     }
