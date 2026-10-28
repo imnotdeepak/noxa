@@ -1,5 +1,77 @@
 # Physical-device restriction checks
 
+**October 27 scope update:** The owner removed Instagram Full Block from the intended product. Do not count its former device check as remaining testing. Its implementation was removed from the code on October 27: Settings offers only Off and Hide Reels and Explore, and a saved Full Block choice loads as Off.
+
+## October 27–28 paired-iPhone checks
+
+The owner reported these results on “iphony 5x” from the Debug build installed at 2:13 PM on October 27 (Full Block removed):
+
+| Check | Result |
+| --- | --- |
+| Instagram Settings picker | Pass: only Off and Hide Reels and Explore are offered. |
+| Relaunch Noxa during Focus | Pass: after force-quitting, Noxa showed the same session and end time, and the app stayed blocked. |
+| Reel embedded in the Safari feed | Pass: hidden; posts, messages, search, and profiles worked. |
+| Safari extension permission removed, then restored | Pass: Noxa reported filtering as disconnected, then recovered. While a Focus session that includes websites is running, iOS does not allow the permission to be changed. |
+| Widget tap without targets | Pass: Noxa guided setup and did not claim a session started. |
+| Daily limit reached, then Focus ends on the same app | Pass: the daily-limit block remained. |
+| Allowed-hours window opens during Focus | Pass: Focus kept the app blocked until its own end. |
+| Schedule disabled during Focus | Pass: only that schedule's block changed. |
+| Notifications denied, then allowed | Pass: Focus, schedules, and Pomodoro enforced without notifications; break reminders and the four-round prompt appeared when allowed. |
+| Phone restart during Focus | Pass: the block persisted with the same end time. |
+| Time-zone change during a schedule | Pass: the block and displayed times followed local time. |
+| Light/dark appearance and largest text | Pass across the checked screens. |
+| Overnight allowed-hours schedule | Pass: blocked after 11:30 PM and released at 7:00 AM. |
+
+Still open: paid-access expiry (Instagram release with Noxa closed, Focus during expiry), first use with a test account, upgrade from an older saved schedule, the production-signed build with Live Activity push cleanup, and the Blocklist accessibility label and privacy/account-deletion reviews.
+
+## October 26–27 paired-iPhone regression run
+
+The owner reported these results from Debug builds of the current uncommitted working tree on “iphony 5x”:
+
+| Check | Result |
+| --- | --- |
+| DoorDash daily limit | Pass: 10-minute allowance warned at 3:12:45 PM and reached the limit at 3:17:43 PM. Earlier usage counted when the limit was recreated. |
+| Two overlapping blocked-hour schedules | Pass: DoorDash stayed blocked after A ended at 3:45 PM and released when B ended at 3:50 PM, with Noxa closed. |
+| Monday-only overnight schedule | Pass: the 11:30 PM–7:00 AM block continued into Tuesday and released at 7:00 AM. |
+| Strict duration and setting changes | Pass: custom 480 minutes capped at 240; no early-end control; the session released at its planned end. Changing Strict during a session affected future sessions only. |
+| App upgrade during Strict Focus | Pass: installing a build over an active session preserved the saved block and monitor receipt; DoorDash released at the planned end. |
+| Screen Time access off and on | Pass for the revised pause behavior: iOS lifted restrictions while access was off, then restored the same block when access returned before the end. The affected session was recorded as Interrupted. |
+| Four-round Strict 15/5 Pomodoro | Pass: all four rounds ran with Noxa closed; boundary callbacks were 0.2–2.0 seconds late, all rounds were recorded Completed, and no fifth round began. |
+| Instagram | Pass: signed-in Safari filtered Reels and Explore while feed, messages, search, and profile worked. The separate native-app restriction blocked Instagram without blocking instagram.com; Noxa's Safari button opened Safari; Off restored access. |
+| Largest accessibility text | Pass on the revised iPhone build: the owner confirmed that all six Focus choices (30m, 45m, 1h, 2h, 3h, Custom) fit within their buttons with no overlap. Other accessibility audit findings remain open. |
+
+The manual-shield overlap scenario is removed from the current product test matrix: no user-facing manual-shield control exists. The saved manual store is retained only for older-install migration and recovery. A cached shield's displayed Pomodoro end time still requires reopening the shielded app to refresh; the existing hint describes this iOS behavior.
+
+The Focus and other duration-choice rows now use one column at accessibility text sizes and allow labels to grow vertically. On the paired iPhone's final Debug build, the owner visually confirmed that all six Focus labels fit without clipping or overlap at the largest accessibility text size. A targeted simulator accessibility audit runner stalled after launching, so it did not return a pass or failure and was stopped; no permanent test was added from that attempt. The simulator unit suite passed **92 tests** on the working tree before the final Instagram expiry-release edit; **8 focused Instagram and Screen Time pause tests** passed afterward. The final Release configuration build also passed. The optional native-app store has a scheduled release before paid access expires; the leftover Full Block website store is cleared on every Instagram reconcile and at that release. That unattended expiry path still needs a physical check. The owner declined the optional Instagram Web Home Screen shortcut test; it is not a release gate.
+
+## October 25 parallel release checks
+
+The current branch passed **86 simulator unit tests**, **8 Instagram filter script tests**, and **2 Live Activity payload tests**. A new Release archive exported both an App Store Connect package and an installable release-testing package. The latter's provisioning profiles include production push for the app, Family Controls for the relevant app and extensions, and the shared Noxa app group. Production push delivery is still unverified on the iPhone.
+
+A focused simulator Dynamic Type audit of the main screen failed on its six Focus duration choices (30m, 45m, 1h, 2h, 3h, and Custom). The first audit had landed on the iOS Strict Mode introduction alert; the follow-up dismissed it before auditing the app screen. A system-font experiment and removal of the explicit button font did not clear the audit, so those experiments were reverted. The accessibility issue remains open. No iPhone build was installed for these parallel checks; the saved 9:00 PM schedule boundary remains undisturbed.
+
+## October 25 evening schedule and Pomodoro overlap
+
+At **8:57:54 PM EDT**, with Noxa closed, Dazz Cam displayed the named “Allowed hours, every day” schedule shield, due to release at 9:00 PM. At **9:00:16 PM**, while Dazz Cam stayed foregrounded, a device screenshot showed Dazz Cam's own update screen instead of a shield. This confirms visible release at the allowed-window boundary without opening Noxa; it also demonstrates that this shield cleared without leaving and reopening the app.
+
+A controlled iPhone UI test then started a **Strict 15/5 four-round Pomodoro at 9:01:27 PM**. The test passed after asserting the 15-minute start button. Its saved cycle, Focus restriction, monitor receipt, and first-round enforcement marker were present. Noxa's app process was terminated after the test. DoorDash's physical shield showed “This focus session ends at 9:16 PM,” matching the first work interval.
+
+The first break began at **9:16:27 PM**. The Focus restriction and monitor receipt were still present at +5 seconds but absent by +15 seconds. A +15-second screenshot showed DoorDash content instead of the shield, while Noxa was out of the foreground. The **“Halfway through your break”** and **“1 minute left in your break”** notifications both appeared in physical screenshots. The second work interval began at **9:21:27 PM**: its Focus restriction and receipt were present by +15 seconds, and a screenshot showed DoorDash's shield with **“This focus session ends at 9:36 PM.”** The owner also observed DoorDash becoming blocked at the scheduled restart. Later rounds and the 10:00 PM schedule reblock remain under observation.
+
+During round two, the paired iPhone's rectangular and circular Lock Screen widgets displayed about **10 minutes 31 seconds** remaining, matching the current work round. The small and medium Home Screen widgets displayed about **9 minutes 27 seconds** remaining a little later; the Dynamic Island also showed an active countdown. These are durations rather than clock times. Tapping an active Home Screen widget while Noxa was closed opened Noxa's active-session screen, which showed round 2 of 4, about eight minutes remaining, and a 9:36 PM session end. Noxa was then terminated again.
+
+The saved callback trace subsequently recorded the ends of rounds two and three, the starts of rounds three and four, and the final end. The trace places those callbacks about one second after their planned boundaries. The Focus restriction and receipt were absent in the later shared-state check. At **11:51 AM on October 26**, both Home Screen widgets displayed **Start Focus**. The requested stop-during-break interaction was missed, and no reliable screen capture establishes the later break and restart visuals or the 10:00 PM schedule overlap. A new controlled break-stop test remains necessary; the idle widget tap and Lock Screen cleanup are separate open checks.
+
+The owner tapped an idle Home widget after the cycle and reported that it opened Noxa's normal Home screen. The product decision is now to retain that destination and select one hour on Home, leaving the Start Focus Shortcut's separate review behavior intact. The widget link and Home routing were updated afterward; verify the new build's one-hour selection and route on the iPhone.
+The signed build with that route was installed on October 26. The owner closed Noxa, tapped an idle Home Screen widget, and confirmed that Home opened with **1h selected** without starting a session. The owner also tapped the idle Lock Screen widget and confirmed the same Home destination and one-hour selection, again without starting a session. Tapping **Start 1h Focus** on Home showed the selected targets, time the session would end, and Strict warning in a separate review; it did not start the session before confirmation.
+
+With **Hide Reels and Explore** selected on the installed build, the owner checked signed-in Instagram in Safari: the main `instagram.com` feed worked, while direct `/reels/` and `/explore/` routes both showed Noxa's pause screen. The owner had not selected an app in the new Instagram app picker, so native-app blocking was not active or tested. Embedded Reels in the feed, permission loss, and subscription-expiry behavior remain separate checks.
+
+An October 26 signed Debug build with a separate **Block Instagram app** switch was installed on the paired iPhone. After refreshing Instagram in Safari and choosing only Instagram in Apple's app picker, the owner reported that Noxa labeled the app **Blocked**. Three targeted simulator tests for mode migration, opt-in persistence, and the app-block conditions passed. The first build's Screen Time shield prevented native Instagram but also restricted instagram.com. Turning the separate app switch off restored the Safari feed. A second build using Apple's application restriction instead of its shield setting prevented native Instagram from opening while the Safari feed worked. The Instagram icon stayed visible but would not open. Noxa Home's Safari button opened the filtered site, Reels remained paused, and turning the switch off restored the native app. Unattended paid-access expiry remains untested.
+
+A new **Strict 15/5 Pomodoro** started at **12:21:23 PM EDT on October 26** to test stopping during a break. The first break is planned for **12:36:23–12:41:23 PM**. During work round one, the owner confirmed DoorDash was blocked, its shield said the session ends at **12:36 PM**, and Noxa did not show **Stop Pomodoro**. A shared-state read independently showed the cycle, Focus restriction, and monitor receipt present. The break stop and cancellation of future rounds are not yet verified.
+The owner tapped **Stop Pomodoro** during that first break. A shared-state read afterward found the saved cycle, Focus restriction, monitor receipt, and this cycle's round-enforcement markers absent. The owner confirmed Noxa returned to idle Home and DoorDash opened normally immediately after stopping. Dazz Cam remained blocked by its independent **Allowed hours, every day** schedule. After the planned **12:41:23 PM** round-two start, another shared-state read still showed no cycle, Focus restriction, or receipt. The owner reopened DoorDash without opening Noxa and confirmed it still worked; both Home widgets still said **Start Focus**. This verifies cancellation of the next work round and preservation of the independent schedule on the paired iPhone.
+
 ## October 25 current-session shield and backup-wake retest
 
 A Strict 25/5 Pomodoro started at **12:26:03 PM EDT**. DoorDash showed the work shield while Noxa was closed. Its first break began at **12:51:03 PM**; the focus restriction and receipt were gone by **12:51:16 PM**, and a screenshot at **12:51:19 PM** showed DoorDash open without a manual app relaunch. An automated tap stopped this cycle during the break at about **12:51:53 PM**.
@@ -219,7 +291,6 @@ The app and monitor now use one shared writer for app, category, and website sel
 
 | Scenario | Expected result |
 | --- | --- |
-| Manual shield plus normal focus on the same target; end focus early | Manual block remains; focus-only targets release. |
 | Daily limit plus focus on the same target; focus reaches planned end | Daily-limit block remains until its own reset. |
 | Schedule plus focus overlap; allowed window begins during focus | Focus block remains until focus ends. |
 | Upgrade with an active daily allowed schedule | The new named “Allowed hours, every day” rule keeps the same block and release times; old segment stores clear after the new store is applied. |
@@ -241,10 +312,11 @@ The app and monitor now use one shared writer for app, category, and website sel
 | Revoke Screen Time authorization mid-cycle | The cycle is stopped and Noxa reports the interruption without leaving an app-controlled stale shield. |
 | Complete the first focus session after force-quitting Noxa, then reopen it | The one-time recurring-schedule offer appears with the completed session's targets after subscription and authorization recover. The editor lets the user choose name, days, hours, and mode before saving. |
 | End the first focus session early | No recurring-schedule offer appears. A later first completed session uses its own targets. |
-| Tap an idle Home or Lock Screen widget | Noxa opens a focus review with one hour selected; the user can change duration and sees the Strict warning and planned end before confirming. No block starts on the widget tap alone. |
+| Tap an idle Home or Lock Screen widget | Noxa opens Home with one hour selected. The user can change duration there, then review targets, the time the session ends, and the Strict warning before confirming. No block starts on the widget tap alone. |
 | Start and end a focus session with widgets placed | Home and Lock Screen widgets show the correct countdown, then return to Start. The Live Activity appears when permitted and clears at the end or on recovery. |
 | Tap the widget with no subscription, targets, or Screen Time access | Noxa shows the correct paywall or setup path and does not claim a session started. |
 | Enable the Instagram Safari extension and allow instagram.com after subscribing | With Distraction-Free selected, direct Reels and Explore routes show the return-to-feed screen. The feed, messages, search, and profiles stay usable. Confirm embedded Reels separately; the prototype may miss them. |
+| Enable the separate Block Instagram app switch | After visiting Instagram in Safari, choose only Instagram in Apple's app picker. iOS prevents launch of the app; Noxa Home's Open Instagram in Safari button opens the filtered website. Turning the switch off restores the app. Check that the app also releases before subscription expiry while Noxa stays closed. On iOS 26.2.1 a blocked app tap cannot redirect into Safari. **App, website, button, and switch-off behavior observed on the paired iPhone; expiry pending.** |
 | Turn the Instagram website choice Off, sign out, or reach subscription expiry | The extension stops hiding Instagram content even if Safari still lists it as enabled. Reload a page and check again after a minute on an already-open page. |
 | Revoke Safari's Instagram website permission | The app shows no recent Instagram connection and offers Full Block; it does not claim that filtering is working. Instagram remains unchanged until access is restored. |
 | Select Instagram Full Block, then Off | Safari shows “Website Not Allowed” for instagram.com while Full Block is selected and loads the page again after Off. **Observed on the paired iPhone.** |

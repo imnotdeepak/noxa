@@ -7,6 +7,7 @@ final class FocusLaunchRouter: ObservableObject {
 
     @Published private(set) var hasPendingStart = false
     @Published private(set) var hasPendingHome = false
+    private(set) var pendingHomeDurationMinutes: Int?
 
     func handle(_ url: URL) -> Bool {
         guard url.scheme == "noxa", url.host == "focus" else {
@@ -17,7 +18,10 @@ final class FocusLaunchRouter: ObservableObject {
             requestStart()
             return true
         case "/active":
-            hasPendingHome = true
+            requestHome()
+            return true
+        case "/home":
+            requestHome(defaultDurationMinutes: 60)
             return true
         default:
             return false
@@ -32,7 +36,13 @@ final class FocusLaunchRouter: ObservableObject {
         hasPendingStart = false
     }
 
+    private func requestHome(defaultDurationMinutes: Int? = nil) {
+        pendingHomeDurationMinutes = defaultDurationMinutes
+        hasPendingHome = true
+    }
+
     func consumeHome() {
         hasPendingHome = false
+        pendingHomeDurationMinutes = nil
     }
 }

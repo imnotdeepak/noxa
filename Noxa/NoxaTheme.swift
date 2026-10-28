@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum NoxaTheme {
     static let background = Color(red: 7.0 / 255.0, green: 21.0 / 255.0, blue: 15.0 / 255.0)
@@ -18,6 +19,91 @@ enum NoxaTheme {
         .custom("Helvetica Neue", size: size, relativeTo: style)
             .weight(weight)
     }
+
+    enum Spacing {
+        /// Horizontal inset shared by every top-level screen.
+        static let screen: CGFloat = 16
+        /// Gap between cards and between a header and the first card.
+        static let section: CGFloat = 16
+        static let card: CGFloat = 18
+        /// Gap between rows inside a card.
+        static let row: CGFloat = 12
+    }
+
+    enum Radius {
+        static let card: CGFloat = 22
+        static let control: CGFloat = 16
+        static let field: CGFloat = 14
+    }
+}
+
+/// Feedback for physical touches and meaningful outcomes. Keep it sparing:
+/// selection ticks for choices, taps for confirmations, notifications for results.
+enum NoxaHaptics {
+    static func tap(_ style: UIImpactFeedbackGenerator.FeedbackStyle = .light) {
+        UIImpactFeedbackGenerator(style: style).impactOccurred()
+    }
+
+    static func selection() {
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    static func success() {
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    static func warning() {
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+    }
+}
+
+/// Springs are interruptible and carry velocity, so every state change uses
+/// one of these instead of a fixed-duration ease.
+enum NoxaMotion {
+    /// Taps, presses and small toggles.
+    static let snappy = Animation.spring(response: 0.28, dampingFraction: 0.86)
+    /// Cards appearing, expanding or rearranging.
+    static let spring = Animation.spring(response: 0.38, dampingFraction: 0.84)
+}
+
+private struct NoxaAnimationModifier<Value: Equatable>: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let animation: Animation
+    let value: Value
+
+    func body(content: Content) -> some View {
+        content.animation(reduceMotion ? nil : animation, value: value)
+    }
+}
+
+extension View {
+    /// Animates changes to `value`, and does nothing when Reduce Motion is on.
+    func noxaAnimation<Value: Equatable>(
+        _ animation: Animation = NoxaMotion.spring,
+        value: Value
+    ) -> some View {
+        modifier(NoxaAnimationModifier(animation: animation, value: value))
+    }
+}
+
+/// The one type scale. Every screen picks from here so the app reads as a
+/// single typeface at consistent sizes that still follow Dynamic Type.
+enum NoxaType {
+    static let title = NoxaTheme.font(31, weight: .bold, relativeTo: .largeTitle)
+    static let title2 = NoxaTheme.font(22, weight: .semibold, relativeTo: .title2)
+    static let headline = NoxaTheme.font(17, weight: .semibold, relativeTo: .headline)
+    static let body = NoxaTheme.font(16, relativeTo: .body)
+    static let subheadline = NoxaTheme.font(15, relativeTo: .subheadline)
+    static let subheadlineMedium = NoxaTheme.font(15, weight: .medium, relativeTo: .subheadline)
+    static let subheadlineSemibold = NoxaTheme.font(15, weight: .semibold, relativeTo: .subheadline)
+    static let footnote = NoxaTheme.font(13, relativeTo: .footnote)
+    static let footnoteMedium = NoxaTheme.font(13, weight: .medium, relativeTo: .footnote)
+    static let footnoteSemibold = NoxaTheme.font(13, weight: .semibold, relativeTo: .footnote)
+    static let caption = NoxaTheme.font(12, relativeTo: .caption)
+    static let captionSemibold = NoxaTheme.font(12, weight: .semibold, relativeTo: .caption)
+    static let captionBold = NoxaTheme.font(12, weight: .bold, relativeTo: .caption)
+    static let caption2 = NoxaTheme.font(11, relativeTo: .caption2)
+    static let caption2Bold = NoxaTheme.font(11, weight: .bold, relativeTo: .caption2)
 }
 
 struct NoxaBackground: View {
@@ -107,36 +193,85 @@ struct NoxaGlassCardModifier: ViewModifier {
         content
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .background(
+                NoxaTheme.elevated,
+                in: RoundedRectangle(cornerRadius: NoxaTheme.Radius.card, style: .continuous)
+            )
             .overlay {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .stroke(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.2), NoxaTheme.subtleBorder],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
+                RoundedRectangle(cornerRadius: NoxaTheme.Radius.card, style: .continuous)
+                    .stroke(NoxaTheme.subtleBorder, lineWidth: 1)
             }
-            .shadow(color: .black.opacity(0.24), radius: 24, y: 14)
     }
 }
 
-struct NoxaStatsCardModifier: ViewModifier {
-    let padding: CGFloat
+/// Stats tiles share the standard card surface so every screen matches.
+typealias NoxaStatsCardModifier = NoxaGlassCardModifier
 
-    func body(content: Content) -> some View {
-        content
-            .padding(padding)
-            .frame(maxWidth: .infinity, alignment: .leading)
+/// Title block shared by the top-level tabs: one headline and one supporting line.
+struct NoxaScreenHeader: View {
+    let title: String
+    var subtitle: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(NoxaType.title)
+                .tracking(-0.7)
+                .foregroundStyle(NoxaTheme.primaryText)
+            if let subtitle {
+                Text(subtitle)
+                    .font(NoxaType.body)
+                    .foregroundStyle(NoxaTheme.secondaryText)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// Icon, title and optional trailing detail used at the top of a card.
+struct NoxaCardHeader<Trailing: View>: View {
+    let title: String
+    let systemImage: String
+    @ViewBuilder var trailing: () -> Trailing
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .font(NoxaType.subheadlineSemibold)
+                .foregroundStyle(NoxaTheme.accent)
+                .frame(width: 22)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(NoxaType.headline)
+                .foregroundStyle(NoxaTheme.primaryText)
+            Spacer(minLength: 8)
+            trailing()
+        }
+    }
+}
+
+extension NoxaCardHeader where Trailing == EmptyView {
+    init(title: String, systemImage: String) {
+        self.init(title: title, systemImage: systemImage) { EmptyView() }
+    }
+}
+
+struct NoxaTextFieldStyle: TextFieldStyle {
+    func _body(configuration: TextField<Self._Label>) -> some View {
+        configuration
+            .font(NoxaType.body)
+            .foregroundStyle(NoxaTheme.primaryText)
+            .padding(.horizontal, 14)
+            .frame(minHeight: 48)
             .background(
-                Color.white.opacity(0.035),
-                in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+                Color.white.opacity(0.06),
+                in: RoundedRectangle(cornerRadius: NoxaTheme.Radius.field, style: .continuous)
             )
             .overlay {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .stroke(Color.white.opacity(0.075), lineWidth: 1)
+                RoundedRectangle(cornerRadius: NoxaTheme.Radius.field, style: .continuous)
+                    .stroke(NoxaTheme.subtleBorder, lineWidth: 1)
             }
     }
 }
@@ -146,49 +281,45 @@ struct NoxaPrimaryButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(NoxaTheme.font(17, weight: .semibold))
+            .font(NoxaType.headline)
             .foregroundStyle(.black.opacity(0.9))
             .padding(.horizontal, 18)
-            .frame(maxWidth: .infinity, minHeight: 58)
+            .frame(maxWidth: .infinity, minHeight: 54)
             .background(
-                LinearGradient(
-                    colors: isEnabled
-                        ? [NoxaTheme.accent, NoxaTheme.accent.opacity(0.86)]
-                        : [NoxaTheme.accent.opacity(0.34), NoxaTheme.accent.opacity(0.22)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                ),
-                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                NoxaTheme.accent.opacity(isEnabled ? (configuration.isPressed ? 0.88 : 1) : 0.3),
+                in: RoundedRectangle(cornerRadius: NoxaTheme.Radius.control, style: .continuous)
             )
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(NoxaTheme.accent.opacity(0.75), lineWidth: 1)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .noxaAnimation(NoxaMotion.snappy, value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { isPressed in
+                if isPressed && isEnabled { NoxaHaptics.tap(.medium) }
             }
-            .shadow(
-                color: NoxaTheme.accent.opacity(configuration.isPressed ? 0.08 : 0.22),
-                radius: 14,
-                y: 5
-            )
-            .scaleEffect(configuration.isPressed ? 0.985 : 1)
-            .opacity(isEnabled ? (configuration.isPressed ? 0.88 : 1) : 0.62)
-            .animation(.easeOut(duration: 0.14), value: configuration.isPressed)
     }
 }
 
 struct NoxaSecondaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(NoxaTheme.font(16, weight: .semibold))
+            .font(NoxaType.subheadlineSemibold)
             .foregroundStyle(NoxaTheme.primaryText)
             .padding(.horizontal, 18)
-            .frame(maxWidth: .infinity, minHeight: 52)
-            .background(.thinMaterial, in: Capsule())
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .background(
+                Color.white.opacity(configuration.isPressed ? 0.13 : 0.08),
+                in: RoundedRectangle(cornerRadius: NoxaTheme.Radius.control, style: .continuous)
+            )
             .overlay {
-                Capsule()
-                    .stroke(configuration.isPressed ? Color.white.opacity(0.24) : NoxaTheme.border, lineWidth: 1)
+                RoundedRectangle(cornerRadius: NoxaTheme.Radius.control, style: .continuous)
+                    .stroke(NoxaTheme.subtleBorder, lineWidth: 1)
             }
-            .scaleEffect(configuration.isPressed ? 0.985 : 1)
-            .animation(.easeOut(duration: 0.14), value: configuration.isPressed)
+            .opacity(isEnabled ? 1 : 0.5)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .noxaAnimation(NoxaMotion.snappy, value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { isPressed in
+                if isPressed && isEnabled { NoxaHaptics.tap(.light) }
+            }
     }
 }
 

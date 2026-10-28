@@ -29,6 +29,8 @@ final class AppGroupStore {
         static let safariFilterAllowedUntil = "noxa.safariFilterAllowedUntil"
         static let safariFilterLastSeenAt = "noxa.safariFilterLastSeenAt"
         static let instagramSiteMode = "noxa.instagramSiteMode"
+        static let instagramAppSelection = "noxa.instagramAppSelection"
+        static let instagramAppBlockEnabled = "noxa.instagramAppBlockEnabled"
         static let scheduleCommitmentEvents = "noxa.scheduleCommitmentEvents"
         static let scheduleShieldOwners = "noxa.scheduleShieldOwners"
         static let manualShield = "noxa.manualShield"
@@ -142,9 +144,9 @@ final class AppGroupStore {
     }
 
     var instagramSiteMode: InstagramSiteMode {
-        if let raw = defaults.string(forKey: Key.instagramSiteMode),
-           let mode = InstagramSiteMode(rawValue: raw) {
-            return mode
+        if let raw = defaults.string(forKey: Key.instagramSiteMode) {
+            // Full Block was removed; a saved "fullBlock" choice means Off.
+            return InstagramSiteMode(rawValue: raw) ?? .off
         }
         return isSafariFilterEnabled ? .distractionFree : .off
     }
@@ -155,6 +157,7 @@ final class AppGroupStore {
         // selective mode may change Instagram pages.
         defaults.set(mode == .distractionFree, forKey: Key.safariFilterEnabled)
         if mode != .distractionFree {
+            defaults.set(false, forKey: Key.instagramAppBlockEnabled)
             defaults.removeObject(forKey: Key.safariFilterLastSeenAt)
         }
     }
@@ -162,7 +165,30 @@ final class AppGroupStore {
     func clearInstagramSiteMode() {
         defaults.removeObject(forKey: Key.instagramSiteMode)
         defaults.set(false, forKey: Key.safariFilterEnabled)
+        defaults.set(false, forKey: Key.instagramAppBlockEnabled)
         defaults.removeObject(forKey: Key.safariFilterLastSeenAt)
+    }
+
+    /// The Instagram app chosen in Apple's picker for the optional native-app block.
+    func loadInstagramAppSelection() throws -> FamilyActivitySelection? {
+        guard let data = defaults.data(forKey: Key.instagramAppSelection) else { return nil }
+        return try JSONDecoder().decode(FamilyActivitySelection.self, from: data)
+    }
+
+    func saveInstagramAppSelection(_ selection: FamilyActivitySelection) throws {
+        defaults.set(try JSONEncoder().encode(selection), forKey: Key.instagramAppSelection)
+    }
+
+    func clearInstagramAppSelection() {
+        defaults.removeObject(forKey: Key.instagramAppSelection)
+    }
+
+    var instagramAppBlockEnabled: Bool {
+        defaults.bool(forKey: Key.instagramAppBlockEnabled)
+    }
+
+    func setInstagramAppBlockEnabled(_ enabled: Bool) {
+        defaults.set(enabled, forKey: Key.instagramAppBlockEnabled)
     }
 
     var safariFilterLastSeenAt: Date? {

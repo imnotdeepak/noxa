@@ -182,7 +182,7 @@ private struct FocusWidgetView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             }
         }
-        .widgetURL(URL(string: isActive ? "noxa://focus/active" : "noxa://focus/start"))
+        .widgetURL(URL(string: isActive ? "noxa://focus/active" : "noxa://focus/home"))
     }
 }
 

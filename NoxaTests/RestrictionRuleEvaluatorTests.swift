@@ -121,7 +121,7 @@ struct RestrictionRuleEvaluatorTests {
         ).isEmpty)
     }
 
-    @Test func pomodoroBreakDoesNotReleaseAnIndependentScheduleOrFullSiteBlock() throws {
+    @Test func pomodoroBreakDoesNotReleaseAnIndependentSchedule() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try #require(TimeZone(secondsFromGMT: 0))
         let now = try #require(calendar.date(from: DateComponents(
@@ -137,13 +137,11 @@ struct RestrictionRuleEvaluatorTests {
             endMinutes: 11 * 60
         )
         let result = RestrictionOwnershipPlan.evaluate(
-            .init(schedules: [schedule], instagramFullBlockRequested: true),
+            .init(schedules: [schedule]),
             at: now,
             calendar: calendar
         )
         #expect(result.owners(for: .domain("example.com"))
             == [RestrictionRuleID(source: .schedule, value: schedule.id)])
-        #expect(result.owners(for: .domain("instagram.com"))
-            .contains(where: { $0.source == .instagramFullBlock }))
     }
 }

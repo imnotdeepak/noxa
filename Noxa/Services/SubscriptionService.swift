@@ -256,3 +256,15 @@ extension SubscriptionService: PurchasesDelegate {
         }
     }
 }
+
+#if DEBUG
+extension SubscriptionService {
+    /// Debug-only: grants access for the signed-in preview account.
+    func applyUIPreview(userID: UUID) {
+        boundUserID = userID
+        activeProductID = Self.annualProductID
+        hasAccess = true
+        hasLoaded = true
+    }
+}
+#endif

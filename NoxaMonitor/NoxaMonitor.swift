@@ -13,6 +13,7 @@ import UserNotifications
 private enum NoxaMonitorActivity {
     static let focusActivityName = DeviceActivityName("noxa.focus.session")
     static let focusReleaseActivityName = DeviceActivityName("noxa.focus.release")
+    static let instagramAppExpiryActivityName = DeviceActivityName("noxa.instagram.app-block.expiry")
     static let dailyLimitActivityName = DeviceActivityName("noxa.daily.limits")
     static let dailyLimitReachedEventsKey = "noxa.dailyLimitReachedEvents"
     static let dailyLimitResetDayKey = "noxa.dailyLimitResetDay"
@@ -188,6 +189,8 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         recordPomodoroBoundaryCallback("start", activity: activity)
         if activity == NoxaMonitorActivity.focusActivityName {
             applyPersistedFocusShield(reason: "focus session started")
+        } else if activity == NoxaMonitorActivity.instagramAppExpiryActivityName {
+            releaseExpiringInstagramBlocks()
         } else if activity == NoxaMonitorActivity.focusReleaseActivityName {
             releaseExpiredFocusShield()
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.pomodoroWorkActivityPrefix) {
@@ -325,6 +328,8 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
                 settingsStore.clearAllSettings()
             }
             logger.info("Removed focus shield when session ended")
+        } else if activity == NoxaMonitorActivity.instagramAppExpiryActivityName {
+            releaseExpiringInstagramBlocks()
         } else if activity == NoxaMonitorActivity.focusReleaseActivityName {
             releaseExpiredFocusShield()
         } else if activity.rawValue.hasPrefix(NoxaMonitorActivity.pomodoroWorkActivityPrefix) {
@@ -350,6 +355,24 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
             defaults?.removeObject(forKey: "noxa.focusMonitorReceipt")
             logger.info("Removed expired focus shield at release wake")
         }
+    }
+
+    private func releaseExpiringInstagramBlocks() {
+        guard let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa") else { return }
+        let expiry = defaults.object(forKey: "noxa.safariFilterAllowedUntil") as? Date
+        guard expiry.map({ $0 <= Date().addingTimeInterval(16 * 60) }) ?? true else {
+            // A renewal may have replaced the old release schedule.
+            return
+        }
+        ManagedSettingsStore(named: ManagedSettingsStore.Name("noxa.instagram.app-block"))
+            .clearAllSettings()
+        ManagedSettingsStore(named: ManagedSettingsStore.Name("noxa.instagram.full-block"))
+            .clearAllSettings()
+        defaults.set(false, forKey: "noxa.instagramAppBlockEnabled")
+        if defaults.string(forKey: "noxa.instagramSiteMode") == "fullBlock" {
+            defaults.set("off", forKey: "noxa.instagramSiteMode")
+        }
+        logger.info("Released Instagram restrictions before entitlement expiry")
     }
 
     private func applyPersistedFocusShield(reason: String) {

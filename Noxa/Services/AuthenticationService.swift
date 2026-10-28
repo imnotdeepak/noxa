@@ -378,3 +378,17 @@ private extension String {
         isEmpty ? nil : self
     }
 }
+
+#if DEBUG
+extension AuthenticationService {
+    /// Debug-only: presents a signed-in account without contacting Supabase.
+    func applyUIPreview() {
+        isBootstrapping = false
+        isAuthenticated = true
+        userID = UUID()
+        userEmail = "preview@noxa.app"
+        displayName = "Preview User"
+        hasCompletedOnboarding = true
+    }
+}
+#endif

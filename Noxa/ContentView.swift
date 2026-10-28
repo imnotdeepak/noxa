@@ -6,9 +6,11 @@
 import FamilyControls
 import SafariServices
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private enum MainTab: Hashable {
         case dailyLimits
         case blocklist
@@ -51,8 +53,13 @@ struct ContentView: View {
     @State private var isRequestingAuthorization = false
     @State private var newDomain = ""
     @State private var instagramSiteMode = AppGroupStore.shared.instagramSiteMode
+    @State private var instagramAppBlockEnabled = AppGroupStore.shared.instagramAppBlockEnabled
+    @State private var instagramAppBlockMessage: String?
     @State private var safariExtensionEnabled: Bool?
     @State private var safariFilterLastSeenAt = AppGroupStore.shared.safariFilterLastSeenAt
+    @State private var instagramAppSelection = (try? AppGroupStore.shared.loadInstagramAppSelection()) ?? nil
+    @State private var instagramPickerSelection = FamilyActivitySelection()
+    @State private var isInstagramAppPickerPresented = false
     @State private var restrictionPickerSelection = FamilyActivitySelection()
     @State private var isDailyLimitPickerPresented = false
     @State private var isChoosingDailyLimitDuration = false
@@ -135,6 +142,7 @@ struct ContentView: View {
     var body: some View {
         let presentedTabs = mainTabs
         .tint(NoxaTheme.accent)
+        .font(NoxaType.body)
         .preferredColorScheme(.dark)
         .font(NoxaTheme.font(17))
         .toolbarBackground(NoxaTheme.background.opacity(0.96), for: .tabBar)
@@ -151,6 +159,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $isFocusStartReviewPresented) {
             focusStartReviewSheet
+        }
+        .sheet(isPresented: $isInstagramAppPickerPresented) {
+            instagramAppPickerSheet
         }
         .fullScreenCover(isPresented: $isEndRitualPresented) {
             EndSessionRitualView {
@@ -187,9 +198,29 @@ struct ContentView: View {
         .onChange(of: scenePhase) { newPhase in
             guard newPhase == .active else { return }
             statsReferenceDate = Date()
+            instagramSiteMode = AppGroupStore.shared.instagramSiteMode
+            instagramAppBlockEnabled = AppGroupStore.shared.instagramAppBlockEnabled
             safariFilterLastSeenAt = AppGroupStore.shared.safariFilterLastSeenAt
             Task { await refreshSafariExtensionStatus() }
             Task { await notifications.refreshAuthorizationStatus() }
+        }
+        .onChange(of: selectedTab) { _ in
+            NoxaHaptics.selection()
+        }
+        .onChange(of: authorization.state) { _ in
+            // Pause or resume a running session as soon as access changes.
+            focusSession.reconcile()
+        }
+        .onChange(of: focusSession.activeSession?.id) { sessionID in
+            if sessionID != nil {
+                NoxaHaptics.success()
+            } else {
+                switch focusSession.history.first?.outcome {
+                case .completed: NoxaHaptics.success()
+                case .endedEarly: NoxaHaptics.warning()
+                default: break
+                }
+            }
         }
         .onChange(of: focusSession.completedPomodoroCycleID) { completedID in
             isPomodoroCompletionPresented = completedID != nil
@@ -377,6 +408,8 @@ struct ContentView: View {
                 }
             }
         }
+        .tint(NoxaTheme.accent)
+        .font(NoxaType.body)
         .preferredColorScheme(.dark)
     }
 
@@ -433,16 +466,14 @@ struct ContentView: View {
     }
 
     private var dailyLimitDurationStep: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Choose a daily allowance")
-                    .font(NoxaTheme.font(28, weight: .bold, relativeTo: .title))
-                Text("The selected app will be blocked after this much total use today.")
-                    .foregroundStyle(.secondary)
-            }
+        VStack(alignment: .leading, spacing: NoxaTheme.Spacing.section) {
+            NoxaScreenHeader(
+                title: "Choose a daily allowance",
+                subtitle: "The selected app will be blocked after this much total use today."
+            )
 
             LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2),
+                columns: durationGridColumns(regularCount: 2, spacing: 10),
                 spacing: 10
             ) {
                 ForEach([10, 15, 30, 45, 60, 120], id: \.self) { minutes in
@@ -456,18 +487,18 @@ struct ContentView: View {
             }
 
             Label(newDailyLimitSelectionDescription, systemImage: "app.badge.checkmark")
-                .font(.subheadline.weight(.semibold))
+                .font(NoxaType.subheadlineSemibold)
                 .foregroundStyle(NoxaTheme.accent)
 
             if let errorMessage = dailyLimits.errorMessage {
                 Text(errorMessage)
-                    .font(.footnote)
+                    .font(NoxaType.footnote)
                     .foregroundStyle(.red)
             }
 
             Spacer()
         }
-        .padding(20)
+        .padding(NoxaTheme.Spacing.screen)
         .noxaScreenBackground()
     }
 
@@ -475,19 +506,21 @@ struct ContentView: View {
         NavigationStack {
             VStack(spacing: 12) {
                 TextField("Schedule name", text: $scheduleName)
+                    .textFieldStyle(NoxaTextFieldStyle())
                     .textInputAutocapitalization(.words)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, NoxaTheme.Spacing.screen)
                 scheduleTimingControls
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, NoxaTheme.Spacing.screen)
                 TextField("Websites, separated by commas (optional)", text: $scheduleCustomDomains)
+                    .textFieldStyle(NoxaTextFieldStyle())
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, NoxaTheme.Spacing.screen)
                 if let errorMessage = schedules.errorMessage {
                     Text(errorMessage)
-                        .font(.footnote)
+                        .font(NoxaType.footnote)
                         .foregroundStyle(.red)
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, NoxaTheme.Spacing.screen)
                 }
                 FamilyActivityPicker(selection: $scheduleSelection)
             }
@@ -558,21 +591,21 @@ struct ContentView: View {
                             scheduleWeekdays.insert(weekday)
                         }
                     }
-                    .font(.caption.weight(.semibold))
+                    .font(NoxaType.captionSemibold)
                     .frame(maxWidth: .infinity, minHeight: 34)
                     .background(
                         scheduleWeekdays.contains(weekday) ? NoxaTheme.accent : Color.white.opacity(0.08),
                         in: Capsule()
                     )
-                    .foregroundStyle(scheduleWeekdays.contains(weekday) ? .black : .white)
+                    .foregroundStyle(scheduleWeekdays.contains(weekday) ? .black : NoxaTheme.primaryText)
                 }
             }
 
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(scheduleMode == .allowedHours ? "AVAILABLE FROM" : "BLOCK FROM")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.secondary)
+                        .font(NoxaType.caption2Bold)
+                        .foregroundStyle(NoxaTheme.secondaryText)
                     DatePicker("From", selection: $scheduleAllowedStart, displayedComponents: .hourAndMinute)
                         .labelsHidden()
                 }
@@ -580,8 +613,8 @@ struct ContentView: View {
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text("UNTIL")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.secondary)
+                        .font(NoxaType.caption2Bold)
+                        .foregroundStyle(NoxaTheme.secondaryText)
                     DatePicker("Until", selection: $scheduleAllowedEnd, displayedComponents: .hourAndMinute)
                         .labelsHidden()
                 }
@@ -593,8 +626,8 @@ struct ContentView: View {
             Toggle("Remind me when this schedule ends", isOn: $scheduleNotifyAtEnd)
                 .tint(NoxaTheme.accent)
             Text("Reminders need notification permission and may arrive late if iOS delays a schedule callback. Blocking does not depend on reminders.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(NoxaType.caption)
+                .foregroundStyle(NoxaTheme.secondaryText)
         }
     }
 
@@ -606,12 +639,12 @@ struct ContentView: View {
 
     private var safariFilterStatusMessage: String {
         if safariExtensionEnabled == false {
-            return "Turn on Noxa Instagram Filter in Settings → Apps → Safari → Extensions, then allow access to instagram.com. You can choose Full Block if the filter stays unavailable."
+            return "Turn on Noxa Instagram Filter in Settings → Apps → Safari → Extensions, then allow access to instagram.com. You can also block Instagram with a schedule or your blocklist."
         }
         if safariFilterRecentlyConnected {
             return "Noxa recently connected to Instagram in Safari. Check Reels and Explore there; this connection alone cannot confirm that every page element was hidden."
         }
-        return "Noxa has not recently connected to Instagram in Safari. Open the site, allow extension access, and refresh it. Choose Full Block if filtering remains unavailable."
+        return "Noxa has not recently connected to Instagram in Safari. Open the site, allow extension access, and refresh it. If filtering stays unavailable, block Instagram with a schedule or your blocklist."
     }
 
     private func refreshSafariExtensionStatus() async {
@@ -654,21 +687,35 @@ struct ContentView: View {
 
     private var homeContent: some View {
         ScrollView {
-            VStack(spacing: 22) {
+            VStack(spacing: NoxaTheme.Spacing.section) {
                 hero
 
                 if !authorization.state.isApproved {
                     permissionCard
+                        .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
                 }
 
                 focusSessionCard
+                if instagramSiteMode == .distractionFree && instagramAppBlockEnabled {
+                    Button(action: openInstagramInSafari) {
+                        Label("Open Instagram in Safari", systemImage: "safari")
+                    }
+                    .buttonStyle(NoxaSecondaryButtonStyle())
+                    .noxaCard()
+                }
                 homeActiveRulesCard
                 if schedules.enabledCount > 0 {
                     homeScheduleCard
+                        .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
                 }
                 quickSetupCard
             }
-            .padding()
+            .noxaAnimation(value: authorization.state.isApproved)
+            .noxaAnimation(value: schedules.enabledCount)
+            .noxaAnimation(value: focusSession.isActive)
+            .padding(.horizontal, NoxaTheme.Spacing.screen)
+            .padding(.top, 8)
+            .padding(.bottom, 24)
         }
         .scrollIndicators(.hidden)
         .noxaScreenBackground()
@@ -677,58 +724,78 @@ struct ContentView: View {
     private var focusStartReviewSheet: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    Label("Ready to focus?", systemImage: "checkmark.shield.fill")
-                        .font(NoxaTheme.font(27, weight: .bold, relativeTo: .title))
-
-                    Text("Noxa will block these selected distractions for \(Self.durationLabel(minutes: chosenDurationMinutes)).")
-                        .foregroundStyle(.secondary)
-
-                    Stepper(
-                        "Duration: \(Self.durationLabel(minutes: chosenDurationMinutes))",
-                        value: $selectedDurationMinutes,
-                        in: NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes...maximumFocusMinutes,
-                        step: 5
+                VStack(alignment: .leading, spacing: NoxaTheme.Spacing.section) {
+                    NoxaScreenHeader(
+                        title: "Ready to focus?",
+                        subtitle: "Noxa will block these selected distractions for \(Self.durationLabel(minutes: chosenDurationMinutes))."
                     )
-                    .onChange(of: selectedDurationMinutes) { _ in isCustomDuration = false }
 
-                    tokenRows(for: restrictions.selection)
-                    ForEach(websites.domains, id: \.self) { domain in
-                        Label(domain, systemImage: "globe")
-                            .font(.subheadline)
-                    }
+                    VStack(alignment: .leading, spacing: NoxaTheme.Spacing.row) {
+                        NoxaCardHeader(title: "Duration", systemImage: "timer")
 
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                        Label(
-                            "Ends at \(context.date.addingTimeInterval(TimeInterval(chosenDurationMinutes * 60)).formatted(date: .abbreviated, time: .shortened))",
-                            systemImage: "clock"
+                        Stepper(
+                            "Duration: \(Self.durationLabel(minutes: chosenDurationMinutes))",
+                            value: $selectedDurationMinutes,
+                            in: NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes...maximumFocusMinutes,
+                            step: 5
                         )
-                        .font(.subheadline.weight(.semibold))
+                        .font(NoxaType.subheadlineMedium)
+                        .onChange(of: selectedDurationMinutes) { _ in isCustomDuration = false }
+
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            Label(
+                                "Ends at \(context.date.addingTimeInterval(TimeInterval(chosenDurationMinutes * 60)).formatted(date: .abbreviated, time: .shortened))",
+                                systemImage: "clock"
+                            )
+                            .font(NoxaType.subheadline)
+                            .foregroundStyle(NoxaTheme.secondaryText)
+                        }
                     }
+                    .noxaCard()
+
+                    VStack(alignment: .leading, spacing: NoxaTheme.Spacing.row) {
+                        NoxaCardHeader(title: "Will be blocked", systemImage: "shield.lefthalf.filled")
+
+                        tokenRows(for: restrictions.selection)
+                        ForEach(websites.domains, id: \.self) { domain in
+                            Label(domain, systemImage: "globe")
+                                .font(NoxaType.subheadline)
+                                .accessibilityLabel("Website \(domain)")
+                        }
+                    }
+                    .noxaCard()
 
                     if focusSession.strictModeEnabled {
                         Label(
                             "Strict Mode is on. You cannot end this session early in Noxa. It lasts at most four hours.",
                             systemImage: "lock.fill"
                         )
-                        .font(.subheadline.weight(.semibold))
+                        .font(NoxaType.subheadlineSemibold)
                         .foregroundStyle(NoxaTheme.warning)
                     }
-
-                    Button("Start Focus") {
-                        isFocusStartReviewPresented = false
-                        beginFocusSession(intention: "")
-                    }
-                    .buttonStyle(NoxaPrimaryButtonStyle())
-                    .disabled(
-                        !authorization.state.isApproved
-                            || !hasFocusRestrictions
-                            || focusSession.isActive
-                            || !subscriptions.canEnterApp(for: authentication.userID)
-                    )
                 }
-                .padding(24)
+                .padding(.horizontal, NoxaTheme.Spacing.screen)
+                .padding(.top, 8)
+                .padding(.bottom, 24)
             }
+            .scrollIndicators(.hidden)
+            .safeAreaInset(edge: .bottom) {
+                Button("Start Focus") {
+                    isFocusStartReviewPresented = false
+                    beginFocusSession(intention: "")
+                }
+                .buttonStyle(NoxaPrimaryButtonStyle())
+                .disabled(
+                    !authorization.state.isApproved
+                        || !hasFocusRestrictions
+                        || focusSession.isActive
+                        || !subscriptions.canEnterApp(for: authentication.userID)
+                )
+                .padding(.horizontal, NoxaTheme.Spacing.screen)
+                .padding(.vertical, 12)
+                .background(NoxaTheme.background.opacity(0.96))
+            }
+            .noxaScreenBackground()
             .navigationTitle("Review Focus")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -737,6 +804,8 @@ struct ContentView: View {
                 }
             }
         }
+        .tint(NoxaTheme.accent)
+        .font(NoxaType.body)
         .preferredColorScheme(.dark)
     }
 
@@ -751,6 +820,8 @@ struct ContentView: View {
                 .font(NoxaTheme.font(68, weight: .medium, relativeTo: .largeTitle))
                 .monospacedDigit()
                 .tracking(-1.5)
+                .contentTransition(.numericText())
+                .noxaAnimation(NoxaMotion.spring, value: dailyFocusMinutes)
 
             Text("\(dailyFocusMinutes == 1 ? "minute" : "minutes") focused today")
                 .font(NoxaTheme.font(16, weight: .medium, relativeTo: .subheadline))
@@ -763,8 +834,7 @@ struct ContentView: View {
     private var homeScheduleCard: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
             VStack(alignment: .leading, spacing: 12) {
-                Label("Schedules", systemImage: "calendar.badge.clock")
-                    .font(.headline)
+                NoxaCardHeader(title: "Schedules", systemImage: "calendar.badge.clock")
 
                 ForEach(schedules.configurations.filter(\.isEnabled)) { configuration in
                     let isBlocking = ScheduleRuleEvaluator.isBlocking(
@@ -776,21 +846,21 @@ struct ContentView: View {
                         tokenRows(for: configuration.selection)
                         ForEach(configuration.websiteDomains, id: \.self) { domain in
                             Label(domain, systemImage: "globe")
-                                .font(.subheadline)
+                                .font(NoxaType.subheadline)
                         }
                     } label: {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(configuration.name)
-                                .font(.subheadline.weight(.semibold))
+                                .font(NoxaType.subheadlineSemibold)
                             Text(isBlocking
                                  ? "This schedule blocks selected targets"
                                  : "This schedule is not blocking now")
-                                .font(.caption)
+                                .font(NoxaType.caption)
                                 .foregroundStyle(isBlocking ? NoxaTheme.warning : NoxaTheme.accent)
                             if !isBlocking {
                                 Text("Another rule may still block a selection.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .font(NoxaType.caption)
+                                    .foregroundStyle(NoxaTheme.secondaryText)
                             }
                             if let nextChange = ScheduleRuleEvaluator.nextChange(
                                 for: configuration,
@@ -798,8 +868,8 @@ struct ContentView: View {
                                 calendar: .autoupdatingCurrent
                             ) {
                                 Text("Changes at \(nextChange.formatted(date: .abbreviated, time: .shortened))")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .font(NoxaType.caption)
+                                    .foregroundStyle(NoxaTheme.secondaryText)
                             }
                         }
                     }
@@ -814,13 +884,12 @@ struct ContentView: View {
             let plan = activeRestrictionPlan(at: context.date)
             if !plan.activeRuleIDs.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Label("Active blocking rules", systemImage: "shield.lefthalf.filled")
-                        .font(.headline)
+                    NoxaCardHeader(title: "Active blocking rules", systemImage: "shield.lefthalf.filled")
                     Text("\(plan.activeRuleIDs.count) \(plan.activeRuleIDs.count == 1 ? "rule requests" : "rules request") blocking for \(plan.blockedTargets.count) selected \(plan.blockedTargets.count == 1 ? "item" : "items").")
-                        .font(.subheadline)
+                        .font(NoxaType.subheadline)
                     Text("Saved rules show what Noxa requested. Open a selected app or site to verify its shield.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .font(NoxaType.footnote)
+                        .foregroundStyle(NoxaTheme.secondaryText)
                 }
                 .noxaCard()
             }
@@ -852,11 +921,13 @@ struct ContentView: View {
                 isDailyMonitoring: dailyLimits.isMonitoring,
                 manualShield: try? localStore.loadManualShield(),
                 blockedWebsiteDomains: websites.isBlocklistActive ? websites.domains : [],
-                instagramFullBlockRequested: InstagramSiteProtectionService.shouldApplyFullBlock(
+                instagramAppBlock: InstagramSiteProtectionService.shouldApplyAppBlock(
                     mode: localStore.instagramSiteMode,
+                    isEnabled: localStore.instagramAppBlockEnabled,
                     allowedUntil: localStore.safariFilterAllowedUntil,
+                    appSelection: instagramAppSelection,
                     now: date
-                )
+                ) ? instagramAppSelection : nil
             ),
             at: date,
             calendar: .autoupdatingCurrent
@@ -865,11 +936,10 @@ struct ContentView: View {
 
     private var permissionCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label("Screen Time access required", systemImage: "hourglass")
-                .font(.headline)
+            NoxaCardHeader(title: "Screen Time access required", systemImage: "hourglass")
 
             Text(authorization.statusDescription)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(NoxaTheme.secondaryText)
 
             Button {
                 isRequestingAuthorization = true
@@ -878,13 +948,12 @@ struct ContentView: View {
                     isRequestingAuthorization = false
                 }
             } label: {
-                HStack {
-                    Text(isRequestingAuthorization ? "Requesting…" : "Enable Screen Time Access")
-                    Spacer()
+                HStack(spacing: 8) {
                     if isRequestingAuthorization {
                         ProgressView()
                             .tint(.black)
                     }
+                    Text(isRequestingAuthorization ? "Requesting…" : "Enable Screen Time Access")
                 }
             }
             .buttonStyle(NoxaPrimaryButtonStyle())
@@ -892,7 +961,7 @@ struct ContentView: View {
 
             if let errorMessage = authorization.errorMessage {
                 Text(errorMessage)
-                    .font(.footnote)
+                    .font(NoxaType.footnote)
                     .foregroundStyle(.red)
             }
         }
@@ -906,12 +975,12 @@ struct ContentView: View {
                     Text(focusSession.pomodoroBreakEndsAt != nil
                          ? "Pomodoro break"
                          : (focusSession.isActive ? "Stay focused" : "Start a focus"))
-                        .font(NoxaTheme.font(24, weight: .bold, relativeTo: .title2))
+                        .font(NoxaType.title2)
                     Text(focusSession.pomodoroBreakEndsAt != nil
                          ? "The next work round starts automatically."
                          : (focusSession.isActive ? "Your focus session is running." : "Choose a duration and begin."))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(NoxaType.subheadline)
+                        .foregroundStyle(NoxaTheme.secondaryText)
                         .multilineTextAlignment(focusSession.isActive || focusSession.hasPomodoroCycle ? .leading : .center)
                 }
                 .frame(
@@ -920,19 +989,23 @@ struct ContentView: View {
                 )
                 if focusSession.isActive {
                     Text("FOCUS")
-                        .font(.caption.weight(.bold))
+                        .font(NoxaType.captionBold)
                         .foregroundStyle(.black)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(NoxaTheme.accent, in: Capsule())
                 } else if focusSession.pomodoroBreakEndsAt != nil {
                     Text("BREAK")
-                        .font(.caption.weight(.bold))
+                        .font(NoxaType.captionBold)
                         .foregroundStyle(.black)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(NoxaTheme.accent, in: Capsule())
                 }
+            }
+
+            if focusSession.isPausedForScreenTimeAccess {
+                screenTimePauseNotice
             }
 
             if let activeSession = focusSession.activeSession {
@@ -957,39 +1030,39 @@ struct ContentView: View {
                                     .monospacedDigit()
                                     .tracking(-1.5)
                                 Text("remaining")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .font(NoxaType.caption)
+                                    .foregroundStyle(NoxaTheme.secondaryText)
                             }
                         }
                         .frame(width: 190, height: 190)
 
                         Text("Session ends at \(activeSession.plannedEndAt.formatted(date: .omitted, time: .shortened))")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.secondary)
+                            .font(NoxaType.subheadlineMedium)
+                            .foregroundStyle(NoxaTheme.secondaryText)
 
                         if focusSession.monitorReceipt(for: activeSession) != nil {
                             Label("Screen Time monitor applied your block settings.", systemImage: "checkmark.shield.fill")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .font(NoxaType.caption)
+                                .foregroundStyle(NoxaTheme.secondaryText)
                         } else {
                             Label("Block settings requested; waiting for the Screen Time monitor.", systemImage: "clock.arrow.circlepath")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .font(NoxaType.caption)
+                                .foregroundStyle(NoxaTheme.secondaryText)
                             if context.date.timeIntervalSince(activeSession.startedAt) > 30 {
                                 Text("If selected apps are still available, check Screen Time access in Settings.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .font(NoxaType.caption)
+                                    .foregroundStyle(NoxaTheme.secondaryText)
                             }
                         }
 
                         if let round = focusSession.pomodoroRoundDescription {
                             Text(round)
-                                .font(.subheadline.weight(.semibold))
+                                .font(NoxaType.subheadlineSemibold)
                         }
 
                         if let intention = focusSession.activeIntention, !intention.isEmpty {
                             Label(intention, systemImage: "scope")
-                                .font(.subheadline.weight(.medium))
+                                .font(NoxaType.subheadlineMedium)
                         }
                     }
                     .frame(maxWidth: .infinity)
@@ -997,8 +1070,8 @@ struct ContentView: View {
 
                 if activeSession.isStrict {
                     Label("Strict Focus · Ends at \(activeSession.plannedEndAt.formatted(date: .omitted, time: .shortened))", systemImage: "lock.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .font(NoxaType.subheadlineSemibold)
+                        .foregroundStyle(NoxaTheme.secondaryText)
                 } else {
                     Button("End Session Early") {
                         isEndRitualPresented = true
@@ -1012,10 +1085,10 @@ struct ContentView: View {
                             .font(NoxaTheme.font(42, weight: .medium, relativeTo: .largeTitle))
                             .monospacedDigit()
                         Text("Break ends at \(breakEndsAt.formatted(date: .omitted, time: .shortened))")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .font(NoxaType.subheadline)
+                            .foregroundStyle(NoxaTheme.secondaryText)
                         if let round = focusSession.pomodoroRoundDescription {
-                            Text(round).font(.subheadline.weight(.semibold))
+                            Text(round).font(NoxaType.subheadlineSemibold)
                         }
                     }
                     .frame(maxWidth: .infinity)
@@ -1033,14 +1106,16 @@ struct ContentView: View {
                         .font(NoxaTheme.font(58, weight: .medium, relativeTo: .largeTitle))
                         .monospacedDigit()
                         .tracking(-2)
+                        .contentTransition(.numericText())
+                        .noxaAnimation(NoxaMotion.spring, value: chosenDurationMinutes)
                     Text("focus session")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(NoxaType.subheadline)
+                        .foregroundStyle(NoxaTheme.secondaryText)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)
 
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 9), count: 3), spacing: 9) {
+                LazyVGrid(columns: durationGridColumns(regularCount: 3, spacing: 9), spacing: 9) {
                     ForEach([30, 45, 60, 120, 180], id: \.self) { minutes in
                         durationButton(title: Self.durationLabel(minutes: minutes), minutes: minutes)
                     }
@@ -1054,56 +1129,59 @@ struct ContentView: View {
                 }
 
                 if isCustomDuration {
-                    HStack(spacing: 10) {
-                        Button {
-                            adjustCustomDuration(by: -5)
-                        } label: {
-                            Image(systemName: "minus")
-                                .frame(width: 42, height: 42)
-                        }
-                        .buttonStyle(.plain)
-                        .background(.thinMaterial, in: Circle())
-
-                        TextField("Minutes", text: $customDurationText)
-                            .keyboardType(.numberPad)
-                            .multilineTextAlignment(.center)
-                            .font(NoxaTheme.font(22, weight: .semibold, relativeTo: .title3))
-                            .padding(.horizontal, 14)
-                            .frame(maxWidth: .infinity, minHeight: 48)
-                            .background(.thinMaterial, in: Capsule())
-                            .overlay { Capsule().stroke(NoxaTheme.border, lineWidth: 1) }
-                            .focused($isCustomDurationFieldFocused)
-                            .onChange(of: customDurationText) { value in
-                                customDurationText = String(value.filter(\.isNumber).prefix(3))
+                    VStack(spacing: 18) {
+                        HStack(spacing: 10) {
+                            Button {
+                                adjustCustomDuration(by: -5)
+                            } label: {
+                                Image(systemName: "minus")
+                                    .frame(width: 42, height: 42)
                             }
+                            .buttonStyle(.plain)
+                            .background(Color.white.opacity(0.08), in: Circle())
+
+                            TextField("Minutes", text: $customDurationText)
+                                .keyboardType(.numberPad)
+                                .multilineTextAlignment(.center)
+                                .font(NoxaTheme.font(22, weight: .semibold, relativeTo: .title3))
+                                .padding(.horizontal, 14)
+                                .frame(maxWidth: .infinity, minHeight: 48)
+                                .background(Color.white.opacity(0.06), in: Capsule())
+                                .overlay { Capsule().stroke(NoxaTheme.subtleBorder, lineWidth: 1) }
+                                .focused($isCustomDurationFieldFocused)
+                                .onChange(of: customDurationText) { value in
+                                    customDurationText = String(value.filter(\.isNumber).prefix(3))
+                                }
+
+                            Button {
+                                adjustCustomDuration(by: 5)
+                            } label: {
+                                Image(systemName: "plus")
+                                    .frame(width: 42, height: 42)
+                            }
+                            .buttonStyle(.plain)
+                            .background(Color.white.opacity(0.08), in: Circle())
+                        }
+
+                        Text("Enter \(NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes)–\(maximumFocusMinutes) minutes.")
+                            .font(NoxaType.footnote)
+                            .foregroundStyle(NoxaTheme.secondaryText)
+                            .frame(maxWidth: .infinity, alignment: .center)
 
                         Button {
-                            adjustCustomDuration(by: 5)
+                            commitCustomDuration()
+                            isCustomDurationFieldFocused = false
                         } label: {
-                            Image(systemName: "plus")
-                                .frame(width: 42, height: 42)
+                            Label("Done Entering Time", systemImage: "keyboard.chevron.compact.down")
                         }
-                        .buttonStyle(.plain)
-                        .background(.thinMaterial, in: Circle())
+                        .buttonStyle(NoxaSecondaryButtonStyle())
                     }
-
-                    Text("Enter \(NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes)–\(maximumFocusMinutes) minutes.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-
-                    Button {
-                        commitCustomDuration()
-                        isCustomDurationFieldFocused = false
-                    } label: {
-                        Label("Done Entering Time", systemImage: "keyboard.chevron.compact.down")
-                    }
-                    .buttonStyle(NoxaSecondaryButtonStyle())
+                    .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
                 }
 
                 if hasFocusRestrictions {
                     Label("\(focusRestrictionCount) selected distraction\(focusRestrictionCount == 1 ? "" : "s") will be blocked", systemImage: "checkmark.shield.fill")
-                        .font(.footnote.weight(.medium))
+                        .font(NoxaType.footnoteMedium)
                         .foregroundStyle(NoxaTheme.accent)
                         .frame(maxWidth: .infinity, alignment: .center)
                 } else {
@@ -1131,31 +1209,59 @@ struct ContentView: View {
 
             if let errorMessage = focusSession.errorMessage {
                 Text(errorMessage)
-                    .font(.footnote)
+                    .font(NoxaType.footnote)
                     .foregroundStyle(.red)
             }
         }
+        .noxaAnimation(value: isCustomDuration)
         .noxaCard()
+    }
+
+    private var screenTimePauseNotice: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Blocks are paused because Screen Time access is off.", systemImage: "pause.circle.fill")
+                .font(NoxaType.subheadlineSemibold)
+                .foregroundStyle(NoxaTheme.warning)
+            Text(screenTimePauseDetail)
+                .font(NoxaType.footnote)
+                .foregroundStyle(NoxaTheme.secondaryText)
+            Button("Open Settings") {
+                guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(url)
+            }
+            .buttonStyle(NoxaSecondaryButtonStyle())
+        }
+        .padding(14)
+        .background(
+            NoxaTheme.warning.opacity(0.08),
+            in: RoundedRectangle(cornerRadius: NoxaTheme.Radius.field, style: .continuous)
+        )
+    }
+
+    private var screenTimePauseDetail: String {
+        let end = (focusSession.activeSession?.plannedEndAt ?? focusSession.pomodoroBreakEndsAt)
+            .map { " until \($0.formatted(date: .omitted, time: .shortened))" } ?? ""
+        return "Turn it back on in Settings → Screen Time → Apps with Screen Time Access to resume\(end). This session won't count as completed."
     }
 
     private var quickSetupCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(NoxaMotion.spring) {
+                        NoxaHaptics.selection()
                         isHomeBlocklistExpanded.toggle()
                     }
                 } label: {
                     HStack {
-                        Label("Your blocklist", systemImage: "checklist")
-                            .font(.headline)
+                        NoxaCardHeader(title: "Your blocklist", systemImage: "checklist")
                         Spacer()
                         Text("\(focusRestrictionCount)")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
+                            .font(NoxaType.caption.monospacedDigit())
+                            .foregroundStyle(NoxaTheme.secondaryText)
                         Image(systemName: "chevron.down")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.secondary)
+                            .font(NoxaType.captionBold)
+                            .foregroundStyle(NoxaTheme.secondaryText)
                             .rotationEffect(.degrees(isHomeBlocklistExpanded ? 180 : 0))
                     }
                     .contentShape(Rectangle())
@@ -1165,23 +1271,27 @@ struct ContentView: View {
                 Button(focusSession.isActive ? "Add" : "Edit") {
                     presentRestrictionPicker()
                 }
-                .font(.subheadline.weight(.semibold))
+                .font(NoxaType.subheadlineSemibold)
+                .foregroundStyle(NoxaTheme.accent)
                 .disabled(focusSession.hasPomodoroCycle && !focusSession.isActive)
             }
 
             Text(hasFocusRestrictions
                  ? "\(focusRestrictionCount) private selection\(focusRestrictionCount == 1 ? "" : "s") saved on this device."
                  : "Nothing selected yet.")
-                .foregroundStyle(.secondary)
+                .font(NoxaType.subheadline)
+                .foregroundStyle(NoxaTheme.secondaryText)
 
             if isHomeBlocklistExpanded && hasFocusRestrictions {
                 Divider()
+                    .transition(.opacity)
 
                 tokenRows(for: restrictions.selection)
 
                 ForEach(websites.domains, id: \.self) { domain in
                     Label(domain, systemImage: "globe")
-                        .font(.subheadline)
+                        .font(NoxaType.subheadline)
+                        .accessibilityLabel("Website \(domain)")
                 }
             }
 
@@ -1198,40 +1308,35 @@ struct ContentView: View {
 
     private var blocklistContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Choose your distractions.")
-                        .font(NoxaTheme.font(31, weight: .bold, relativeTo: .largeTitle))
-                        .tracking(-0.7)
-                    Text("Apps and websites stay organized separately and remain private on this device.")
-                        .foregroundStyle(.secondary)
-                }
+            VStack(alignment: .leading, spacing: NoxaTheme.Spacing.section) {
+                Text("Apps and websites stay organized separately and remain private on this device.")
+                    .font(NoxaType.body)
+                    .foregroundStyle(NoxaTheme.secondaryText)
 
                 if focusSession.isActive {
                     Label("You can add distractions now, but existing ones stay locked until the session ends", systemImage: "lock.fill")
-                        .font(.footnote.weight(.semibold))
+                        .font(NoxaType.footnoteSemibold)
                         .foregroundStyle(.orange)
                 } else if focusSession.hasPomodoroCycle {
                     Label("Blocklist changes resume after you stop the Pomodoro during a break or finish all four rounds", systemImage: "lock.fill")
-                        .font(.footnote.weight(.semibold))
+                        .font(NoxaType.footnoteSemibold)
                         .foregroundStyle(.orange)
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Label("Apps", systemImage: "square.grid.2x2")
-                            .font(.headline)
+                        NoxaCardHeader(title: "Apps", systemImage: "square.grid.2x2")
                         Spacer()
                         Text("\(restrictions.selection.applicationTokens.count + restrictions.selection.categoryTokens.count)")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
+                            .font(NoxaType.caption.monospacedDigit())
+                            .foregroundStyle(NoxaTheme.secondaryText)
                     }
 
                     if restrictions.selection.applicationTokens.isEmpty,
                        restrictions.selection.categoryTokens.isEmpty {
                         Text("No apps or categories selected.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .font(NoxaType.subheadline)
+                            .foregroundStyle(NoxaTheme.secondaryText)
                     } else {
                         tokenRows(for: restrictions.selection, includeWebDomains: false)
                     }
@@ -1248,7 +1353,9 @@ struct ContentView: View {
                 pomodoroCard
 
             }
-            .padding()
+            .padding(.horizontal, NoxaTheme.Spacing.screen)
+            .padding(.top, 8)
+            .padding(.bottom, 24)
         }
         .scrollIndicators(.hidden)
         .noxaScreenBackground()
@@ -1256,20 +1363,17 @@ struct ContentView: View {
 
     private var dailyLimitsContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Protect your time every day.")
-                        .font(NoxaTheme.font(31, weight: .bold, relativeTo: .largeTitle))
-                        .tracking(-0.7)
-                    Text("Set a daily allowance for distracting apps. Noxa applies each limit locally using Screen Time.")
-                        .font(NoxaTheme.font(16))
-                        .foregroundStyle(NoxaTheme.secondaryText)
-                }
+            VStack(alignment: .leading, spacing: NoxaTheme.Spacing.section) {
+                Text("Set a daily allowance for distracting apps. Noxa applies each limit locally using Screen Time.")
+                    .font(NoxaType.body)
+                    .foregroundStyle(NoxaTheme.secondaryText)
 
                 dailyLimitsCard
                 scheduleCard
             }
-            .padding()
+            .padding(.horizontal, NoxaTheme.Spacing.screen)
+            .padding(.top, 8)
+            .padding(.bottom, 24)
         }
         .scrollIndicators(.hidden)
         .noxaScreenBackground()
@@ -1278,27 +1382,27 @@ struct ContentView: View {
     private var websiteCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Label("Website blocklist", systemImage: "globe")
-                    .font(.headline)
+                NoxaCardHeader(title: "Website blocklist", systemImage: "globe")
                 Spacer()
                 Text("\(websites.domains.count)/\(WebsiteBlocklistService.maximumDomains)")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .font(NoxaType.caption.monospacedDigit())
+                    .foregroundStyle(NoxaTheme.secondaryText)
             }
 
             Text("Add domains such as reddit.com or news.ycombinator.com. Noxa normalizes them and applies them locally during a focus session.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(NoxaType.subheadline)
+                .foregroundStyle(NoxaTheme.secondaryText)
 
             HStack(spacing: 10) {
                 TextField("reddit.com", text: $newDomain)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(NoxaTextFieldStyle())
 
                 Button("Add Website") {
                     if websites.addDomain(newDomain) {
                         newDomain = ""
+                        NoxaHaptics.tap()
                     }
                 }
                 .buttonStyle(NoxaSecondaryButtonStyle())
@@ -1312,20 +1416,27 @@ struct ContentView: View {
             if websites.domains.isEmpty {
                 if restrictions.selection.webDomainTokens.isEmpty {
                     Text("No websites added.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(NoxaType.subheadline)
+                        .foregroundStyle(NoxaTheme.secondaryText)
                 }
             } else {
                 ForEach(websites.domains, id: \.self) { domain in
                     HStack {
                         Text(domain)
-                            .font(.subheadline.monospaced())
+                            .font(NoxaType.subheadline.monospaced())
+                            .accessibilityLabel("Website \(domain)")
                         Spacer()
-                        Button("Remove") {
+                        Button {
                             websites.removeDomain(domain)
+                            NoxaHaptics.selection()
+                        } label: {
+                            Text("Remove")
+                                .font(NoxaType.captionSemibold)
+                                .foregroundStyle(NoxaTheme.secondaryText)
+                                .frame(minWidth: 70, minHeight: 44)
+                                .contentShape(Rectangle())
                         }
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .buttonStyle(.plain)
                         .disabled(focusSession.isActive || focusSession.hasPomodoroCycle)
                     }
                 }
@@ -1334,12 +1445,12 @@ struct ContentView: View {
             ForEach(Array(restrictions.selection.webDomainTokens), id: \.self) { token in
                 Label(token)
                     .labelStyle(.titleAndIcon)
-                    .font(.subheadline)
+                    .font(NoxaType.subheadline)
             }
 
             if let errorMessage = websites.errorMessage {
                 Text(errorMessage)
-                    .font(.footnote)
+                    .font(NoxaType.footnote)
                     .foregroundStyle(.red)
             }
         }
@@ -1349,19 +1460,18 @@ struct ContentView: View {
     private var pomodoroCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Label("Pomodoro", systemImage: "timer.circle")
-                    .font(.headline)
+                NoxaCardHeader(title: "Pomodoro", systemImage: "timer.circle")
                 Spacer()
                 Text("\(pomodoroWorkMinutes)/\(pomodoroBreakMinutes)")
-                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .font(NoxaType.captionSemibold.monospacedDigit())
                     .foregroundStyle(NoxaTheme.accent)
             }
 
             Text("Four work rounds start automatically, with a break between each. Noxa releases the focus blocklist during breaks and reminds you before work resumes.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(NoxaType.subheadline)
+                .foregroundStyle(NoxaTheme.secondaryText)
 
-            HStack(spacing: 8) {
+            LazyVGrid(columns: durationGridColumns(regularCount: 4, spacing: 8), spacing: 8) {
                 ForEach([(25, 5), (50, 10), (90, 15)], id: \.0) { preset in
                     Button("\(preset.0)/\(preset.1)") {
                         pomodoroWorkMinutes = preset.0
@@ -1404,7 +1514,7 @@ struct ContentView: View {
                         }
                     }
                 }
-                .font(.subheadline.weight(.medium))
+                .font(NoxaType.subheadlineMedium)
                 .padding(14)
                 .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
@@ -1440,23 +1550,22 @@ struct ContentView: View {
     private var dailyLimitsCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Label("Daily limits", systemImage: "hourglass.bottomhalf.fill")
-                    .font(.headline)
+                NoxaCardHeader(title: "Daily limits", systemImage: "hourglass.bottomhalf.fill")
                 Spacer()
                 Text("\(dailyLimits.configurations.count)/\(DailyLimitService.maximumConfigurations)")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .font(NoxaType.caption.monospacedDigit())
+                    .foregroundStyle(NoxaTheme.secondaryText)
             }
 
             Text("Give selected apps a daily allowance. Usage from earlier today counts. You can edit or stop limits at any time; other active blocks still apply.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(NoxaType.subheadline)
+                .foregroundStyle(NoxaTheme.secondaryText)
 
             Text(notifications.canSchedule
                  ? "Noxa requests an alert about five minutes before a limit is reached. iOS may deliver it late."
                  : "Enable notifications for approaching-limit alerts. Daily limits still work without alerts.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+                .font(NoxaType.footnote)
+                .foregroundStyle(NoxaTheme.secondaryText)
 
             Button("Add App Limit") {
                 dailyLimitSelection = existingDailyLimitSelection
@@ -1472,8 +1581,8 @@ struct ContentView: View {
 
             if dailyLimits.configurations.isEmpty {
                 Text("No daily limits configured.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(NoxaType.subheadline)
+                    .foregroundStyle(NoxaTheme.secondaryText)
             } else {
                 ForEach(dailyLimits.configurations) { configuration in
                     HStack(spacing: 12) {
@@ -1482,52 +1591,70 @@ struct ContentView: View {
                         } label: {
                             Image(systemName: configuration.isEnabled ? "checkmark.circle.fill" : "circle")
                                 .foregroundStyle(configuration.isEnabled ? .white : .secondary)
+                                .font(.system(size: 22))
+                                .frame(width: 44, height: 44)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel(configuration.isEnabled ? "Turn off daily limit" : "Turn on daily limit")
 
                         VStack(alignment: .leading, spacing: 3) {
                             ForEach(Array(configuration.selection.applicationTokens), id: \.self) { token in
                                 Label(token)
                                     .labelStyle(.titleAndIcon)
-                                    .font(.subheadline.weight(.semibold))
+                                    .font(NoxaType.subheadlineSemibold)
                             }
                             if configuration.selection.applicationTokens.isEmpty {
                                 Text("App selection")
-                                    .font(.subheadline.weight(.semibold))
+                                    .font(NoxaType.subheadlineSemibold)
                             }
-                            Menu("\(configuration.dailyLimitMinutes) min/day") {
+                            Menu {
                                 ForEach([10, 15, 30, 45, 60, 90, 120, 180, 240], id: \.self) { minutes in
                                     Button(Self.durationLabel(minutes: minutes)) {
                                         dailyLimits.updateMinutes(minutes, for: configuration)
                                     }
                                 }
+                            } label: {
+                                Text("\(configuration.dailyLimitMinutes) min/day")
+                                    .font(NoxaType.captionSemibold)
+                                    .foregroundStyle(NoxaTheme.accent)
+                                    .frame(minWidth: 96, minHeight: 44, alignment: .leading)
+                                    .contentShape(Rectangle())
                             }
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(NoxaTheme.accent)
                         }
                         Spacer()
-                        Button("Remove") {
+                        Button {
                             dailyLimits.remove(configuration)
+                        } label: {
+                            Text("Remove")
+                                .font(NoxaType.captionSemibold)
+                                .foregroundStyle(NoxaTheme.secondaryText)
+                                .frame(minWidth: 70, minHeight: 44)
+                                .contentShape(Rectangle())
                         }
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .buttonStyle(.plain)
                     }
                 }
             }
 
             HStack {
                 Text(hasActiveDailyLimits ? "Daily limits active" : "Daily limits are off")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(NoxaType.subheadline)
+                    .foregroundStyle(NoxaTheme.secondaryText)
                 Spacer()
-                Button(hasActiveDailyLimits ? "Stop" : "Start Limits") {
+                Button {
                     if hasActiveDailyLimits {
                         dailyLimits.stopMonitoring()
                     } else {
                         dailyLimits.startMonitoring()
                     }
+                } label: {
+                    Text(hasActiveDailyLimits ? "Stop" : "Start Limits")
+                        .font(NoxaType.subheadlineSemibold)
+                        .foregroundStyle(NoxaTheme.accent)
+                        .frame(minWidth: 100, minHeight: 44, alignment: .trailing)
+                        .contentShape(Rectangle())
                 }
-                .font(.subheadline.weight(.semibold))
+                .buttonStyle(.plain)
                 .disabled(
                     dailyLimits.configurations.filter(\.isEnabled).isEmpty
                         || (!hasActiveDailyLimits && !authorization.state.isApproved)
@@ -1536,7 +1663,7 @@ struct ContentView: View {
 
             if let errorMessage = dailyLimits.errorMessage {
                 Text(errorMessage)
-                    .font(.footnote)
+                    .font(NoxaType.footnote)
                     .foregroundStyle(.red)
             }
         }
@@ -1546,17 +1673,16 @@ struct ContentView: View {
     private var scheduleCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Label("Schedules", systemImage: "calendar.badge.clock")
-                    .font(.headline)
+                NoxaCardHeader(title: "Schedules", systemImage: "calendar.badge.clock")
                 Spacer()
                 Text("\(schedules.configurations.count)/\(RestrictionScheduleService.maximumConfigurations)")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .font(NoxaType.caption.monospacedDigit())
+                    .foregroundStyle(NoxaTheme.secondaryText)
             }
 
             Text("Choose blocked or allowed hours, the days they apply, and the apps, categories, or websites. Changes take effect immediately.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(NoxaType.subheadline)
+                .foregroundStyle(NoxaTheme.secondaryText)
 
             Button("Add Schedule") {
                 schedules.clearError()
@@ -1580,8 +1706,8 @@ struct ContentView: View {
 
             if schedules.configurations.isEmpty {
                 Text("No schedules configured.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(NoxaType.subheadline)
+                    .foregroundStyle(NoxaTheme.secondaryText)
             } else {
                 ForEach(schedules.configurations) { configuration in
                     VStack(alignment: .leading, spacing: 10) {
@@ -1596,12 +1722,12 @@ struct ContentView: View {
 
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(configuration.name)
-                                    .font(.subheadline.weight(.semibold))
+                                    .font(NoxaType.subheadlineSemibold)
                                 Text("\(configuration.mode == .allowedHours ? "Available" : "Blocked") \(Self.timeLabel(minutes: configuration.startMinutes))–\(Self.timeLabel(minutes: configuration.endMinutes))")
-                                    .font(.caption)
+                                    .font(NoxaType.caption)
                                 Text(Self.weekdaySummary(configuration.weekdays))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .font(NoxaType.caption)
+                                    .foregroundStyle(NoxaTheme.secondaryText)
                             }
                             Spacer()
                             Button("Edit") {
@@ -1618,25 +1744,25 @@ struct ContentView: View {
                                 scheduleCustomDomains = configuration.websiteDomains.joined(separator: ", ")
                                 isSchedulePickerPresented = true
                             }
-                            .font(.caption.weight(.semibold))
+                            .font(NoxaType.captionSemibold)
                             .foregroundStyle(NoxaTheme.accent)
                             Button("Rename") {
                                 scheduleToRename = configuration
                                 renamedScheduleName = configuration.name
                             }
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .font(NoxaType.captionSemibold)
+                            .foregroundStyle(NoxaTheme.secondaryText)
                             Button("Remove") {
                                 schedules.remove(configuration)
                             }
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .font(NoxaType.captionSemibold)
+                            .foregroundStyle(NoxaTheme.secondaryText)
                         }
 
                         tokenRows(for: configuration.selection)
                         ForEach(configuration.websiteDomains, id: \.self) { domain in
                             Label(domain, systemImage: "globe")
-                                .font(.subheadline)
+                                .font(NoxaType.subheadline)
                         }
 
                         if let pending = configuration.pendingLegacyRelaxation {
@@ -1646,12 +1772,12 @@ struct ContentView: View {
                                         pending.action == .remove ? "Removal pending" : "Disable pending",
                                         systemImage: "clock.badge.exclamationmark"
                                     )
-                                    .font(.caption.weight(.semibold))
+                                    .font(NoxaType.captionSemibold)
                                     .foregroundStyle(NoxaTheme.warning)
 
                                     Text("Takes effect \(pending.effectiveAt.formatted(date: .abbreviated, time: .shortened))")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
+                                        .font(NoxaType.caption2)
+                                        .foregroundStyle(NoxaTheme.secondaryText)
                                 }
 
                                 Spacer()
@@ -1659,7 +1785,7 @@ struct ContentView: View {
                                 Button("Cancel Change") {
                                     schedules.cancelPendingRelaxation(for: configuration)
                                 }
-                                .font(.caption.weight(.semibold))
+                                .font(NoxaType.captionSemibold)
                                 .foregroundStyle(NoxaTheme.accent)
                             }
                             .padding(12)
@@ -1675,7 +1801,7 @@ struct ContentView: View {
 
             if let errorMessage = schedules.errorMessage {
                 Text(errorMessage)
-                    .font(.footnote)
+                    .font(NoxaType.footnote)
                     .foregroundStyle(.red)
             }
         }
@@ -1706,18 +1832,18 @@ struct ContentView: View {
         ForEach(Array(selection.applicationTokens), id: \.self) { token in
             Label(token)
                 .labelStyle(.titleAndIcon)
-                .font(.subheadline)
+                .font(NoxaType.subheadline)
         }
         ForEach(Array(selection.categoryTokens), id: \.self) { token in
             Label(token)
                 .labelStyle(.titleAndIcon)
-                .font(.subheadline)
+                .font(NoxaType.subheadline)
         }
         if includeWebDomains {
             ForEach(Array(selection.webDomainTokens), id: \.self) { token in
                 Label(token)
                     .labelStyle(.titleAndIcon)
-                    .font(.subheadline)
+                    .font(NoxaType.subheadline)
             }
         }
     }
@@ -1740,7 +1866,7 @@ struct ContentView: View {
             calendar: .autoupdatingCurrent
         )
         return ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: NoxaTheme.Spacing.section) {
                 VStack(spacing: 8) {
                     Text("FOCUS TIME")
                         .font(NoxaTheme.font(12, weight: .bold, relativeTo: .caption))
@@ -1751,12 +1877,12 @@ struct ContentView: View {
                         .monospacedDigit()
                         .multilineTextAlignment(.center)
                     Text("since you started using Noxa")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(NoxaTheme.secondaryText)
                 }
                 .frame(maxWidth: .infinity)
                 .noxaStatsCard()
 
-                HStack(spacing: 8) {
+                LazyVGrid(columns: durationGridColumns(regularCount: 4, spacing: 8), spacing: 8) {
                     ForEach(StatsRange.allCases, id: \.self) { range in
                         Button(range.title) {
                             selectedStatsRange = range
@@ -1776,42 +1902,42 @@ struct ContentView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Label("Follow-through", systemImage: "chart.line.uptrend.xyaxis")
-                        .font(.headline)
+                    NoxaCardHeader(title: "Follow-through", systemImage: "chart.line.uptrend.xyaxis")
                     Text("\(period.completionRate)% completion rate")
-                        .font(.title2.weight(.semibold))
+                        .font(NoxaType.title2)
                     Text("\(period.completedSessions) completed · \(period.abandonedSessions) ended early")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(NoxaType.subheadline)
+                        .foregroundStyle(NoxaTheme.secondaryText)
                     Text("\(statistics.currentStreak)-day current streak · \(statistics.longestStreak)-day best")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(NoxaType.caption)
+                        .foregroundStyle(NoxaTheme.secondaryText)
                 }
                 .noxaStatsCard()
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Label("Schedule follow-through · last 7 days", systemImage: "calendar.badge.checkmark")
-                        .font(.headline)
+                    NoxaCardHeader(title: "Schedule follow-through · last 7 days", systemImage: "calendar.badge.checkmark")
                     if scheduleCommitment.totalWindows == 0 {
                         Text("Tracking starts with the next full schedule window.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .font(NoxaType.subheadline)
+                            .foregroundStyle(NoxaTheme.secondaryText)
                     } else {
                         Text("\(scheduleCommitment.percentage)% kept")
-                            .font(.title2.weight(.semibold))
+                            .font(NoxaType.title2)
                         Text("\(scheduleCommitment.keptWindows) kept · \(scheduleCommitment.interruptedWindows) changed or stopped early")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .font(NoxaType.subheadline)
+                            .foregroundStyle(NoxaTheme.secondaryText)
                     }
                     Text("Based on whether schedules stayed enabled through their planned windows, not measured app use or proof of blocking.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(NoxaType.caption)
+                        .foregroundStyle(NoxaTheme.secondaryText)
                 }
                 .noxaStatsCard()
 
                 recentSessionsCard
             }
-            .padding()
+            .padding(.horizontal, NoxaTheme.Spacing.screen)
+            .padding(.top, 8)
+            .padding(.bottom, 24)
         }
         .scrollIndicators(.hidden)
         .noxaScreenBackground()
@@ -1819,12 +1945,11 @@ struct ContentView: View {
 
     private var recentSessionsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Recent sessions", systemImage: "clock.arrow.circlepath")
-                .font(.headline)
+            NoxaCardHeader(title: "Recent sessions", systemImage: "clock.arrow.circlepath")
 
             if focusSession.history.isEmpty {
                 Text("Complete a focus session and it will appear here.")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(NoxaTheme.secondaryText)
             } else {
                 ForEach(focusSession.history.prefix(8)) { session in
                     HStack(spacing: 12) {
@@ -1832,17 +1957,17 @@ struct ContentView: View {
                             .foregroundStyle(session.outcome == .completed ? .green : .secondary)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(session.outcome.displayName)
-                                .font(.subheadline.weight(.semibold))
+                                .font(NoxaType.subheadlineSemibold)
                             Text(session.startedAt.formatted(date: .abbreviated, time: .shortened))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .font(NoxaType.caption)
+                                .foregroundStyle(NoxaTheme.secondaryText)
                         }
                         Spacer()
                         Text(Self.durationLabel(
                             minutes: (session.actualDurationSeconds ?? session.plannedDurationSeconds) / 60
                         ))
-                            .font(.subheadline.monospacedDigit())
-                            .foregroundStyle(.secondary)
+                            .font(NoxaType.subheadline.monospacedDigit())
+                            .foregroundStyle(NoxaTheme.secondaryText)
                     }
                     if session.id != focusSession.history.prefix(8).last?.id {
                         Divider()
@@ -1852,40 +1977,40 @@ struct ContentView: View {
             }
 
             Text(cloudSync.historyStatusDescription)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+                .font(NoxaType.footnote)
+                .foregroundStyle(NoxaTheme.secondaryText)
         }
         .noxaStatsCard()
     }
 
     private var accountContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: NoxaTheme.Spacing.section) {
                 settingsSectionTitle("Account")
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Label("Signed in", systemImage: "checkmark.shield.fill")
-                        .font(.headline)
+                    NoxaCardHeader(title: "Signed in", systemImage: "checkmark.shield.fill")
                     if let displayName = authentication.displayName, !displayName.isEmpty {
                         Text(displayName)
                             .font(NoxaTheme.font(22, weight: .semibold, relativeTo: .title3))
                     }
                     Text(authentication.userEmail ?? "Apple account")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(NoxaTheme.secondaryText)
+                        .accessibilityLabel("Signed in as \(authentication.userEmail ?? "Apple account")")
                     Text("Screen Time selections and active shields stay on this device. Focus history and website domains sync securely when you’re online.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .font(NoxaType.footnote)
+                        .foregroundStyle(NoxaTheme.secondaryText)
                 }
                 .noxaCard()
 
                 VStack(alignment: .leading, spacing: 12) {
                     Label("Noxa subscription", systemImage: subscriptions.hasAccess ? "checkmark.seal.fill" : "creditcard")
-                        .font(.headline)
+                        .font(NoxaType.headline)
                     Text(subscriptions.hasAccess
                          ? "\(subscriptions.activePlanDisplayName) is active."
                          : "A subscription is required to use Noxa.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(NoxaType.subheadline)
+                        .foregroundStyle(NoxaTheme.secondaryText)
                     Button(subscriptions.hasAccess ? "View Subscription" : "See Subscription Plans") {
                         isPaywallPresented = true
                     }
@@ -1898,20 +2023,23 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Toggle("Strict Mode", isOn: Binding(
                         get: { focusSession.strictModeEnabled },
-                        set: { focusSession.setStrictModeEnabled($0) }
+                        set: {
+                            focusSession.setStrictModeEnabled($0)
+                            NoxaHaptics.selection()
+                        }
                     ))
-                        .font(.headline)
+                        .font(NoxaType.headline)
                         .tint(NoxaTheme.accent)
                     Text("Applies only to future focus sessions. Strict work sessions cannot be ended early in Noxa and are limited to 4 hours. Pomodoro sessions can be stopped during breaks.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .font(NoxaType.footnote)
+                        .foregroundStyle(NoxaTheme.secondaryText)
                     Divider()
                     Toggle("Share usage analytics", isOn: $analytics.isEnabled)
-                        .font(.headline)
+                        .font(NoxaType.headline)
                         .tint(NoxaTheme.accent)
                     Text("Helps improve Noxa using feature events and coarse counts. Noxa never sends your email, name, selected apps or websites, typed intentions, or screen recordings.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .font(NoxaType.footnote)
+                        .foregroundStyle(NoxaTheme.secondaryText)
                 }
                 .noxaCard()
 
@@ -1921,40 +2049,32 @@ struct ContentView: View {
                     Picker("Instagram website", selection: $instagramSiteMode) {
                         Text("Off").tag(InstagramSiteMode.off)
                         Text("Hide Reels and Explore").tag(InstagramSiteMode.distractionFree)
-                        Text("Full Block").tag(InstagramSiteMode.fullBlock)
                     }
-                        .font(.headline)
+                        .font(NoxaType.headline)
                         .onChange(of: instagramSiteMode) { mode in
                             AppGroupStore.shared.setInstagramSiteMode(mode)
+                            if mode != .distractionFree {
+                                instagramAppBlockEnabled = false
+                                instagramAppBlockMessage = nil
+                            }
                             InstagramSiteProtectionService.reconcile()
                         }
                     if instagramSiteMode == .distractionFree {
-                        Text("Experimental Safari filter: aims to hide Reels and Explore while keeping the feed available. It does not change the Instagram app, and embedded Reels may still appear.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                        Text("Experimental Safari filter: aims to hide Reels and Explore while keeping the feed available. Embedded Reels may still appear.")
+                            .font(NoxaType.footnote)
+                            .foregroundStyle(NoxaTheme.secondaryText)
+                        instagramAppBlockControls
                         Text(safariFilterStatusMessage)
-                            .font(.footnote)
+                            .font(NoxaType.footnote)
                             .foregroundStyle(safariFilterRecentlyConnected ? Color.secondary : Color.orange)
                         if websites.domains.contains(where: { $0 == "instagram.com" || $0 == "www.instagram.com" }) {
                             Text("Instagram is also in your website blocklist. Remove that independent block to keep the feed available.")
-                                .font(.footnote)
+                                .font(NoxaType.footnote)
                                 .foregroundStyle(.orange)
                         }
-                    } else if instagramSiteMode == .fullBlock {
-                        Text("Screen Time blocks the Instagram website. The Instagram app is a separate choice in your app blocklist. Other Noxa rules still apply.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        Text("iOS may turn off Safari Private Browsing while a website filter is active.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        Text(authorization.state.isApproved
-                             ? "Full-site block requested through Screen Time. Verify it by opening Instagram in Safari."
-                             : "Allow Screen Time access to block the Instagram website.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
                     }
                     Link("Report a filter problem", destination: NoxaWebLinks.support)
-                        .font(.subheadline.weight(.semibold))
+                        .font(NoxaType.subheadlineSemibold)
                 }
                 .noxaCard()
                 .task {
@@ -1964,11 +2084,10 @@ struct ContentView: View {
                 settingsSectionTitle("Support & Legal")
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Label("Blocking looks wrong?", systemImage: "arrow.clockwise")
-                        .font(.headline)
+                    NoxaCardHeader(title: "Blocking looks wrong?", systemImage: "arrow.clockwise")
                     Text("Refresh your active rules if something stays blocked after its rule ends, or if a selected app is not blocked.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .font(NoxaType.footnote)
+                        .foregroundStyle(NoxaTheme.secondaryText)
                     Button("Refresh Blocking") {
                         authorization.refresh()
                         focusSession.reconcile()
@@ -1982,8 +2101,8 @@ struct ContentView: View {
                     .buttonStyle(NoxaSecondaryButtonStyle())
                     if didRepairRestrictions {
                         Text("Rules refreshed. Open the affected app or site to check its shield. If the problem remains, contact support.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .font(NoxaType.footnote)
+                            .foregroundStyle(NoxaTheme.secondaryText)
                     }
                 }
                 .noxaCard()
@@ -2008,30 +2127,152 @@ struct ContentView: View {
                 Button("Delete Account", role: .destructive) {
                     isDeleteAccountConfirmationPresented = true
                 }
-                .font(.subheadline.weight(.semibold))
+                .font(NoxaType.subheadlineSemibold)
                 .foregroundStyle(.red)
                 .frame(maxWidth: .infinity)
                 .disabled(authentication.isBusy || focusSession.isActive || focusSession.hasPomodoroCycle)
 
                 if focusSession.isActive || focusSession.hasPomodoroCycle {
                     Text("Wait until the active focus session ends before signing out or deleting your account.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .font(NoxaType.footnote)
+                        .foregroundStyle(NoxaTheme.secondaryText)
                 }
 
                 if let message = authentication.message {
                     Text(message)
-                        .font(.footnote)
+                        .font(NoxaType.footnote)
                         .foregroundStyle(.red)
                 }
             }
-            .padding()
+            .padding(.horizontal, NoxaTheme.Spacing.screen)
+            .padding(.top, 8)
+            .padding(.bottom, 24)
         }
         .scrollIndicators(.hidden)
         .noxaScreenBackground()
         .sheet(isPresented: $isPaywallPresented) {
             PaywallView()
                 .environmentObject(subscriptions)
+        }
+    }
+
+    private func openInstagramInSafari() {
+        InstagramSiteProtectionService.openInSafari()
+    }
+
+    @ViewBuilder
+    private var instagramAppBlockControls: some View {
+        Toggle("Block Instagram app", isOn: $instagramAppBlockEnabled)
+            .tint(NoxaTheme.accent)
+            .onChange(of: instagramAppBlockEnabled) { enabled in
+                guard enabled else {
+                    AppGroupStore.shared.setInstagramAppBlockEnabled(false)
+                    InstagramSiteProtectionService.reconcile()
+                    return
+                }
+                guard safariFilterRecentlyConnected else {
+                    instagramAppBlockEnabled = false
+                    instagramAppBlockMessage = "First open Instagram in Safari, refresh the page, then return here. Noxa must connect to the filter before blocking the app."
+                    return
+                }
+                guard authorization.state.isApproved else {
+                    instagramAppBlockEnabled = false
+                    instagramAppBlockMessage = "Allow Screen Time access before blocking Instagram."
+                    return
+                }
+                guard instagramAppSelection?.applicationTokens.count == 1 else {
+                    presentInstagramAppPicker()
+                    return
+                }
+                AppGroupStore.shared.setInstagramAppBlockEnabled(true)
+                InstagramSiteProtectionService.reconcile()
+                instagramAppBlockMessage = InstagramSiteProtectionService.isAppBlockApplied
+                    ? nil : "Noxa could not activate the app block. Try again after reopening Noxa."
+            }
+        Text("When on, iOS prevents the selected Instagram app from opening. Use Noxa's Open Instagram in Safari button to continue on the filtered website.")
+            .font(NoxaType.footnote)
+            .foregroundStyle(NoxaTheme.secondaryText)
+        if let selection = instagramAppSelection, !selection.applicationTokens.isEmpty {
+            HStack(spacing: 10) {
+                ForEach(Array(selection.applicationTokens), id: \.self) { token in
+                    Label(token)
+                        .labelStyle(.titleAndIcon)
+                        .font(NoxaType.subheadlineSemibold)
+                }
+                Spacer()
+                Text(instagramAppBlockEnabled && InstagramSiteProtectionService.isAppBlockApplied ? "Blocked" : "Selected")
+                    .font(NoxaType.captionSemibold)
+                    .foregroundStyle(NoxaTheme.accent)
+                Button("Change") { presentInstagramAppPicker() }
+                    .font(NoxaType.captionSemibold)
+                    .foregroundStyle(NoxaTheme.secondaryText)
+                    .disabled(!authorization.state.isApproved)
+            }
+        } else {
+            Text("Choose only Instagram in Apple's app picker.")
+                .font(NoxaType.footnote)
+                .foregroundStyle(NoxaTheme.secondaryText)
+            Button("Choose Instagram App") { presentInstagramAppPicker() }
+                .buttonStyle(NoxaSecondaryButtonStyle())
+                .disabled(!authorization.state.isApproved)
+        }
+        if let instagramAppBlockMessage {
+            Text(instagramAppBlockMessage)
+                .font(NoxaType.footnote)
+                .foregroundStyle(.orange)
+        }
+        Button {
+            InstagramSiteProtectionService.openInSafari()
+        } label: {
+            Label("Open Instagram in Safari", systemImage: "safari")
+        }
+        .buttonStyle(NoxaSecondaryButtonStyle())
+    }
+
+    private var instagramAppPickerSheet: some View {
+        NavigationStack {
+            FamilyActivityPicker(selection: $instagramPickerSelection)
+                .navigationTitle("Choose Instagram")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            isInstagramAppPickerPresented = false
+                            instagramAppBlockEnabled = AppGroupStore.shared.instagramAppBlockEnabled
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { saveInstagramAppSelection() }
+                            .disabled(instagramPickerSelection.applicationTokens.count != 1)
+                    }
+                }
+        }
+        .tint(NoxaTheme.accent)
+        .preferredColorScheme(.dark)
+    }
+
+    private func presentInstagramAppPicker() {
+        instagramPickerSelection = instagramAppSelection ?? FamilyActivitySelection()
+        isInstagramAppPickerPresented = true
+    }
+
+    /// Keeps only the app itself. Categories would block unrelated apps, and
+    /// Instagram's website stays reachable through the Safari filter.
+    private func saveInstagramAppSelection() {
+        var selection = FamilyActivitySelection()
+        selection.applicationTokens = instagramPickerSelection.applicationTokens
+        do {
+            try AppGroupStore.shared.saveInstagramAppSelection(selection)
+            instagramAppSelection = selection
+            AppGroupStore.shared.setInstagramAppBlockEnabled(instagramAppBlockEnabled)
+            InstagramSiteProtectionService.reconcile()
+            instagramAppBlockMessage = instagramAppBlockEnabled && !InstagramSiteProtectionService.isAppBlockApplied
+                ? "Noxa could not activate the app block. Try again after reopening Noxa." : nil
+            isInstagramAppPickerPresented = false
+        } catch {
+            instagramAppBlockEnabled = false
+            instagramAppBlockMessage = "Noxa could not save the Instagram app selection. Please try again."
+            isInstagramAppPickerPresented = false
         }
     }
 
@@ -2049,15 +2290,15 @@ struct ContentView: View {
                 .foregroundStyle(cloudSync.status == .failed ? .orange : .secondary)
             VStack(alignment: .leading, spacing: 3) {
                 Text(cloudSync.status.title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(NoxaType.subheadlineSemibold)
                 if let lastSync = cloudSync.lastSuccessfulSyncAt {
                     Text("Last synced \(lastSync.formatted(date: .abbreviated, time: .shortened))")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .font(NoxaType.footnote)
+                        .foregroundStyle(NoxaTheme.secondaryText)
                 } else if let errorMessage = cloudSync.errorMessage {
                     Text(errorMessage)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .font(NoxaType.footnote)
+                        .foregroundStyle(NoxaTheme.secondaryText)
                 }
                 if cloudSync.hasPendingWork {
                     Button("Retry now") {
@@ -2071,7 +2312,7 @@ struct ContentView: View {
                             }
                         }
                     }
-                    .font(.footnote.weight(.semibold))
+                    .font(NoxaType.footnoteSemibold)
                     .foregroundStyle(.white)
                 }
             }
@@ -2248,8 +2489,18 @@ struct ContentView: View {
 
     private func presentWidgetHomeIfReady() {
         guard focusLaunchRouter.hasPendingHome else { return }
+        let duration = focusLaunchRouter.pendingHomeDurationMinutes
         focusLaunchRouter.consumeHome()
         selectedTab = .home
+        if let duration {
+            if let cycle = focusSession.pomodoroCycle,
+               case .complete = cycle.plan.phase(at: Date()) {
+                focusSession.reconcile()
+            }
+            guard !focusSession.isActive, !focusSession.hasPomodoroCycle else { return }
+            selectedDurationMinutes = duration
+            isCustomDuration = false
+        }
     }
 
     private func presentScheduleSuggestionIfReady() {
@@ -2302,8 +2553,8 @@ struct ContentView: View {
             Text(value)
                 .font(NoxaTheme.font(30, weight: .semibold, relativeTo: .title))
             Text(title)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(NoxaType.subheadline)
+                .foregroundStyle(NoxaTheme.secondaryText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .noxaStatsCard()
@@ -2314,6 +2565,11 @@ struct ContentView: View {
         let hours = minutes / 60
         let remainingMinutes = minutes % 60
         return remainingMinutes == 0 ? "\(hours)h" : "\(hours)h \(remainingMinutes)m"
+    }
+
+    private func durationGridColumns(regularCount: Int, spacing: CGFloat) -> [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: spacing),
+              count: dynamicTypeSize.isAccessibilitySize ? 1 : regularCount)
     }
 
     private static func durationString(seconds: Int) -> String {
@@ -2354,6 +2610,10 @@ private struct NoxaDurationButtonStyle: ButtonStyle {
         configuration.label
             .font(NoxaTheme.font(15, weight: .semibold, relativeTo: .subheadline))
             .foregroundStyle(isSelected ? .black : NoxaTheme.primaryText)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
             .frame(maxWidth: .infinity, minHeight: 46)
             .background(
                 isSelected ? NoxaTheme.accent : NoxaTheme.elevated,
@@ -2364,7 +2624,11 @@ private struct NoxaDurationButtonStyle: ButtonStyle {
                     .stroke(isSelected ? NoxaTheme.accent : NoxaTheme.border, lineWidth: 1)
             }
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .noxaAnimation(NoxaMotion.snappy, value: configuration.isPressed)
+            .noxaAnimation(NoxaMotion.snappy, value: isSelected)
+            .onChange(of: configuration.isPressed) { isPressed in
+                if isPressed { NoxaHaptics.selection() }
+            }
     }
 }
 

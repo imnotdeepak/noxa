@@ -30,7 +30,7 @@ enum RestrictionOwnershipPlan {
         var isDailyMonitoring = false
         var manualShield: ManualShieldConfiguration?
         var blockedWebsiteDomains: [String] = []
-        var instagramFullBlockRequested = false
+        var instagramAppBlock: FamilyActivitySelection?
     }
 
     static func evaluate(
@@ -90,14 +90,11 @@ enum RestrictionOwnershipPlan {
             ))
         }
 
-        if inputs.instagramFullBlockRequested {
+        if let instagramApp = inputs.instagramAppBlock {
             rules.append(RestrictionRule(
-                id: RestrictionRuleID(source: .instagramFullBlock, value: fixedOwnerID),
+                id: RestrictionRuleID(source: .instagramAppBlock, value: fixedOwnerID),
                 effect: .block,
-                targets: targets(
-                    selection: FamilyActivitySelection(),
-                    domains: ["instagram.com", "www.instagram.com"]
-                )
+                targets: targets(selection: instagramApp, domains: [])
             ))
         }
 

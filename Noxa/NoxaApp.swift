@@ -8,7 +8,6 @@
 import SwiftUI
 import UIKit
 
-@main
 struct NoxaApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var analytics = AnalyticsService.shared
@@ -34,7 +33,7 @@ struct NoxaApp: App {
             || dailyLimits.isMonitoring
             || dailyLimits.isShieldActive
             || schedules.enabledCount > 0
-            || InstagramSiteProtectionService.isFullBlockApplied
+            || InstagramSiteProtectionService.isAppBlockApplied
     }
 
     var body: some Scene {
@@ -370,9 +369,9 @@ private struct RestrictionRecoveryView: View {
                 }
             }
 
-            if InstagramSiteProtectionService.isFullBlockApplied && !focusSession.isActive {
-                RecoveryActionButton(title: "Remove Instagram Full Block") {
-                    AppGroupStore.shared.setInstagramSiteMode(.off)
+            if InstagramSiteProtectionService.isAppBlockApplied && !focusSession.isActive {
+                RecoveryActionButton(title: "Remove Instagram App Block") {
+                    AppGroupStore.shared.setInstagramAppBlockEnabled(false)
                     InstagramSiteProtectionService.reconcile()
                 }
             }
