@@ -9,28 +9,47 @@ struct AuthenticationView: View {
         case createAccount = "Create Account"
     }
 
+    private enum CredentialField {
+        case email
+        case password
+    }
+
     @EnvironmentObject private var authentication: AuthenticationService
     @State private var mode = Mode.signIn
     @State private var email = ""
     @State private var password = ""
     @State private var currentAppleNonce: String?
     @State private var isPasswordResetPresented = false
+    @State private var hasFocusedPassword = false
+    @State private var hasEditedPassword = false
+    @State private var hasBlurredPassword = false
+    @FocusState private var focusedCredentialField: CredentialField?
+
+    init(initialMode: Mode = .signIn, initialEmail: String = "") {
+        _mode = State(initialValue: initialMode)
+        _email = State(initialValue: initialEmail)
+    }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(spacing: 28) {
                 Spacer(minLength: 44)
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Noxa")
-                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                VStack(spacing: 10) {
+                    Text("noxa")
+                        .font(NoxaTheme.font(18, weight: .medium, relativeTo: .headline))
                         .foregroundStyle(.secondary)
-                    Text("Protect your\nattention.")
-                        .font(.system(size: 42, weight: .bold, design: .rounded))
+                    Text(mode == .signIn ? "Welcome back." : "Create your Noxa account.")
+                        .font(NoxaTheme.font(40, weight: .bold, relativeTo: .largeTitle))
                         .tracking(-1)
-                    Text("Sign in to continue to your focus tools.")
+                        .multilineTextAlignment(.center)
+                    Text(mode == .signIn
+                         ? "Sign in to continue to your focus tools."
+                         : "Save your Noxa setup and keep your progress synced.")
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                 }
+                .frame(maxWidth: .infinity)
 
                 VStack(spacing: 18) {
                     Picker("Authentication mode", selection: $mode) {
@@ -48,26 +67,48 @@ struct AuthenticationView: View {
                             .textContentType(.emailAddress)
                             .submitLabel(.next)
                             .noxaAuthenticationField()
+                            .focused($focusedCredentialField, equals: .email)
 
                         SecureField("Password", text: $password)
                             .textContentType(mode == .signIn ? .password : .newPassword)
                             .submitLabel(.go)
                             .noxaAuthenticationField()
+                            .focused($focusedCredentialField, equals: .password)
                             .onSubmit(submitEmailForm)
+                            .onChange(of: password) { value in
+                                if !value.isEmpty {
+                                    hasEditedPassword = true
+                                }
+                            }
+                    }
+
+                    if let emailValidationMessage {
+                        Text(emailValidationMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    if let passwordGuidanceText {
+                        Text(passwordGuidanceText)
+                            .font(.footnote)
+                            .foregroundStyle(shouldShowPasswordError ? .red : .secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
                     Button(action: submitEmailForm) {
-                        HStack {
-                            Text(mode.rawValue)
+                        HStack(spacing: 10) {
                             Spacer()
+                            Text(mode.rawValue)
                             if authentication.isBusy {
                                 ProgressView()
                                     .tint(.black)
                             }
+                            Spacer()
                         }
                     }
-                    .buttonStyle(AuthenticationPrimaryButtonStyle())
-                    .disabled(authentication.isBusy)
+                    .buttonStyle(NoxaPrimaryButtonStyle())
+                    .disabled(authentication.isBusy || !canSubmitEmailForm)
 
                     if mode == .signIn {
                         Button("Forgot password?") {
@@ -86,7 +127,7 @@ struct AuthenticationView: View {
                         Rectangle().fill(Color.white.opacity(0.14)).frame(height: 1)
                     }
 
-                    SignInWithAppleButton(.signIn) { request in
+                    SignInWithAppleButton(mode == .createAccount ? .signUp : .signIn) { request in
                         let nonce = AppleNonce.make()
                         currentAppleNonce = nonce
                         request.requestedScopes = [.fullName, .email]
@@ -117,23 +158,31 @@ struct AuthenticationView: View {
                         .disabled(authentication.isBusy)
                     }
                 }
-                .padding(20)
-                .background(Color.white.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .padding(22)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 20)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .stroke(NoxaTheme.border, lineWidth: 1)
                 }
 
                 LegalLinksView()
             }
-            .padding(20)
+            .padding(.horizontal, 40)
+            .padding(.vertical, 20)
         }
         .scrollDismissesKeyboard(.interactively)
-        .background(Color.black.ignoresSafeArea())
+        .font(NoxaTheme.font(17))
+        .background(NoxaOnboardingBackground())
         .preferredColorScheme(.dark)
         .onChange(of: mode) { _ in
             authentication.message = nil
+        }
+        .onChange(of: focusedCredentialField) { field in
+            if field == .password {
+                hasFocusedPassword = true
+            } else if hasFocusedPassword, password.count < 8 {
+                hasBlurredPassword = true
+            }
         }
         .sheet(isPresented: $isPasswordResetPresented) {
             PasswordResetRequestView(initialEmail: email)
@@ -141,6 +190,10 @@ struct AuthenticationView: View {
     }
 
     private func submitEmailForm() {
+        guard canSubmitEmailForm else {
+            authentication.message = AuthenticationInputValidator.validate(email: email, password: password)
+            return
+        }
         Task {
             switch mode {
             case .signIn:
@@ -149,6 +202,30 @@ struct AuthenticationView: View {
                 await authentication.signUp(email: email, password: password)
             }
         }
+    }
+
+    private var canSubmitEmailForm: Bool {
+        AuthenticationInputValidator.validate(email: email, password: password) == nil
+    }
+
+    private var emailValidationMessage: String? {
+        guard !email.isEmpty else { return nil }
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedEmail.contains("@"), normalizedEmail.contains(".") else {
+            return "Enter a valid email address."
+        }
+        return nil
+    }
+
+    private var passwordGuidanceText: String? {
+        guard password.count < 8 else { return nil }
+        return shouldShowPasswordError
+            ? "Password must contain at least 8 characters."
+            : "At least 8 characters"
+    }
+
+    private var shouldShowPasswordError: Bool {
+        hasEditedPassword || hasBlurredPassword
     }
 
     private func isPositiveAuthenticationMessage(_ message: String) -> Bool {
@@ -197,7 +274,7 @@ private struct PasswordResetRequestView: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Reset your password")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .font(NoxaTheme.font(30, weight: .bold, relativeTo: .largeTitle))
                 Text("We’ll email you a secure link that opens Noxa so you can choose a new password.")
                     .foregroundStyle(.secondary)
 
@@ -213,7 +290,7 @@ private struct PasswordResetRequestView: View {
                         await authentication.sendPasswordReset(to: email)
                     }
                 }
-                .buttonStyle(AuthenticationPrimaryButtonStyle())
+                .buttonStyle(NoxaPrimaryButtonStyle())
                 .disabled(authentication.isBusy)
 
                 if let message = authentication.message {
@@ -225,7 +302,7 @@ private struct PasswordResetRequestView: View {
                 Spacer()
             }
             .padding(20)
-            .background(Color.black.ignoresSafeArea())
+            .background(NoxaBackground())
             .preferredColorScheme(.dark)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -245,7 +322,7 @@ struct PasswordUpdateView: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Choose a new password")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .font(NoxaTheme.font(30, weight: .bold, relativeTo: .largeTitle))
                 Text("Use at least 8 characters.")
                     .foregroundStyle(.secondary)
 
@@ -265,7 +342,7 @@ struct PasswordUpdateView: View {
                         await authentication.updateRecoveredPassword(password)
                     }
                 }
-                .buttonStyle(AuthenticationPrimaryButtonStyle())
+                .buttonStyle(NoxaPrimaryButtonStyle())
                 .disabled(authentication.isBusy || password.isEmpty || confirmation.isEmpty)
 
                 if let message = authentication.message {
@@ -277,7 +354,7 @@ struct PasswordUpdateView: View {
                 Spacer()
             }
             .padding(20)
-            .background(Color.black.ignoresSafeArea())
+            .background(NoxaBackground())
             .preferredColorScheme(.dark)
             .interactiveDismissDisabled()
         }
@@ -312,19 +389,6 @@ private enum AppleNonce {
         SHA256.hash(data: Data(input.utf8))
             .map { String(format: "%02x", $0) }
             .joined()
-    }
-}
-
-private struct AuthenticationPrimaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.body.weight(.semibold))
-            .foregroundStyle(.black)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity)
-            .background(Color.white.opacity(configuration.isPressed ? 0.75 : 1))
-            .clipShape(RoundedRectangle(cornerRadius: 13))
     }
 }
 

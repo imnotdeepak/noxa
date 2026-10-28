@@ -6,10 +6,11 @@
 //
 
 import SwiftUI
+import UIKit
 
-@main
 struct NoxaApp: App {
     @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var analytics = AnalyticsService.shared
     @StateObject private var authentication = AuthenticationService()
     @StateObject private var subscriptions = SubscriptionService()
     @StateObject private var focusSession = FocusSessionService()
@@ -17,86 +18,151 @@ struct NoxaApp: App {
     @StateObject private var restrictions = ScreenTimeRestrictionService()
     @StateObject private var monitoring = DeviceActivityMonitoringService()
     @StateObject private var dailyLimits = DailyLimitService()
+    @StateObject private var schedules = RestrictionScheduleService()
     @StateObject private var websites = WebsiteBlocklistService()
     @StateObject private var cloudSync = CloudSyncService()
     @StateObject private var notifications = FocusNotificationService()
+    @StateObject private var focusLaunchRouter = FocusLaunchRouter.shared
 
     private var hasActiveRestrictions: Bool {
         focusSession.isActive
+            || focusSession.hasPomodoroCycle
             || restrictions.isShieldActive
+            || websites.isBlocklistActive
             || monitoring.isMonitoring
             || dailyLimits.isMonitoring
             || dailyLimits.isShieldActive
+            || schedules.enabledCount > 0
+            || InstagramSiteProtectionService.isAppBlockApplied
     }
 
     var body: some Scene {
         WindowGroup {
             Group {
                 if authentication.isBootstrapping {
-                    ProgressView("Opening Noxa…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color.black)
-                        .preferredColorScheme(.dark)
+                    NoxaLoadingView(message: "Opening Noxa…")
                 } else if hasActiveRestrictions
                             && (!authentication.isAuthenticated
                                 || (subscriptions.hasLoaded && !subscriptions.hasAccess)) {
                     RestrictionRecoveryView()
-                } else if !onboarding.progress.hasSeenCapabilitiesExplainer {
-                    OnboardingView()
-                } else if authentication.isAuthenticated {
+                } else if !authentication.isAuthenticated {
+                    if onboarding.isAuthenticationRequested {
+                        AuthenticationView(
+                            initialMode: initialAuthenticationMode,
+                            initialEmail: initialAuthenticationMode == .signIn
+                                ? (authentication.rememberedUserEmail ?? "")
+                                : ""
+                        )
+                    } else if onboarding.isPersonalizationRequested {
+                        OnboardingView()
+                    } else if authentication.hasRememberedAccount {
+                        ReturningUserView()
+                    } else {
+                        OnboardingWelcomeView()
+                    }
+                } else if !onboarding.isComplete(
+                    for: authentication.userID,
+                    remoteCompletion: authentication.hasCompletedOnboarding
+                ) {
+                    if onboarding.progress.hasSeenValueOverview,
+                       !onboarding.progress.hasSeenPricingPreview {
+                        PaywallView(allowsDismissal: false) {
+                            _ = onboarding.completePricingPreview()
+                        }
+                    } else {
+                        OnboardingView()
+                    }
+                } else {
                     if cloudSync.boundUserID != authentication.userID {
-                        ProgressView("Loading your account…")
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .background(Color.black)
-                            .preferredColorScheme(.dark)
+                        NoxaLoadingView(message: "Loading your account…")
                     } else if !subscriptions.hasLoaded {
-                        ProgressView("Checking subscription…")
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .background(Color.black)
-                            .preferredColorScheme(.dark)
+                        NoxaLoadingView(message: "Loading")
                     } else if subscriptions.canEnterApp(for: authentication.userID) {
                         ContentView()
                     } else {
                         PaywallView(allowsDismissal: false)
                     }
-                } else {
-                    AuthenticationView()
                 }
             }
             .environmentObject(authentication)
+            .environmentObject(analytics)
             .environmentObject(subscriptions)
             .environmentObject(focusSession)
             .environmentObject(onboarding)
             .environmentObject(restrictions)
             .environmentObject(monitoring)
             .environmentObject(dailyLimits)
+            .environmentObject(schedules)
             .environmentObject(websites)
             .environmentObject(cloudSync)
             .environmentObject(notifications)
+            .environmentObject(focusLaunchRouter)
             .task {
+                RestrictionStoreMigration.migrateIfNeeded()
+                InstagramSiteProtectionService.reconcile()
+                restrictions.reconcile()
+                websites.reconcile()
+                analytics.configure()
                 await authentication.bootstrap()
-                await subscriptions.load()
-                focusSession.reconcile()
+                await bindAccountServices()
+                await reconcileOnboardingAccount()
+                reconcileFocusAndNotifications()
+                await restoreFocusNotificationsAfterLaunch()
+                await FocusPresentationCoordinator.reconcile(session: focusSession.activeSession)
+                restrictions.reconcile()
+                websites.reconcile()
+                dailyLimits.rescheduleActiveMonitoring()
+                schedules.reconcile()
                 await syncCloudDataIfAuthenticated()
             }
             .onChange(of: scenePhase) { newPhase in
                 guard newPhase == .active else { return }
-                focusSession.reconcile()
+                InstagramSiteProtectionService.reconcile()
+                reconcileFocusAndNotifications()
+                Task { await FocusPresentationCoordinator.reconcile(session: focusSession.activeSession) }
+                restrictions.reconcile()
+                websites.reconcile()
+                dailyLimits.reconcileDayBoundary()
+                schedules.reconcile()
                 Task {
-                    if subscriptions.hasLoaded {
+                    if subscriptions.boundUserID == authentication.userID {
                         await subscriptions.refreshEntitlements()
                     }
+                    await reconcileOnboardingAccount()
                     await syncCloudDataIfAuthenticated()
                 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+                dailyLimits.reconcileDayBoundary()
+                schedules.reconcile()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+                // Local schedule windows and elapsed session deadlines may
+                // have changed while this process remained in the foreground.
+                reconcileFocusAndNotifications()
+                dailyLimits.reconcileDayBoundary()
+                schedules.reconcile()
+                Task {
+                    await FocusPresentationCoordinator.reconcile(session: focusSession.activeSession)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in
+                // Reevaluate local weekdays and clock times after travel.
+                schedules.reconcile()
             }
             .onChange(of: authentication.isAuthenticated) { isAuthenticated in
                 guard isAuthenticated else {
                     // Do not let a request started for the previous account
                     // publish data after sign-out.
                     cloudSync.invalidatePendingWork()
+                    analytics.reset()
+                    onboarding.clearTransientRoute()
+                    Task { await subscriptions.unbind() }
                     return
                 }
                 Task {
+                    await bindAccountServices()
+                    await reconcileOnboardingAccount()
                     await syncCloudDataIfAuthenticated()
                 }
             }
@@ -105,9 +171,21 @@ struct NoxaApp: App {
                 // true. Invalidate the previous account's in-flight work and
                 // hydrate only the newly bound account.
                 cloudSync.invalidatePendingWork()
-                guard authentication.isAuthenticated else { return }
+                guard authentication.isAuthenticated else {
+                    analytics.reset()
+                    Task { await subscriptions.unbind() }
+                    return
+                }
                 Task {
+                    await bindAccountServices()
+                    await reconcileOnboardingAccount()
                     await syncCloudDataIfAuthenticated()
+                }
+            }
+            .onChange(of: onboarding.progress.isComplete) { isComplete in
+                guard isComplete else { return }
+                Task {
+                    await reconcileOnboardingAccount()
                 }
             }
             .onChange(of: focusSession.history) { _ in
@@ -115,12 +193,16 @@ struct NoxaApp: App {
                     await syncCloudDataIfAuthenticated()
                 }
             }
+            .onChange(of: focusSession.activeSession) { session in
+                Task { await FocusPresentationCoordinator.reconcile(session: session) }
+            }
             .onChange(of: websites.domains) { _ in
                 Task {
                     await syncCloudDataIfAuthenticated()
                 }
             }
             .onOpenURL { url in
+                if focusLaunchRouter.handle(url) { return }
                 Task {
                     await authentication.handleAuthCallback(url)
                 }
@@ -129,6 +211,62 @@ struct NoxaApp: App {
                 PasswordUpdateView()
                     .environmentObject(authentication)
             }
+        }
+    }
+
+    private var initialAuthenticationMode: AuthenticationView.Mode {
+        guard !onboarding.progress.isComplete,
+              let rawValue = onboarding.progress.draftSetupConfiguration["authenticationMode"],
+              let mode = AuthenticationView.Mode(rawValue: rawValue) else {
+            return .signIn
+        }
+        return mode
+    }
+
+    @MainActor
+    private func reconcileFocusAndNotifications() {
+        let previousCycleID = focusSession.pomodoroCycle?.id
+        let previousSessionID = focusSession.activeSession?.id
+        focusSession.reconcile()
+        if let previousCycleID,
+           focusSession.pomodoroCycle?.id != previousCycleID {
+            notifications.cancelPomodoroCycle(previousCycleID)
+        }
+        if let previousSessionID,
+           focusSession.activeSession?.id != previousSessionID {
+            notifications.cancel(for: previousSessionID)
+        }
+    }
+
+    @MainActor
+    private func restoreFocusNotificationsAfterLaunch() async {
+        await notifications.refreshAuthorizationStatus()
+        guard notifications.canSchedule else { return }
+        if let cycle = focusSession.pomodoroCycle {
+            await notifications.schedulePomodoroCycle(cycle)
+        } else if let session = focusSession.activeSession {
+            await notifications.schedule(for: session)
+        }
+    }
+
+    private func bindAccountServices() async {
+        guard authentication.isAuthenticated, let userID = authentication.userID else {
+            analytics.reset()
+            await subscriptions.unbind()
+            return
+        }
+        analytics.identify(userID: userID)
+        await subscriptions.bind(to: userID)
+    }
+
+    private func reconcileOnboardingAccount() async {
+        guard authentication.isAuthenticated, let userID = authentication.userID else { return }
+        _ = onboarding.bind(
+            to: userID,
+            remoteCompletion: authentication.hasCompletedOnboarding
+        )
+        if onboarding.progress.isComplete && !authentication.hasCompletedOnboarding {
+            _ = await authentication.syncOnboardingProfile(onboarding.progress)
         }
     }
 
@@ -163,10 +301,15 @@ struct NoxaApp: App {
 /// Keeps a safe cleanup path available if authentication or subscription
 /// access is lost while any local restriction is still enforcing.
 private struct RestrictionRecoveryView: View {
+    @EnvironmentObject private var authentication: AuthenticationService
     @EnvironmentObject private var focusSession: FocusSessionService
     @EnvironmentObject private var restrictions: ScreenTimeRestrictionService
+    @EnvironmentObject private var websites: WebsiteBlocklistService
     @EnvironmentObject private var monitoring: DeviceActivityMonitoringService
     @EnvironmentObject private var dailyLimits: DailyLimitService
+    @EnvironmentObject private var schedules: RestrictionScheduleService
+    @EnvironmentObject private var notifications: FocusNotificationService
+    @State private var isLoginPresented = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -179,7 +322,9 @@ private struct RestrictionRecoveryView: View {
             Text(focusSession.isActive ? "Restrictions are still active" : "Noxa restrictions are still active")
                 .font(.system(size: 30, weight: .bold, design: .rounded))
 
-            Text("Remove the active restrictions before signing in again or renewing your subscription.")
+            Text(authentication.isAuthenticated
+                 ? "Renew your subscription to return to Noxa while these protections remain active."
+                 : "Log in again to return to Noxa. Your active restrictions will stay protected.")
                 .foregroundStyle(.secondary)
 
             if focusSession.isActive, let endTime = focusSession.endTimeDescription {
@@ -188,9 +333,27 @@ private struct RestrictionRecoveryView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if focusSession.isActive {
+            if !authentication.isAuthenticated {
+                RecoveryActionButton(title: "Log In Again") {
+                    isLoginPresented = true
+                }
+            }
+
+            if focusSession.isActive && !focusSession.isActiveSessionStrict {
                 RecoveryActionButton(title: "End Focus Session") {
+                    if let cycle = focusSession.pomodoroCycle {
+                        notifications.cancelPomodoroCycle(cycle.id)
+                    }
                     focusSession.endEarly()
+                }
+            }
+
+            if focusSession.pomodoroBreakEndsAt != nil {
+                RecoveryActionButton(title: "Stop Pomodoro During Break") {
+                    if let cycle = focusSession.pomodoroCycle {
+                        notifications.cancelPomodoroCycle(cycle.id)
+                    }
+                    focusSession.stopPomodoroDuringBreak()
                 }
             }
 
@@ -200,12 +363,22 @@ private struct RestrictionRecoveryView: View {
                 }
             }
 
+            if websites.isBlocklistActive && !focusSession.isActive {
+                RecoveryActionButton(title: "Remove Website Blocklist") {
+                    websites.clearBlocklist()
+                }
+            }
+
+            if InstagramSiteProtectionService.isAppBlockApplied && !focusSession.isActive {
+                RecoveryActionButton(title: "Remove Instagram App Block") {
+                    AppGroupStore.shared.setInstagramAppBlockEnabled(false)
+                    InstagramSiteProtectionService.reconcile()
+                }
+            }
+
             if monitoring.isMonitoring {
                 RecoveryActionButton(title: "Stop Usage Monitor") {
                     monitoring.stop()
-                    if !focusSession.isActive {
-                        restrictions.removeShield()
-                    }
                 }
             }
 
@@ -215,12 +388,34 @@ private struct RestrictionRecoveryView: View {
                 }
             }
 
+            if schedules.enabledCount > 0 {
+                RecoveryActionButton(title: "Stop Schedules") {
+                    schedules.requestDisableAll()
+                }
+                if let effectiveAt = schedules.nextPendingRelaxationDate {
+                    Text("Schedule changes remain protected until \(effectiveAt.formatted(date: .abbreviated, time: .shortened)).")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Spacer()
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .background(Color.black.ignoresSafeArea())
+        .background(NoxaTheme.background.ignoresSafeArea())
         .preferredColorScheme(.dark)
+        .fullScreenCover(isPresented: $isLoginPresented) {
+            AuthenticationView(
+                initialMode: .signIn,
+                initialEmail: authentication.rememberedUserEmail ?? ""
+            )
+        }
+        .onChange(of: authentication.isAuthenticated) { isAuthenticated in
+            if isAuthenticated {
+                isLoginPresented = false
+            }
+        }
     }
 }
 
@@ -229,13 +424,17 @@ private struct RecoveryActionButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(title, action: action)
-            .font(.body.weight(.semibold))
-            .foregroundStyle(.black)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity)
-            .background(Color.white)
-            .clipShape(RoundedRectangle(cornerRadius: 13))
+        Button(action: action) {
+            Text(title)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.black)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .frame(maxWidth: .infinity)
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: 13))
+                .contentShape(RoundedRectangle(cornerRadius: 13))
+        }
+        .buttonStyle(.plain)
     }
 }

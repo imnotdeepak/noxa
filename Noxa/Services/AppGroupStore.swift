@@ -24,8 +24,31 @@ final class AppGroupStore {
         static let localSnapshot = "noxa.localSnapshot"
         static let familyActivitySelection = "noxa.familyActivitySelection"
         static let focusSessionRestrictions = "noxa.focusSessionRestrictions"
+        static let focusMonitorReceipt = "noxa.focusMonitorReceipt"
+        static let safariFilterEnabled = "noxa.safariFilterEnabled"
+        static let safariFilterAllowedUntil = "noxa.safariFilterAllowedUntil"
+        static let safariFilterLastSeenAt = "noxa.safariFilterLastSeenAt"
+        static let instagramSiteMode = "noxa.instagramSiteMode"
+        static let instagramAppSelection = "noxa.instagramAppSelection"
+        static let instagramAppBlockEnabled = "noxa.instagramAppBlockEnabled"
+        static let scheduleCommitmentEvents = "noxa.scheduleCommitmentEvents"
+        static let scheduleShieldOwners = "noxa.scheduleShieldOwners"
+        static let manualShield = "noxa.manualShield"
+        static let websiteShieldActive = "noxa.websiteShieldActive"
+        static let restrictionStoresMigrated = "noxa.restrictionStoresMigrated"
+        static let strictModeEnabled = "noxa.strictModeEnabled"
+        static let hasOfferedStrictMode = "noxa.hasOfferedStrictMode"
+        static let hasOfferedScheduleSuggestion = "noxa.hasOfferedScheduleSuggestion"
+        static let pendingScheduleSuggestion = "noxa.pendingScheduleSuggestion"
         static let websiteBlocklist = "noxa.websiteBlocklist"
         static let dailyLimits = "noxa.dailyLimits"
+        static let dailyLimitReachedEvents = "noxa.dailyLimitReachedEvents"
+        static let dailyLimitResetDay = "noxa.dailyLimitResetDay"
+        static let restrictionSchedules = "noxa.restrictionSchedules"
+        static let scheduleRules = "noxa.scheduleRules.v2"
+        static let pomodoroCycle = "noxa.pomodoroCycle"
+        static let screenTimeAccessPauses = "noxa.screenTimeAccessPauses"
+        static let pendingPomodoroCompletion = "noxa.pendingPomodoroCompletion"
         static let cloudSyncState = "noxa.cloudSyncState"
         static let cloudAccountCaches = "noxa.cloudAccountCaches"
     }
@@ -100,6 +123,139 @@ final class AppGroupStore {
 
     func clearFocusSessionRestrictions() {
         defaults.removeObject(forKey: Key.focusSessionRestrictions)
+        defaults.removeObject(forKey: Key.focusMonitorReceipt)
+    }
+
+    func loadFocusMonitorReceipt() throws -> FocusMonitorReceipt? {
+        guard let data = defaults.data(forKey: Key.focusMonitorReceipt) else { return nil }
+        return try JSONDecoder().decode(FocusMonitorReceipt.self, from: data)
+    }
+
+    func clearFocusMonitorReceipt() {
+        defaults.removeObject(forKey: Key.focusMonitorReceipt)
+    }
+
+    var isSafariFilterEnabled: Bool {
+        defaults.bool(forKey: Key.safariFilterEnabled)
+    }
+
+    func setSafariFilterEnabled(_ enabled: Bool) {
+        defaults.set(enabled, forKey: Key.safariFilterEnabled)
+    }
+
+    var instagramSiteMode: InstagramSiteMode {
+        if let raw = defaults.string(forKey: Key.instagramSiteMode) {
+            // Full Block was removed; a saved "fullBlock" choice means Off.
+            return InstagramSiteMode(rawValue: raw) ?? .off
+        }
+        return isSafariFilterEnabled ? .distractionFree : .off
+    }
+
+    func setInstagramSiteMode(_ mode: InstagramSiteMode) {
+        defaults.set(mode.rawValue, forKey: Key.instagramSiteMode)
+        // The existing Safari native handler uses this boolean; only the
+        // selective mode may change Instagram pages.
+        defaults.set(mode == .distractionFree, forKey: Key.safariFilterEnabled)
+        if mode != .distractionFree {
+            defaults.set(false, forKey: Key.instagramAppBlockEnabled)
+            defaults.removeObject(forKey: Key.safariFilterLastSeenAt)
+        }
+    }
+
+    func clearInstagramSiteMode() {
+        defaults.removeObject(forKey: Key.instagramSiteMode)
+        defaults.set(false, forKey: Key.safariFilterEnabled)
+        defaults.set(false, forKey: Key.instagramAppBlockEnabled)
+        defaults.removeObject(forKey: Key.safariFilterLastSeenAt)
+    }
+
+    /// The Instagram app chosen in Apple's picker for the optional native-app block.
+    func loadInstagramAppSelection() throws -> FamilyActivitySelection? {
+        guard let data = defaults.data(forKey: Key.instagramAppSelection) else { return nil }
+        return try JSONDecoder().decode(FamilyActivitySelection.self, from: data)
+    }
+
+    func saveInstagramAppSelection(_ selection: FamilyActivitySelection) throws {
+        defaults.set(try JSONEncoder().encode(selection), forKey: Key.instagramAppSelection)
+    }
+
+    func clearInstagramAppSelection() {
+        defaults.removeObject(forKey: Key.instagramAppSelection)
+    }
+
+    var instagramAppBlockEnabled: Bool {
+        defaults.bool(forKey: Key.instagramAppBlockEnabled)
+    }
+
+    func setInstagramAppBlockEnabled(_ enabled: Bool) {
+        defaults.set(enabled, forKey: Key.instagramAppBlockEnabled)
+    }
+
+    var safariFilterLastSeenAt: Date? {
+        defaults.object(forKey: Key.safariFilterLastSeenAt) as? Date
+    }
+
+    var safariFilterAllowedUntil: Date? {
+        defaults.object(forKey: Key.safariFilterAllowedUntil) as? Date
+    }
+
+    func setSafariFilterAllowedUntil(_ date: Date?) {
+        if let date {
+            defaults.set(date, forKey: Key.safariFilterAllowedUntil)
+        } else {
+            defaults.removeObject(forKey: Key.safariFilterAllowedUntil)
+        }
+    }
+
+    func loadManualShield() throws -> ManualShieldConfiguration? {
+        guard let data = defaults.data(forKey: Key.manualShield) else { return nil }
+        return try JSONDecoder().decode(ManualShieldConfiguration.self, from: data)
+    }
+
+    func saveManualShield(_ configuration: ManualShieldConfiguration) throws {
+        defaults.set(try JSONEncoder().encode(configuration), forKey: Key.manualShield)
+    }
+
+    func clearManualShield() {
+        defaults.removeObject(forKey: Key.manualShield)
+    }
+
+    var isWebsiteShieldActive: Bool {
+        get { defaults.bool(forKey: Key.websiteShieldActive) }
+        set { defaults.set(newValue, forKey: Key.websiteShieldActive) }
+    }
+
+    var hasMigratedRestrictionStores: Bool {
+        get { defaults.bool(forKey: Key.restrictionStoresMigrated) }
+        set { defaults.set(newValue, forKey: Key.restrictionStoresMigrated) }
+    }
+
+    var isStrictModeEnabled: Bool {
+        get { defaults.bool(forKey: Key.strictModeEnabled) }
+        set { defaults.set(newValue, forKey: Key.strictModeEnabled) }
+    }
+
+    var hasOfferedStrictMode: Bool {
+        get { defaults.bool(forKey: Key.hasOfferedStrictMode) }
+        set { defaults.set(newValue, forKey: Key.hasOfferedStrictMode) }
+    }
+
+    var hasOfferedScheduleSuggestion: Bool {
+        get { defaults.bool(forKey: Key.hasOfferedScheduleSuggestion) }
+        set { defaults.set(newValue, forKey: Key.hasOfferedScheduleSuggestion) }
+    }
+
+    func loadPendingScheduleSuggestion() throws -> PendingScheduleSuggestion? {
+        guard let data = defaults.data(forKey: Key.pendingScheduleSuggestion) else { return nil }
+        return try JSONDecoder().decode(PendingScheduleSuggestion.self, from: data)
+    }
+
+    func savePendingScheduleSuggestion(_ suggestion: PendingScheduleSuggestion) throws {
+        defaults.set(try JSONEncoder().encode(suggestion), forKey: Key.pendingScheduleSuggestion)
+    }
+
+    func clearPendingScheduleSuggestion() {
+        defaults.removeObject(forKey: Key.pendingScheduleSuggestion)
     }
 
     /// Returns whether a focus session is in a start-pending or active state.
@@ -143,6 +299,162 @@ final class AppGroupStore {
 
     func clearDailyLimitConfigurations() {
         defaults.removeObject(forKey: Key.dailyLimits)
+    }
+
+    func reachedDailyLimitEventNames(
+        at date: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Set<String> {
+        guard defaults.string(forKey: Key.dailyLimitResetDay)
+            == NoxaDeviceActivityConfiguration.dailyLimitDayStamp(for: date, calendar: calendar) else {
+            return []
+        }
+        return Set(defaults.stringArray(forKey: Key.dailyLimitReachedEvents) ?? [])
+    }
+
+    func loadRestrictionSchedules() throws -> [RestrictionScheduleConfiguration] {
+        guard let data = defaults.data(forKey: Key.restrictionSchedules) else {
+            return []
+        }
+        return try JSONDecoder().decode([RestrictionScheduleConfiguration].self, from: data)
+    }
+
+    func saveRestrictionSchedules(_ schedules: [RestrictionScheduleConfiguration]) throws {
+        defaults.set(try JSONEncoder().encode(schedules), forKey: Key.restrictionSchedules)
+    }
+
+    func clearRestrictionSchedules() {
+        defaults.removeObject(forKey: Key.restrictionSchedules)
+        defaults.removeObject(forKey: Key.scheduleRules)
+        defaults.removeObject(forKey: Key.scheduleCommitmentEvents)
+        defaults.removeObject(forKey: Key.scheduleShieldOwners)
+    }
+
+    func clearLegacyRestrictionSchedules() {
+        defaults.removeObject(forKey: Key.restrictionSchedules)
+    }
+
+    @MainActor func loadScheduleRules() throws -> [ScheduleRule] {
+        if let data = defaults.data(forKey: Key.scheduleRules) {
+            let archive = try JSONDecoder().decode(ScheduleRuleArchive.self, from: data)
+            guard archive.version == 2 else { throw ScheduleRuleArchiveError.unsupportedVersion }
+            return archive.rules
+        }
+        return try loadRestrictionSchedules().map(ScheduleRule.init(legacy:))
+    }
+
+    func saveScheduleRules(_ rules: [ScheduleRule]) throws {
+        let archive = ScheduleRuleArchive(version: 2, rules: rules)
+        defaults.set(try JSONEncoder().encode(archive), forKey: Key.scheduleRules)
+    }
+
+    func clearScheduleRules() {
+        defaults.removeObject(forKey: Key.scheduleRules)
+    }
+
+    func loadScheduleCommitmentEvents() throws -> [ScheduleCommitmentEvent] {
+        guard let data = defaults.data(forKey: Key.scheduleCommitmentEvents) else { return [] }
+        return try JSONDecoder().decode([ScheduleCommitmentEvent].self, from: data)
+    }
+
+    func saveScheduleCommitmentEvents(_ events: [ScheduleCommitmentEvent]) throws {
+        defaults.set(try JSONEncoder().encode(events), forKey: Key.scheduleCommitmentEvents)
+    }
+
+    var scheduleShieldOwners: Set<UUID> {
+        get {
+            Set((defaults.stringArray(forKey: Key.scheduleShieldOwners) ?? [])
+                .compactMap(UUID.init(uuidString:)))
+        }
+        set {
+            defaults.set(newValue.map(\.uuidString).sorted(), forKey: Key.scheduleShieldOwners)
+        }
+    }
+
+    func loadScreenTimeAccessPauses() -> [ScreenTimeAccessPause] {
+        guard let data = defaults.data(forKey: Key.screenTimeAccessPauses) else { return [] }
+        return (try? JSONDecoder().decode([ScreenTimeAccessPause].self, from: data)) ?? []
+    }
+
+    var isScreenTimeAccessPaused: Bool {
+        loadScreenTimeAccessPauses().last.map { $0.endedAt == nil } ?? false
+    }
+
+    /// Opens a pause unless one is already open. Older entries are trimmed.
+    func beginScreenTimeAccessPause(at date: Date = Date()) {
+        var pauses = loadScreenTimeAccessPauses()
+        guard pauses.last?.endedAt != nil || pauses.isEmpty else { return }
+        pauses.append(ScreenTimeAccessPause(startedAt: date, endedAt: nil))
+        saveScreenTimeAccessPauses(Array(pauses.suffix(20)))
+    }
+
+    func endScreenTimeAccessPause(at date: Date = Date()) {
+        var pauses = loadScreenTimeAccessPauses()
+        guard let last = pauses.indices.last, pauses[last].endedAt == nil else { return }
+        pauses[last].endedAt = date
+        saveScreenTimeAccessPauses(pauses)
+    }
+
+    private func saveScreenTimeAccessPauses(_ pauses: [ScreenTimeAccessPause]) {
+        if let data = try? JSONEncoder().encode(pauses) {
+            defaults.set(data, forKey: Key.screenTimeAccessPauses)
+        }
+    }
+
+    func clearScreenTimeAccessPauses() {
+        defaults.removeObject(forKey: Key.screenTimeAccessPauses)
+    }
+
+    func loadPomodoroCycle() throws -> PomodoroCycleRecord? {
+        guard let data = defaults.data(forKey: Key.pomodoroCycle) else { return nil }
+        return try JSONDecoder().decode(PomodoroCycleRecord.self, from: data)
+    }
+
+    func savePomodoroCycle(_ cycle: PomodoroCycleRecord) throws {
+        defaults.set(try JSONEncoder().encode(cycle), forKey: Key.pomodoroCycle)
+    }
+
+    func clearPomodoroCycle() {
+        defaults.removeObject(forKey: Key.pomodoroCycle)
+    }
+
+    func hasActivePomodoroCycle() -> Bool {
+        (try? loadPomodoroCycle()) != nil
+    }
+
+    func pomodoroRoundEnforcedAt(cycleID: UUID, round: Int) -> Date? {
+        defaults.object(forKey: pomodoroRoundEnforcementKey(cycleID: cycleID, round: round)) as? Date
+    }
+
+    func markPomodoroRoundEnforced(cycleID: UUID, round: Int, at date: Date = Date()) {
+        let key = pomodoroRoundEnforcementKey(cycleID: cycleID, round: round)
+        if defaults.object(forKey: key) == nil {
+            defaults.set(date, forKey: key)
+        }
+    }
+
+    func clearPomodoroRoundEnforcement(cycleID: UUID) {
+        for round in 1...PomodoroCyclePlan.roundCount {
+            defaults.removeObject(forKey: pomodoroRoundEnforcementKey(cycleID: cycleID, round: round))
+        }
+    }
+
+    private func pomodoroRoundEnforcementKey(cycleID: UUID, round: Int) -> String {
+        "noxa.pomodoro.enforced.\(cycleID.uuidString.lowercased()).\(round)"
+    }
+
+    var pendingPomodoroCompletionID: UUID? {
+        get {
+            guard let value = defaults.string(forKey: Key.pendingPomodoroCompletion) else { return nil }
+            return UUID(uuidString: value)
+        }
+        set {
+            if let newValue {
+                defaults.set(newValue.uuidString, forKey: Key.pendingPomodoroCompletion)
+            } else {
+                defaults.removeObject(forKey: Key.pendingPomodoroCompletion)
+            }
+        }
     }
 
     func loadCloudSyncState() throws -> CloudSyncState? {

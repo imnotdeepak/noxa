@@ -32,7 +32,7 @@ struct FocusStartRitualView: View {
                 Spacer()
             }
             .padding(24)
-            .background(Color.black.ignoresSafeArea())
+            .background(NoxaTheme.background.ignoresSafeArea())
             .preferredColorScheme(.dark)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -44,9 +44,11 @@ struct FocusStartRitualView: View {
 }
 
 struct EndSessionRitualView: View {
+    private static let pauseDuration = 60
+
     @Environment(\.dismiss) private var dismiss
     let onEnd: () -> Void
-    @State private var secondsRemaining = 30
+    @State private var secondsRemaining = Self.pauseDuration
     @State private var reason = ""
 
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -59,7 +61,10 @@ struct EndSessionRitualView: View {
                     Circle()
                         .stroke(Color.white.opacity(0.12), lineWidth: 12)
                     Circle()
-                        .trim(from: 0, to: CGFloat(30 - secondsRemaining) / 30)
+                        .trim(
+                            from: 0,
+                            to: CGFloat(Self.pauseDuration - secondsRemaining) / CGFloat(Self.pauseDuration)
+                        )
                         .stroke(Color.white, style: StrokeStyle(lineWidth: 12, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                     Text("\(secondsRemaining)")
@@ -96,7 +101,7 @@ struct EndSessionRitualView: View {
                 Spacer()
             }
             .padding(24)
-            .background(Color.black.ignoresSafeArea())
+            .background(NoxaTheme.background.ignoresSafeArea())
             .preferredColorScheme(.dark)
             .interactiveDismissDisabled(secondsRemaining > 0)
             .onReceive(timer) { _ in
