@@ -15,3 +15,12 @@ enum DeviceActivityBoundaryClock {
         return expectedBoundary
     }
 }
+
+extension DateInterval {
+    /// `contains(_:)` includes `end`, so a callback snapped onto a work
+    /// round's end would still count as work. The end instant belongs to the
+    /// following break, matching `PomodoroCyclePlan.phase(at:)`.
+    nonisolated func containsBeforeEnd(_ date: Date) -> Bool {
+        start <= date && date < end
+    }
+}

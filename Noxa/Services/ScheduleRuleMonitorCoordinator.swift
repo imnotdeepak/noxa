@@ -33,6 +33,15 @@ enum ScheduleRuleActivityNames {
     }
 }
 
+extension DeviceActivityCenter {
+    /// `stopMonitoring([])` stops every activity, including focus, Pomodoro
+    /// and daily-limit monitors. Use this whenever the list is computed.
+    func stopMonitoringIfAny(_ activities: [DeviceActivityName]) {
+        guard !activities.isEmpty else { return }
+        stopMonitoring(activities)
+    }
+}
+
 /// Owns only the v2 schedule's store. Another active rule keeps its own store.
 @MainActor
 final class ScheduleRuleMonitorCoordinator {
@@ -74,7 +83,7 @@ final class ScheduleRuleMonitorCoordinator {
                 )
             }
         } catch {
-            center.stopMonitoring(
+            center.stopMonitoringIfAny(
                 (names + [ScheduleRuleActivityNames.relaxation(ruleID: rule.id)])
                     .filter { !existingNames.contains($0) }
             )

@@ -58,6 +58,34 @@ struct PomodoroCyclePlanTests {
         ) == late)
     }
 
+    @Test func snappedWorkEndCallbackStartsTheBreakAndSnappedStartResumesWork() throws {
+        let start = Date(timeIntervalSince1970: 1_700_000_000.476)
+        let plan = PomodoroCyclePlan(startedAt: start, workMinutes: 15, breakMinutes: 5)
+        let roundOne = try #require(plan.workInterval(round: 1))
+        let roundTwo = try #require(plan.workInterval(round: 2))
+        // Device Activity fires on whole seconds, just before each saved boundary.
+        func callback(at boundary: Date, warning: Bool) -> Date {
+            let fired = floor(boundary.timeIntervalSince1970) - (warning ? 1 : 0)
+            return DeviceActivityBoundaryClock.effectiveDate(
+                now: Date(timeIntervalSince1970: fired),
+                expectedBoundary: boundary,
+                maxEarlySeconds: warning ? 3 : 1
+            )
+        }
+
+        for warning in [false, true] {
+            let workEnd = callback(at: roundOne.end, warning: warning)
+            #expect(workEnd == roundOne.end)
+            #expect(!roundOne.containsBeforeEnd(workEnd))
+            #expect(!roundTwo.containsBeforeEnd(workEnd))
+            #expect(plan.phase(at: workEnd) == .breakTime(afterRound: 1, endsAt: roundTwo.start))
+
+            let breakEnd = callback(at: roundTwo.start, warning: warning)
+            #expect(roundTwo.containsBeforeEnd(breakEnd))
+            #expect(plan.phase(at: breakEnd) == .work(round: 2, endsAt: roundTwo.end))
+        }
+    }
+
     @Test func oneSecondWarningCanReconcileFractionalBoundaryWithoutMovingEarlierPhases() {
         let boundary = Date(timeIntervalSince1970: 1_700_000_000.477)
         let warning = boundary.addingTimeInterval(-1.477)

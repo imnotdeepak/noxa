@@ -245,7 +245,7 @@ final class RestrictionScheduleService: ObservableObject {
             ManagedSettingsStore(named: ScheduleRuleActivityNames.shield(ruleID: id))
                 .clearAllSettings()
             let suffix = id.uuidString.lowercased()
-            center.stopMonitoring(center.activities.filter {
+            center.stopMonitoringIfAny(center.activities.filter {
                 ($0.rawValue.hasPrefix(ScheduleRuleActivityNames.wakePrefix)
                     && $0.rawValue.hasSuffix(suffix))
                     || $0.rawValue == ScheduleRuleActivityNames.relaxation(ruleID: id).rawValue
@@ -283,14 +283,14 @@ final class RestrictionScheduleService: ObservableObject {
             $0.rawValue.hasPrefix(ScheduleRuleActivityNames.wakePrefix)
                 || $0.rawValue.hasPrefix(ScheduleRuleActivityNames.relaxationPrefix)
         }
-        center.stopMonitoring(names)
+        center.stopMonitoringIfAny(names)
     }
 
     private func clearLegacyActivities(expected: Set<DeviceActivityName>) {
         let stale = center.activities.filter {
             $0.rawValue.hasPrefix("noxa.schedule.") && !expected.contains($0)
         }
-        center.stopMonitoring(stale)
+        center.stopMonitoringIfAny(stale)
         for name in stale {
             ManagedSettingsStore(named: ManagedSettingsStore.Name(name.rawValue)).clearAllSettings()
         }

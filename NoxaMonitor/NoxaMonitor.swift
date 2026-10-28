@@ -453,7 +453,7 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
     ) {
         let appliedAt = Date()
         for round in 1...4 {
-            if cycle.plan.workInterval(round: round)?.contains(phaseDate) == true {
+            if cycle.plan.workInterval(round: round)?.containsBeforeEnd(phaseDate) == true {
                 if let data = try? JSONEncoder().encode(PersistedFocusSessionConfiguration(
                     selection: cycle.selection,
                     websiteDomains: cycle.websiteDomains
