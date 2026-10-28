@@ -1267,10 +1267,15 @@ struct ContentView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Your blocklist, \(focusRestrictionCount) item\(focusRestrictionCount == 1 ? "" : "s")")
+                .accessibilityValue(isHomeBlocklistExpanded ? "Expanded" : "Collapsed")
+                .accessibilityAddTraits(.isButton)
 
                 Button(focusSession.isActive ? "Add" : "Edit") {
                     presentRestrictionPicker()
                 }
+                .accessibilityLabel(focusSession.isActive ? "Add to blocklist" : "Edit blocklist")
                 .font(NoxaType.subheadlineSemibold)
                 .foregroundStyle(NoxaTheme.accent)
                 .disabled(focusSession.hasPomodoroCycle && !focusSession.isActive)
@@ -1327,9 +1332,12 @@ struct ContentView: View {
                     HStack {
                         NoxaCardHeader(title: "Apps", systemImage: "square.grid.2x2")
                         Spacer()
-                        Text("\(restrictions.selection.applicationTokens.count + restrictions.selection.categoryTokens.count)")
+                        let appCount = restrictions.selection.applicationTokens.count
+                            + restrictions.selection.categoryTokens.count
+                        Text("\(appCount)")
                             .font(NoxaType.caption.monospacedDigit())
                             .foregroundStyle(NoxaTheme.secondaryText)
+                            .accessibilityLabel("\(appCount) apps and categories selected")
                     }
 
                     if restrictions.selection.applicationTokens.isEmpty,
@@ -1387,6 +1395,7 @@ struct ContentView: View {
                 Text("\(websites.domains.count)/\(WebsiteBlocklistService.maximumDomains)")
                     .font(NoxaType.caption.monospacedDigit())
                     .foregroundStyle(NoxaTheme.secondaryText)
+                    .accessibilityLabel("\(websites.domains.count) of \(WebsiteBlocklistService.maximumDomains) websites")
             }
 
             Text("Add domains such as reddit.com or news.ycombinator.com. Noxa normalizes them and applies them locally during a focus session.")
@@ -1395,6 +1404,7 @@ struct ContentView: View {
 
             HStack(spacing: 10) {
                 TextField("reddit.com", text: $newDomain)
+                    .accessibilityLabel("Website to block")
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .textFieldStyle(NoxaTextFieldStyle())
@@ -1437,6 +1447,7 @@ struct ContentView: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Remove \(domain)")
                         .disabled(focusSession.isActive || focusSession.hasPomodoroCycle)
                     }
                 }
@@ -1465,6 +1476,7 @@ struct ContentView: View {
                 Text("\(pomodoroWorkMinutes)/\(pomodoroBreakMinutes)")
                     .font(NoxaType.captionSemibold.monospacedDigit())
                     .foregroundStyle(NoxaTheme.accent)
+                    .accessibilityLabel("\(pomodoroWorkMinutes) minutes focus, \(pomodoroBreakMinutes) minutes break")
             }
 
             Text("Four work rounds start automatically, with a break between each. Noxa releases the focus blocklist during breaks and reminds you before work resumes.")
@@ -1478,6 +1490,7 @@ struct ContentView: View {
                         pomodoroBreakMinutes = preset.1
                         isCustomPomodoro = false
                     }
+                    .accessibilityLabel("\(preset.0) minutes focus, \(preset.1) minutes break")
                     .buttonStyle(
                         NoxaDurationButtonStyle(
                             isSelected: pomodoroWorkMinutes == preset.0
@@ -2629,6 +2642,7 @@ private struct NoxaDurationButtonStyle: ButtonStyle {
             .onChange(of: configuration.isPressed) { isPressed in
                 if isPressed { NoxaHaptics.selection() }
             }
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
