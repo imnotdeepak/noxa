@@ -85,7 +85,7 @@ struct ContentView: View {
     @State var youtubePickerSelection = FamilyActivitySelection()
     @State var isYouTubeAppPickerPresented = false
     @State var pendingFilterLock: ShortVideoFilter?
-    @State var filterSetupGuide: ShortVideoFilter?
+    @State var filterSetupGuide: FilterSetupGuide?
     @State var restrictionPickerSelection = FamilyActivitySelection()
     @State var isDailyLimitPickerPresented = false
     @State var isChoosingDailyLimitDuration = false
@@ -237,7 +237,7 @@ struct ContentView: View {
             // `-NoxaFilterSetupPreview` opens the Reels setup guide for review.
             if CommandLine.arguments.contains("-NoxaFilterSetupPreview") {
                 selectedTab = .dailyLimits
-                filterSetupGuide = .instagram
+                filterSetupGuide = FilterSetupGuide(filter: .instagram)
             }
             #endif
         }

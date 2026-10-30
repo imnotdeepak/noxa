@@ -45,6 +45,13 @@ enum ShortVideoFilter: String, Identifiable {
     }
 }
 
+/// The Safari setup guide, for one filter or for both (from the section's
+/// info button).
+struct FilterSetupGuide: Identifiable {
+    let filter: ShortVideoFilter?
+    var id: String { filter?.rawValue ?? "both" }
+}
+
 extension ContentView {
     var reelsShortsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -53,10 +60,17 @@ extension ContentView {
                     .font(NoxaType.title2)
                     .foregroundStyle(NoxaTheme.primaryText)
                     .accessibilityAddTraits(.isHeader)
-                NoxaInfoButton(
-                    title: "Reels & Shorts",
-                    message: "Hides them on the websites in Safari, and blocks the apps, which can't be filtered. Keep using Instagram and YouTube in Safari. In Settings → Apps → Safari → Extensions → Noxa Safari Filter, turn on the extension and allow access to each website you filter. Once on, each locks for a week, then you get one day to turn it off."
-                )
+                // Opens the full setup guide rather than a small popover.
+                Button {
+                    filterSetupGuide = FilterSetupGuide(filter: nil)
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 17))
+                        .foregroundStyle(NoxaTheme.secondaryText)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("How to set up Reels & Shorts")
             }
 
             VStack(spacing: 0) {
@@ -67,8 +81,8 @@ extension ContentView {
             .noxaCard(padding: 16)
         }
         .task { await refreshSafariExtensionStatus() }
-        .sheet(item: $filterSetupGuide) { filter in
-            AnyView(filterSetupSheet(filter))
+        .sheet(item: $filterSetupGuide) { guide in
+            AnyView(filterSetupSheet(guide.filter))
         }
         .alert(
             "Lock this for a week?",
@@ -121,7 +135,7 @@ extension ContentView {
                 // Until Safari reports in, setup isn't finished.
                 if !isFilterConnected(filter) {
                     Button {
-                        filterSetupGuide = filter
+                        filterSetupGuide = FilterSetupGuide(filter: filter)
                     } label: {
                         Label("Finish setup in Safari", systemImage: "exclamationmark.triangle.fill")
                             .font(NoxaType.captionSemibold)
@@ -206,75 +220,103 @@ extension ContentView {
         if on, !isFilterConnected(filter) {
             // Wait for the lock alert to finish closing before presenting.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-                filterSetupGuide = filter
+                filterSetupGuide = FilterSetupGuide(filter: filter)
             }
         }
     }
 
     /// The Safari steps, shown when a filter is turned on before Safari has
-    /// connected, and from "Finish setup" until it does.
-    func filterSetupSheet(_ filter: ShortVideoFilter) -> some View {
-        NavigationStack {
+    /// connected, from "Finish setup" until it does, and from the info button.
+    func filterSetupSheet(_ filter: ShortVideoFilter?) -> some View {
+        let sites = filter.map { "**\($0.website)**" } ?? "**instagram.com** and **youtube.com**"
+        let opener = filter.map { "Open \($0.appName) in Safari" }
+        return NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    Text("The \(filter.appName) app is now blocked. Use \(filter.website) in Safari, where Noxa hides \(filter == .instagram ? "Reels" : "Shorts").")
-                        .foregroundStyle(NoxaTheme.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    VStack(alignment: .leading, spacing: 18) {
-                        setupStep(1, "Open the **Settings** app, then **Apps → Safari → Extensions**.")
-                        setupStep(2, "Tap **Noxa Safari Filter** and turn it on.")
-                        setupStep(3, "Under **Permissions**, set **\(filter.website)** to **Allow**.")
-                        setupStep(4, "Come back and tap **Open \(filter.appName) in Safari**.")
+                VStack(alignment: .leading, spacing: 28) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(filter.map { "Set up \($0.title)" } ?? "Set up Reels & Shorts")
+                            .font(NoxaTheme.font(32, weight: .bold, relativeTo: .largeTitle))
+                            .tracking(-0.6)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(filter.map {
+                            "The \($0.appName) app is blocked. Use \($0.website) in Safari, where Noxa hides \($0 == .instagram ? "Reels" : "Shorts")."
+                        } ?? "The apps can't be filtered, so Noxa blocks them. Use the websites in Safari, where Noxa hides Reels and Shorts.")
+                            .font(NoxaType.body)
+                            .foregroundStyle(NoxaTheme.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .noxaCard()
 
-                    Label(
-                        isFilterConnected(filter) ? "Connected to \(filter.appName) in Safari" : "Not connected yet",
-                        systemImage: isFilterConnected(filter) ? "checkmark.circle.fill" : "circle.dashed"
-                    )
-                    .font(NoxaType.subheadlineSemibold)
-                    .foregroundStyle(isFilterConnected(filter) ? NoxaTheme.accent : NoxaTheme.secondaryText)
-                    .frame(maxWidth: .infinity)
+                    VStack(alignment: .leading, spacing: 26) {
+                        setupStep(1, "Open the **Settings** app.")
+                        setupStep(2, "Go to **Apps → Safari → Extensions**.")
+                        setupStep(3, "Tap **Noxa Safari Filter** and turn it **on**.")
+                        setupStep(4, "Under **Permissions**, set \(sites) to **Allow**.")
+                        setupStep(5, opener.map { "Come back and tap **\($0)**." }
+                            ?? "Come back and open Instagram or YouTube in Safari.")
+                    }
+
+                    if let filter {
+                        Label(
+                            isFilterConnected(filter) ? "Connected to \(filter.appName) in Safari" : "Not connected yet",
+                            systemImage: isFilterConnected(filter) ? "checkmark.circle.fill" : "circle.dashed"
+                        )
+                        .font(NoxaType.subheadlineSemibold)
+                        .foregroundStyle(isFilterConnected(filter) ? NoxaTheme.accent : NoxaTheme.secondaryText)
+                    }
                 }
-                .padding(NoxaTheme.Spacing.screen)
+                .padding(.horizontal, 24)
+                .padding(.top, 8)
+                .padding(.bottom, 24)
             }
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 6) {
-                    Button {
-                        filter.openInSafari()
-                    } label: {
-                        Text("Open \(filter.appName) in Safari").frame(maxWidth: .infinity)
+                    if let filter, let opener {
+                        Button {
+                            filter.openInSafari()
+                        } label: {
+                            Text(opener).frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(NoxaPrimaryButtonStyle())
                     }
-                    .buttonStyle(NoxaPrimaryButtonStyle())
                     Button("Done") { filterSetupGuide = nil }
                         .font(NoxaType.subheadlineSemibold)
                         .foregroundStyle(NoxaTheme.secondaryText)
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .padding(.horizontal, NoxaTheme.Spacing.screen)
+                .padding(.horizontal, 24)
                 .padding(.bottom, 8)
                 .background(NoxaTheme.background)
             }
             .noxaScreenBackground()
-            .navigationTitle("Set up \(filter.title)")
-            .navigationBarTitleDisplayMode(.inline)
         }
         .tint(NoxaTheme.accent)
         .preferredColorScheme(.dark)
+        .presentationDragIndicator(.visible)
         .task { await refreshSafariExtensionStatus() }
     }
 
-    private func setupStep(_ number: Int, _ text: LocalizedStringKey) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 14) {
+    /// `markdown` may bold inserted site names, which a LocalizedStringKey
+    /// interpolation would print as literal asterisks.
+    private func setupStep(_ number: Int, _ markdown: String) -> some View {
+        let text = Text((try? AttributedString(markdown: markdown)) ?? AttributedString(markdown))
+        return setupStepRow(number, text)
+    }
+
+    private func setupStepRow(_ number: Int, _ text: Text) -> some View {
+        HStack(alignment: .top, spacing: 16) {
             Text("\(number)")
-                .font(NoxaType.subheadlineSemibold)
+                .font(NoxaTheme.font(18, weight: .bold, relativeTo: .headline))
                 .foregroundStyle(.black)
-                .frame(width: 26, height: 26)
+                .frame(width: 36, height: 36)
                 .background(NoxaTheme.accent, in: Circle())
-            Text(text)
+                .accessibilityHidden(true)
+            text
+                .font(NoxaTheme.font(20, relativeTo: .title3))
                 .foregroundStyle(NoxaTheme.primaryText)
                 .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 5)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text("Step \(number). ") + text)
     }
 }

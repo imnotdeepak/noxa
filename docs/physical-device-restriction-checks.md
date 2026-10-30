@@ -1,6 +1,6 @@
 # Physical-device restriction checks
 
-**October 30 release candidate:** Version 1.1 (9) builds for the paired iPhone and as a Release archive. The current source passed 146 simulator app tests and 16 Safari script tests. App Store export is blocked because Apple reports a pending Developer Program agreement and this Mac has no usable iOS Distribution signing identity. No build has been uploaded. YouTube device validation is in progress below.
+**October 30 release candidate:** Version 1.1 (9) builds for the paired iPhone and as a Release archive. The current source passed 146 simulator app tests and 16 Safari script tests. After the owner accepted Apple's pending Developer Program agreement, Xcode exported the final App Store Connect package with the latest Safari setup guide. Its signature verifies; entitlements include production push, Family Controls, the shared app group, and `get-task-allow=false`. No build has been uploaded.
 
 **October 27 scope update:** The owner removed Instagram Full Block from the intended product. Do not count its former device check as remaining testing. Its implementation was removed from the code on October 27: Settings offers only Off and Hide Reels and Explore, and a saved Full Block choice loads as Off.
 
@@ -348,7 +348,7 @@ The app and monitor now use one shared writer for app, category, and website sel
 
 - Debug build 1.1 (9) from the current working tree was installed on the paired iPhone.
 - The YouTube Shorts toggle was on, but Shorts remained usable in Safari until youtube.com was allowed for Noxa Safari Filter in iPhone Safari extension settings. After that permission was enabled, the owner reported the Shorts filter worked. The shared device record then showed a successful Safari-to-Noxa YouTube connection at 4:01 PM EDT.
-- A follow-up check of normal YouTube video and search access, plus native YouTube app blocking, is pending. The in-app connection warning now names the website permission to grant; that copy change needs installation with the final build.
+- The owner confirmed a normal YouTube video and search remained usable in Safari while the native YouTube app was blocked. The in-app connection warning and setup guide now name the website permission to grant; the final guide build still needs installation for visual review.
 
 ## Evidence to retain
 
