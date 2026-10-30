@@ -23,6 +23,7 @@
 		00E100000000000000000005 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 00E100000000000000000006 /* manifest.json */; };
 		00E100000000000000000007 /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = 00E100000000000000000008 /* background.js */; };
 		00E100000000000000000009 /* instagram-filter.js in Resources */ = {isa = PBXBuildFile; fileRef = 00E10000000000000000000A /* instagram-filter.js */; };
+		00E1000000000000000000F1 /* youtube-filter.js in Resources */ = {isa = PBXBuildFile; fileRef = 00E1000000000000000000F2 /* youtube-filter.js */; };
 		00F100000000000000000001 /* NoxaShieldConfiguration/ShieldRuleExplanation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00F100000000000000000002 /* NoxaShieldConfiguration/ShieldRuleExplanation.swift */; };
 		00F200000000000000000001 /* Shared/ScheduleWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00F200000000000000000005 /* Shared/ScheduleWindow.swift */; };
 		00F200000000000000000002 /* Shared/ScheduleWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00F200000000000000000005 /* Shared/ScheduleWindow.swift */; };
@@ -112,6 +113,7 @@
 		00E100000000000000000006 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = manifest.json; sourceTree = "<group>"; };
 		00E100000000000000000008 /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = background.js; sourceTree = "<group>"; };
 		00E10000000000000000000A /* instagram-filter.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "instagram-filter.js"; sourceTree = "<group>"; };
+		00E1000000000000000000F2 /* youtube-filter.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "youtube-filter.js"; sourceTree = "<group>"; };
 		00F100000000000000000002 /* NoxaShieldConfiguration/ShieldRuleExplanation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoxaShieldConfiguration/ShieldRuleExplanation.swift; sourceTree = "<group>"; };
 		00F200000000000000000005 /* Shared/ScheduleWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/ScheduleWindow.swift; sourceTree = "<group>"; };
 		00F300000000000000000003 /* Shared/RestrictionStoreWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/RestrictionStoreWriter.swift; sourceTree = "<group>"; };
@@ -302,6 +304,7 @@
 				00E100000000000000000006 /* manifest.json */,
 				00E100000000000000000008 /* background.js */,
 				00E10000000000000000000A /* instagram-filter.js */,
+				00E1000000000000000000F2 /* youtube-filter.js */,
 			);
 			name = Resources;
 			path = ../Experiments/InstagramSafari;
@@ -584,6 +587,7 @@
 				00E100000000000000000005 /* manifest.json in Resources */,
 				00E100000000000000000007 /* background.js in Resources */,
 				00E100000000000000000009 /* instagram-filter.js in Resources */,
+				00E1000000000000000000F1 /* youtube-filter.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

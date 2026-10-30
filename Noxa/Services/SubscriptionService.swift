@@ -30,6 +30,9 @@ final class SubscriptionService: NSObject, ObservableObject {
     @Published private(set) var hasLoaded = false
     @Published private(set) var isLoading = false
     @Published private(set) var purchasingProductID: String?
+    /// Apple accepted the purchase but is waiting on approval (for example
+    /// Ask to Buy). Access is granted only once the entitlement arrives.
+    @Published private(set) var isPurchasePending = false
     @Published private(set) var boundUserID: UUID?
     @Published var message: String?
 
@@ -67,6 +70,7 @@ final class SubscriptionService: NSObject, ObservableObject {
         hasAccess = false
         AppGroupStore.shared.setSafariFilterAllowedUntil(nil)
         InstagramSiteProtectionService.reconcile()
+        YouTubeShortsProtectionService.reconcile()
         activeProductID = nil
         plans = []
         message = nil
@@ -124,6 +128,7 @@ final class SubscriptionService: NSObject, ObservableObject {
         hasAccess = false
         AppGroupStore.shared.setSafariFilterAllowedUntil(nil)
         InstagramSiteProtectionService.reconcile()
+        YouTubeShortsProtectionService.reconcile()
         activeProductID = nil
         hasLoaded = false
         plans = []
@@ -179,6 +184,9 @@ final class SubscriptionService: NSObject, ObservableObject {
             }
             return hasAccess
         } catch {
+            if ErrorCode(rawValue: (error as NSError).code) == .paymentPendingError {
+                isPurchasePending = true
+            }
             message = userMessage(for: error)
             return false
         }
@@ -224,7 +232,11 @@ final class SubscriptionService: NSObject, ObservableObject {
         hasAccess = activeEntitlement != nil
         AppGroupStore.shared.setSafariFilterAllowedUntil(activeEntitlement?.expirationDate)
         InstagramSiteProtectionService.reconcile()
+        YouTubeShortsProtectionService.reconcile()
         activeProductID = activeEntitlement?.productIdentifier
+        if hasAccess {
+            isPurchasePending = false
+        }
         if hasAccess, message?.contains("unavailable") == true {
             message = nil
         }
@@ -241,6 +253,8 @@ final class SubscriptionService: NSObject, ObservableObject {
             return "This App Store subscription is already linked to another Noxa account. Sign in to that account or contact support."
         case .productAlreadyPurchasedError:
             return "This subscription has already been purchased. Try Restore Purchases."
+        case .paymentPendingError:
+            return "Your purchase is waiting for approval. Noxa will continue as soon as Apple confirms it."
         case .networkError, .offlineConnectionError:
             return "Subscriptions could not be reached. Check your connection and try again."
         default:

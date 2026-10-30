@@ -11,6 +11,7 @@ import UIKit
 struct ContentView: View {
     @Environment(\.scenePhase) var scenePhase
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
     enum MainTab: Hashable {
         case dailyLimits
         case blocklist
@@ -19,18 +20,33 @@ struct ContentView: View {
         case account
     }
 
-    enum StatsRange: Int, CaseIterable {
-        case day = 1
-        case week = 7
-        case month = 30
-        case year = 365
+    enum StatsRange: CaseIterable, Hashable {
+        case day, week, month, year
 
         var title: String {
             switch self {
-            case .day: "Today"
+            case .day: "Day"
             case .week: "Week"
             case .month: "Month"
             case .year: "Year"
+            }
+        }
+
+        var unit: FocusPeriodUnit {
+            switch self {
+            case .day: .day
+            case .week: .week
+            case .month: .month
+            case .year: .year
+            }
+        }
+
+        func emptyPhrase(isCurrent: Bool) -> String {
+            switch self {
+            case .day: isCurrent ? "today yet" : "on this day"
+            case .week: isCurrent ? "this week yet" : "this week"
+            case .month: isCurrent ? "this month yet" : "this month"
+            case .year: isCurrent ? "this year yet" : "this year"
             }
         }
     }
@@ -49,7 +65,8 @@ struct ContentView: View {
     @EnvironmentObject var onboarding: OnboardingService
     @EnvironmentObject var focusLaunchRouter: FocusLaunchRouter
     @StateObject var authorization = FamilyControlsAuthorizationService()
-    @State var selectedDurationMinutes = 30
+    /// Remembered across launches so the last choice is ready next time.
+    @AppStorage("noxa.home.focusDurationMinutes") var selectedDurationMinutes = 30
     @State var isRequestingAuthorization = false
     @State var newDomain = ""
     @State var instagramSiteMode = AppGroupStore.shared.instagramSiteMode
@@ -60,6 +77,15 @@ struct ContentView: View {
     @State var instagramAppSelection = (try? AppGroupStore.shared.loadInstagramAppSelection()) ?? nil
     @State var instagramPickerSelection = FamilyActivitySelection()
     @State var isInstagramAppPickerPresented = false
+    @State var youtubeShortsHidden = AppGroupStore.shared.youtubeShortsHidden
+    @State var youtubeAppBlockEnabled = AppGroupStore.shared.youtubeAppBlockEnabled
+    @State var youtubeAppBlockMessage: String?
+    @State var youtubeFilterLastSeenAt = AppGroupStore.shared.youtubeFilterLastSeenAt
+    @State var youtubeAppSelection = (try? AppGroupStore.shared.loadYouTubeAppSelection()) ?? nil
+    @State var youtubePickerSelection = FamilyActivitySelection()
+    @State var isYouTubeAppPickerPresented = false
+    @State var pendingFilterLock: ShortVideoFilter?
+    @State var filterSetupGuide: ShortVideoFilter?
     @State var restrictionPickerSelection = FamilyActivitySelection()
     @State var isDailyLimitPickerPresented = false
     @State var isChoosingDailyLimitDuration = false
@@ -72,12 +98,15 @@ struct ContentView: View {
     @State var scheduleToEdit: ScheduleRule?
     @State var scheduleToRename: ScheduleRule?
     @State var renamedScheduleName = ""
-    @State var scheduleMode: ScheduleRule.Mode = .allowedHours
+    @State var scheduleMode: ScheduleRule.Mode = .blockedHours
     @State var scheduleWeekdays: Set<Int> = Set(1...7)
     @State var scheduleNotifyAtStart = false
     @State var scheduleNotifyAtEnd = false
-    @State var scheduleLockWhileActive = false
     @State var isScheduleLockConfirmationPresented = false
+    @State var expandedScheduleIDs: Set<UUID> = []
+    @State var isScheduleAppPickerPresented = false
+    @State var isDailyLimitLockConfirmationPresented = false
+    @State var dailyLimitToEdit: DailyLimitConfiguration?
     @State var scheduleCustomDomains = ""
     @State var scheduleSelection = FamilyActivitySelection()
     @State var scheduleAllowedStart = Calendar.current.date(from: DateComponents(hour: 21)) ?? Date()
@@ -86,6 +115,7 @@ struct ContentView: View {
     @State var pomodoroBreakMinutes = 5
     @State var isCustomPomodoro = false
     @State var isPaywallPresented = false
+    @State var isOnboardingReplayPresented = false
     @State var isDeleteAccountConfirmationPresented = false
     @State var isCustomDuration = false
     @State var customDurationText = "30"
@@ -97,8 +127,14 @@ struct ContentView: View {
     @State var isNotificationPromptPresented = false
     @State var selectedTab = MainTab.home
     @State var selectedStatsRange = StatsRange.week
+    @State var selectedFocusBucket: FocusBucket?
+    @State var statsAnchorDate = Date()
     @State var statsReferenceDate = Date()
     @State var isHomeBlocklistExpanded = false
+    @State var homeMode: HomeFocusMode = .focus
+    @State var lastHomeSessionID: UUID?
+    @State var lastCompletedSessionID: UUID?
+    @State var toastMessage: String?
     @State var didRepairRestrictions = false
     @FocusState var isCustomDurationFieldFocused: Bool
 
@@ -141,6 +177,7 @@ struct ContentView: View {
 
     var body: some View {
         let presentedTabs = mainTabs
+        .overlay(alignment: .top) { AnyView(toastView) }
         .tint(NoxaTheme.accent)
         .font(NoxaType.body)
         .preferredColorScheme(.dark)
@@ -149,19 +186,25 @@ struct ContentView: View {
         .toolbarBackground(.visible, for: .tabBar)
         .background(NoxaBackground())
         .sheet(isPresented: $restrictions.isPickerPresented) {
-            restrictionPickerSheet
+            AnyView(restrictionPickerSheet)
         }
         .sheet(isPresented: $isDailyLimitPickerPresented) {
-            dailyLimitPickerSheet
+            AnyView(dailyLimitPickerSheet)
+        }
+        .sheet(item: $dailyLimitToEdit) { configuration in
+            AnyView(dailyLimitDetailSheet(configuration))
         }
         .sheet(isPresented: $isSchedulePickerPresented) {
-            schedulePickerSheet
+            AnyView(schedulePickerSheet)
         }
         .sheet(isPresented: $isFocusStartReviewPresented) {
-            focusStartReviewSheet
+            AnyView(focusStartReviewSheet)
         }
         .sheet(isPresented: $isInstagramAppPickerPresented) {
-            instagramAppPickerSheet
+            AnyView(instagramAppPickerSheet)
+        }
+        .sheet(isPresented: $isYouTubeAppPickerPresented) {
+            AnyView(youtubeAppPickerSheet)
         }
         .fullScreenCover(isPresented: $isEndRitualPresented) {
             EndSessionRitualView {
@@ -178,6 +221,9 @@ struct ContentView: View {
         let observedTabs = presentedTabs
         .task {
             authorization.refresh()
+            AppGroupStore.shared.startMissingFilterLocks()
+            restoreInstagramAppBlockIfNeeded()
+            restoreYouTubeAppBlockIfNeeded()
             if focusSession.completedPomodoroCycleID != nil {
                 isPomodoroCompletionPresented = true
             }
@@ -187,13 +233,25 @@ struct ContentView: View {
             presentScheduleSuggestionIfReady()
             presentWidgetStartIfReady()
             presentWidgetHomeIfReady()
+            #if DEBUG
+            // `-NoxaFilterSetupPreview` opens the Reels setup guide for review.
+            if CommandLine.arguments.contains("-NoxaFilterSetupPreview") {
+                selectedTab = .dailyLimits
+                filterSetupGuide = .instagram
+            }
+            #endif
         }
         .onChange(of: scenePhase) { newPhase in
             guard newPhase == .active else { return }
             statsReferenceDate = Date()
+            restoreInstagramAppBlockIfNeeded()
             instagramSiteMode = AppGroupStore.shared.instagramSiteMode
             instagramAppBlockEnabled = AppGroupStore.shared.instagramAppBlockEnabled
             safariFilterLastSeenAt = AppGroupStore.shared.safariFilterLastSeenAt
+            restoreYouTubeAppBlockIfNeeded()
+            youtubeShortsHidden = AppGroupStore.shared.youtubeShortsHidden
+            youtubeAppBlockEnabled = AppGroupStore.shared.youtubeAppBlockEnabled
+            youtubeFilterLastSeenAt = AppGroupStore.shared.youtubeFilterLastSeenAt
             Task { await refreshSafariExtensionStatus() }
             Task { await notifications.refreshAuthorizationStatus() }
         }
@@ -251,14 +309,14 @@ struct ContentView: View {
                 Task { await enableNotificationsForActiveSession() }
             }
         } message: {
-            Text("Noxa can notify you when focus sessions and Pomodoro breaks are complete.")
+            Text("Get told when sessions and breaks finish.")
         }
         return accountAlerts
         .alert("Start Pomodoro?", isPresented: $isPomodoroStartConfirmationPresented) {
             Button("Cancel", role: .cancel) {}
             Button("Start Pomodoro") { beginPomodoro() }
         } message: {
-            Text("Your selected distractions will be blocked until \(pomodoroFirstRoundEndDescription), when your first break starts. You can't end a work round early in Noxa, but you can stop the cycle during a break. iOS Screen Time permissions can still be changed in Settings.")
+            Text("Blocked until your first break at \(pomodoroFirstRoundEndDescription). Work rounds can't be ended early; you can stop during a break.")
         }
         .alert("Four rounds complete", isPresented: $isPomodoroCompletionPresented) {
             Button("Later", role: .cancel) {
@@ -269,7 +327,7 @@ struct ContentView: View {
                 isPomodoroStartConfirmationPresented = true
             }
         } message: {
-            Text("Your Pomodoro cycle is over. Would you like to start another one?")
+            Text("Start another cycle?")
         }
         .alert("Make this a recurring schedule?", isPresented: $isScheduleSuggestionPresented) {
             Button("Not Now", role: .cancel) {
@@ -285,7 +343,6 @@ struct ContentView: View {
                 scheduleWeekdays = Set(1...7)
                 scheduleNotifyAtStart = false
                 scheduleNotifyAtEnd = false
-                scheduleLockWhileActive = false
                 scheduleAllowedStart = Self.dateForScheduleMinute(
                     Self.minutesSinceMidnight(suggestion.startedAt)
                 )
@@ -301,13 +358,13 @@ struct ContentView: View {
                 }
             }
         } message: {
-            Text("Use the apps and websites from your first completed focus session. You can choose the days and hours before saving.")
+            Text("Uses the same apps and sites. You pick the days and hours.")
         }
         .alert("Set up Focus first", isPresented: $isWidgetSetupAlertPresented) {
             Button("Choose Distractions") { selectedTab = .blocklist }
             Button("Later", role: .cancel) {}
         } message: {
-            Text("Allow Screen Time and choose at least one app or website before starting from a widget.")
+            Text("Allow Screen Time and choose at least one app or site.")
         }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -320,11 +377,13 @@ struct ContentView: View {
         }
     }
 
+    // Each tab is type-erased: fully inlined, the five screens form one view
+    // type deep enough to overflow the main-thread stack on device at launch.
     var mainTabs: some View {
         TabView(selection: $selectedTab) {
             NavigationStack {
-                dailyLimitsContent
-                    .navigationTitle("Daily Limits")
+                AnyView(dailyLimitsContent)
+                    .navigationTitle("Limits & Schedules")
             }
             .tabItem {
                 Label("Limits", systemImage: "hourglass")
@@ -332,7 +391,7 @@ struct ContentView: View {
             .tag(MainTab.dailyLimits)
 
             NavigationStack {
-                blocklistContent
+                AnyView(blocklistContent)
                     .navigationTitle("Blocklist")
             }
             .tabItem {
@@ -341,8 +400,9 @@ struct ContentView: View {
             .tag(MainTab.blocklist)
 
             NavigationStack {
-                homeContent
+                AnyView(homeContent)
                     .toolbar(.hidden, for: .navigationBar)
+                    .noxaStatusBarScrim()
             }
             .tabItem {
                 Label("Home", systemImage: "circle.circle.fill")
@@ -350,8 +410,9 @@ struct ContentView: View {
             .tag(MainTab.home)
 
             NavigationStack {
-                statsContent
-                    .navigationTitle("Stats")
+                AnyView(statsContent)
+                    .toolbar(.hidden, for: .navigationBar)
+                    .noxaStatusBarScrim()
             }
             .tabItem {
                 Label("Insights", systemImage: "chart.bar")
@@ -359,11 +420,12 @@ struct ContentView: View {
             .tag(MainTab.stats)
 
             NavigationStack {
-                accountContent
-                    .navigationTitle("Settings")
+                AnyView(profileContent)
+                    .toolbar(.hidden, for: .navigationBar)
+                    .noxaStatusBarScrim()
             }
             .tabItem {
-                Label("Account", systemImage: "person.crop.circle")
+                Label("Profile", systemImage: "person.crop.circle")
             }
             .tag(MainTab.account)
         }
@@ -442,6 +504,36 @@ struct ContentView: View {
 
         restrictionPickerSelection = FamilyActivitySelection()
         restrictions.isPickerPresented = false
+        showToast(focusSession.isActive ? "Added to this session" : "Blocklist saved")
+    }
+
+    /// Confirms a change only after it was stored; failures show their own
+    /// error text where the change was made.
+    func showToast(_ message: String, duration: TimeInterval = 2) {
+        NoxaHaptics.tap(.light)
+        withAnimation(reduceMotion ? nil : NoxaMotion.spring) { toastMessage = message }
+        let shown = message
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+            guard toastMessage == shown else { return }
+            withAnimation(reduceMotion ? nil : NoxaMotion.spring) { toastMessage = nil }
+        }
+    }
+
+    @ViewBuilder
+    var toastView: some View {
+        if let toastMessage {
+            Label(toastMessage, systemImage: "checkmark.circle.fill")
+                .font(NoxaType.subheadlineSemibold)
+                .foregroundStyle(NoxaTheme.primaryText)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(NoxaTheme.elevated, in: Capsule())
+                .overlay { Capsule().strokeBorder(NoxaTheme.border, lineWidth: 1) }
+                .padding(.top, 8)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .accessibilityAddTraits(.updatesFrequently)
+                .onAppear { UIAccessibility.post(notification: .announcement, argument: toastMessage) }
+        }
     }
 
     func combinedSelection(
@@ -480,7 +572,8 @@ struct ContentView: View {
         selectedDurationMinutes = 30
         isCustomDuration = false
         selectedTab = .home
-        isFocusStartReviewPresented = true
+        // A short nudge, never an automatic start or a second tutorial.
+        showToast("Your first Focus is ready. Start whenever you are.", duration: 4)
     }
 
     func presentWidgetStartIfReady() {
@@ -493,8 +586,7 @@ struct ContentView: View {
             focusSession.reconcile()
         }
         guard !focusSession.isActive, !focusSession.hasPomodoroCycle else { return }
-        selectedDurationMinutes = 60
-        isCustomDuration = false
+        // Starts with the duration last chosen on Home.
         if hasFocusRestrictions && authorization.state.isApproved {
             isFocusStartReviewPresented = true
         } else {

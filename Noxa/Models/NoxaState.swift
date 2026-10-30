@@ -220,19 +220,24 @@ struct DailyLimitConfiguration: Codable, Equatable, Identifiable, Sendable {
     var dailyLimitMinutes: Int
     var createdAt: Date
     var isEnabled: Bool
+    /// Start of the weekly lock cycle. Nil for limits saved before weekly
+    /// locks, which stay unlocked until their allowance is next changed.
+    var lockAnchor: Date?
 
     init(
         id: UUID = UUID(),
         selection: FamilyActivitySelection,
         dailyLimitMinutes: Int,
         createdAt: Date = Date(),
-        isEnabled: Bool = true
+        isEnabled: Bool = true,
+        lockAnchor: Date? = nil
     ) {
         self.id = id
         self.selection = selection
         self.dailyLimitMinutes = min(max(dailyLimitMinutes, 5), 240)
         self.createdAt = createdAt
         self.isEnabled = isEnabled
+        self.lockAnchor = lockAnchor
     }
 }
 
@@ -280,45 +285,9 @@ struct RestrictionScheduleConfiguration: Codable, Equatable, Identifiable, Senda
     }
 }
 
-enum OnboardingGoal: String, Codable, CaseIterable, Sendable {
-    case studying = "Studying"
-    case work = "Work"
-    case sleep = "Sleep"
-    case reduceScreenTime = "Reduce screen time"
-    case deepFocus = "Deep focus"
-    case betterHabits = "Better habits"
-}
-
-enum OnboardingDistraction: String, Codable, CaseIterable, Sendable {
-    case shortFormMedia = "Short-form media"
-    case longFormMedia = "Long-form media"
-    case webBrowsing = "Web browsing"
-    case playingGames = "Playing games"
-    case socialMedia = "Social media"
-    case other = "Other"
-}
-
-enum OnboardingFocusTime: String, Codable, CaseIterable, Sendable {
-    case morning = "Morning"
-    case workOrSchool = "Work or school hours"
-    case afternoon = "Afternoon"
-    case evening = "Evening"
-    case beforeBed = "Before bed"
-    case throughoutDay = "Throughout the day"
-}
-
-enum OnboardingBenefit: String, Codable, CaseIterable, Sendable {
-    case moreTime = "More time for myself"
-    case betterSleep = "Better sleep"
-    case betterWorkOrStudy = "Better work or study"
-    case lessStress = "Less stress"
-    case strongerRelationships = "Stronger relationships"
-    case beingPresent = "Being more present"
-}
-
 /// Progress and draft data used to resume onboarding safely after interruption.
 struct OnboardingProgress: Codable, Equatable, Sendable {
-    private static let currentFlowVersion = 5
+    private static let currentFlowVersion = 6
 
     var flowVersion = currentFlowVersion
     var ownerUserID: UUID?
@@ -335,6 +304,12 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
     var hasCompletedInitialSetup = false
     var hasSeenFirstSessionPrompt = false
     var hasSeenFirstFocusReview = false
+    // Flow version 6: the redesigned narrative before account creation.
+    var hasCompletedEstimate = false
+    var hasSeenProjection = false
+    var hasSeenInsight = false
+    var hasSeenProductDemo = false
+    var pactStatus: PactStatus?
     var draftPersonalizationAnswers: [String] = []
     var draftSetupConfiguration: [String: String] = [:]
 
@@ -342,32 +317,20 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
         hasCompletedInitialSetup && hasSeenFirstSessionPrompt
     }
 
-    var preferredName: String? {
-        draftSetupConfiguration["name"].flatMap { $0.isEmpty ? nil : $0 }
+    var selectedGoals: Set<OnboardingGoal> {
+        Set(draftPersonalizationAnswers.compactMap(OnboardingGoal.init(rawValue:)))
     }
 
-    var primaryGoal: OnboardingGoal? {
-        (draftSetupConfiguration["primaryGoal"]
-            .flatMap(OnboardingGoal.init(rawValue:)))
-            ?? draftPersonalizationAnswers.compactMap(OnboardingGoal.init(rawValue:)).first
+    var selectedDistractions: Set<OnboardingDistraction> {
+        Set((draftSetupConfiguration["distractions"] ?? "")
+            .split(separator: "|")
+            .compactMap { OnboardingDistraction(rawValue: String($0)) })
     }
 
-    var primaryDistraction: OnboardingDistraction? {
-        (draftSetupConfiguration["primaryDistraction"]
-            ?? Self.firstAnswer(for: "distractions", in: draftSetupConfiguration))
-            .flatMap(OnboardingDistraction.init(rawValue:))
-    }
-
-    var difficultFocusTime: OnboardingFocusTime? {
-        (draftSetupConfiguration["difficultFocusTime"]
-            ?? Self.firstAnswer(for: "problemTimes", in: draftSetupConfiguration))
-            .flatMap(OnboardingFocusTime.init(rawValue:))
-    }
-
-    var desiredBenefit: OnboardingBenefit? {
-        (draftSetupConfiguration["desiredBenefit"]
-            ?? Self.firstAnswer(for: "motivations", in: draftSetupConfiguration))
-            .flatMap(OnboardingBenefit.init(rawValue:))
+    /// Self-reported distracting minutes per day; nil when the user isn't
+    /// sure or hasn't answered. Never measured usage.
+    var estimatedDistractingMinutesPerDay: Int? {
+        draftSetupConfiguration["estimatedMinutes"].flatMap(Int.init)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -386,6 +349,11 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
         case hasCompletedInitialSetup
         case hasSeenFirstSessionPrompt
         case hasSeenFirstFocusReview
+        case hasCompletedEstimate
+        case hasSeenProjection
+        case hasSeenInsight
+        case hasSeenProductDemo
+        case pactStatus
         case draftPersonalizationAnswers
         case draftSetupConfiguration
     }
@@ -422,6 +390,18 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
         hasSeenFirstSessionPrompt = storedFirstSessionPrompt || (flowVersion < 2 && hasSeenPricingPreview)
         hasSeenFirstFocusReview = try container.decodeIfPresent(Bool.self, forKey: .hasSeenFirstFocusReview)
             ?? (flowVersion < 5 && hasSeenFirstSessionPrompt)
+        // Earlier flows asked for a name right before account creation, so
+        // anyone past that step has already seen the old narrative.
+        let passedLegacyNarrative = flowVersion < 6 && hasCompletedName
+        hasCompletedEstimate = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedEstimate)
+            ?? passedLegacyNarrative
+        hasSeenProjection = try container.decodeIfPresent(Bool.self, forKey: .hasSeenProjection)
+            ?? passedLegacyNarrative
+        hasSeenInsight = try container.decodeIfPresent(Bool.self, forKey: .hasSeenInsight)
+            ?? passedLegacyNarrative
+        hasSeenProductDemo = try container.decodeIfPresent(Bool.self, forKey: .hasSeenProductDemo)
+            ?? passedLegacyNarrative
+        pactStatus = try container.decodeIfPresent(PactStatus.self, forKey: .pactStatus)
         draftPersonalizationAnswers = try container.decodeIfPresent([String].self, forKey: .draftPersonalizationAnswers) ?? []
         draftSetupConfiguration = try container.decodeIfPresent([String: String].self, forKey: .draftSetupConfiguration) ?? [:]
     }
@@ -443,15 +423,13 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
         try container.encode(hasCompletedInitialSetup, forKey: .hasCompletedInitialSetup)
         try container.encode(hasSeenFirstSessionPrompt, forKey: .hasSeenFirstSessionPrompt)
         try container.encode(hasSeenFirstFocusReview, forKey: .hasSeenFirstFocusReview)
+        try container.encode(hasCompletedEstimate, forKey: .hasCompletedEstimate)
+        try container.encode(hasSeenProjection, forKey: .hasSeenProjection)
+        try container.encode(hasSeenInsight, forKey: .hasSeenInsight)
+        try container.encode(hasSeenProductDemo, forKey: .hasSeenProductDemo)
+        try container.encodeIfPresent(pactStatus, forKey: .pactStatus)
         try container.encode(draftPersonalizationAnswers, forKey: .draftPersonalizationAnswers)
         try container.encode(draftSetupConfiguration, forKey: .draftSetupConfiguration)
-    }
-
-    private static func firstAnswer(for key: String, in configuration: [String: String]) -> String? {
-        configuration[key]?
-            .split(separator: "|")
-            .map(String.init)
-            .first
     }
 }
 

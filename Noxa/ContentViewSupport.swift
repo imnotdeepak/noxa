@@ -19,10 +19,6 @@ struct NoxaDurationButtonStyle: ButtonStyle {
                 isSelected ? NoxaTheme.accent : NoxaTheme.elevated,
                 in: Capsule()
             )
-            .overlay {
-                Capsule()
-                    .stroke(isSelected ? NoxaTheme.accent : NoxaTheme.border, lineWidth: 1)
-            }
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .noxaAnimation(NoxaMotion.snappy, value: configuration.isPressed)
             .noxaAnimation(NoxaMotion.snappy, value: isSelected)

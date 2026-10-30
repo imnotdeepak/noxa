@@ -12,16 +12,33 @@ extension ContentView {
 
     var safariFilterStatusMessage: String {
         if safariExtensionEnabled == false {
-            return "Turn on Noxa Instagram Filter in Settings → Apps → Safari → Extensions, then allow access to instagram.com. You can also block Instagram with a schedule or your blocklist."
+            return "Turn on Noxa Safari Filter in Settings → Apps → Safari → Extensions, and allow instagram.com."
         }
         if safariFilterRecentlyConnected {
-            return "Noxa recently connected to Instagram in Safari. Check Reels and Explore there; this connection alone cannot confirm that every page element was hidden."
+            return "Connected to Instagram in Safari."
         }
-        return "Noxa has not recently connected to Instagram in Safari. Open the site, allow extension access, and refresh it. If filtering stays unavailable, block Instagram with a schedule or your blocklist."
+        return "Not connected yet. Open Instagram in Safari, allow the extension, and refresh."
+    }
+
+    var youtubeFilterRecentlyConnected: Bool {
+        guard let youtubeFilterLastSeenAt else { return false }
+        return safariExtensionEnabled != false
+            && (0..<5 * 60).contains(Date().timeIntervalSince(youtubeFilterLastSeenAt))
+    }
+
+    var youtubeFilterStatusMessage: String {
+        if safariExtensionEnabled == false {
+            return "Turn on Noxa Safari Filter in Settings → Apps → Safari → Extensions, and allow youtube.com."
+        }
+        if youtubeFilterRecentlyConnected {
+            return "Connected to YouTube in Safari."
+        }
+        return "Not connected yet. Open YouTube in Safari, allow the extension for youtube.com, and refresh."
     }
 
     func refreshSafariExtensionStatus() async {
         safariFilterLastSeenAt = AppGroupStore.shared.safariFilterLastSeenAt
+        youtubeFilterLastSeenAt = AppGroupStore.shared.youtubeFilterLastSeenAt
         if #available(iOS 26.2, *) {
             let state = try? await SFSafariExtensionManager.stateOfExtension(
                 withIdentifier: "LycheeCorp.Noxa.SafariFilter"
@@ -32,57 +49,133 @@ extension ContentView {
 
     var blocklistContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: NoxaTheme.Spacing.section) {
-                Text("Apps and websites stay organized separately and remain private on this device.")
-                    .font(NoxaType.body)
-                    .foregroundStyle(NoxaTheme.secondaryText)
-
-                if focusSession.isActive {
-                    Label("You can add distractions now, but existing ones stay locked until the session ends", systemImage: "lock.fill")
-                        .font(NoxaType.footnoteSemibold)
-                        .foregroundStyle(.orange)
-                } else if focusSession.hasPomodoroCycle {
-                    Label("Blocklist changes resume after you stop the Pomodoro during a break or finish all four rounds", systemImage: "lock.fill")
-                        .font(NoxaType.footnoteSemibold)
-                        .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 20) {
+                let appCount = restrictions.selection.applicationTokens.count
+                    + restrictions.selection.categoryTokens.count
+                let siteCount = websites.domains.count + restrictions.selection.webDomainTokens.count
+                HStack(spacing: 4) {
+                    Text("\(appCount) app\(appCount == 1 ? "" : "s") · \(siteCount) website\(siteCount == 1 ? "" : "s") selected")
+                        .font(NoxaType.body)
+                        .foregroundStyle(NoxaTheme.secondaryText)
+                        .contentTransition(.numericText())
+                    NoxaInfoButton(
+                        title: "Blocklist",
+                        message: "These are what Focus and Pomodoro block. Being on this list doesn't mean an app is blocked right now, and each schedule keeps its own apps and sites."
+                    )
                 }
 
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        NoxaCardHeader(title: "Apps", systemImage: "square.grid.2x2")
-                        Spacer()
-                        let appCount = restrictions.selection.applicationTokens.count
-                            + restrictions.selection.categoryTokens.count
-                        Text("\(appCount)")
-                            .font(NoxaType.caption.monospacedDigit())
+                // Scope, stated plainly: editing this list doesn't change rules.
+                Text("Used by Focus and Pomodoro. Schedules and daily limits keep their own apps.")
+                    .font(NoxaType.footnote)
+                    .foregroundStyle(NoxaTheme.tertiaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !authorization.state.isApproved {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label("Screen Time access is off", systemImage: "exclamationmark.triangle.fill")
+                            .font(NoxaType.subheadlineSemibold)
+                            .foregroundStyle(NoxaTheme.warning)
+                        Text("Nothing on this list can be blocked until you allow it.")
+                            .font(NoxaType.footnote)
                             .foregroundStyle(NoxaTheme.secondaryText)
-                            .accessibilityLabel("\(appCount) apps and categories selected")
+                        Button("Allow Screen Time Access") {
+                            Task { await authorization.requestAuthorization() }
+                        }
+                        .buttonStyle(NoxaSecondaryButtonStyle())
                     }
+                    .noxaCard(padding: 16)
+                }
+
+                if focusSession.isActive {
+                    Label("You can add, not remove, until Focus ends", systemImage: "lock.fill")
+                        .font(NoxaType.footnoteSemibold)
+                        .foregroundStyle(NoxaTheme.warning)
+                } else if focusSession.hasPomodoroCycle {
+                    Label("Locked until the Pomodoro ends or you stop it on a break", systemImage: "lock.fill")
+                        .font(NoxaType.footnoteSemibold)
+                        .foregroundStyle(NoxaTheme.warning)
+                }
+
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack {
+                        Text("Apps")
+                            .font(NoxaType.title2)
+                            .foregroundStyle(NoxaTheme.primaryText)
+                        Spacer()
+                        Button(focusSession.isActive ? "Add" : (restrictions.hasSelection ? "Edit" : "Choose")) {
+                            presentRestrictionPicker()
+                        }
+                        .font(NoxaType.subheadlineSemibold)
+                        .foregroundStyle(NoxaTheme.accent)
+                        .frame(minHeight: 44)
+                        .disabled(!authorization.state.isApproved || (focusSession.hasPomodoroCycle && !focusSession.isActive))
+                    }
+                    .padding(.bottom, 6)
 
                     if restrictions.selection.applicationTokens.isEmpty,
                        restrictions.selection.categoryTokens.isEmpty {
-                        Text("No apps or categories selected.")
-                            .font(NoxaType.subheadline)
-                            .foregroundStyle(NoxaTheme.secondaryText)
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Choose the apps that pull you away. Focus and Pomodoro will block them.")
+                                .font(NoxaType.subheadline)
+                                .foregroundStyle(NoxaTheme.secondaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Button("Choose Apps") { presentRestrictionPicker() }
+                                .buttonStyle(NoxaSecondaryButtonStyle())
+                                .disabled(!authorization.state.isApproved)
+                        }
+                        .padding(.vertical, 10)
                     } else {
-                        tokenRows(for: restrictions.selection, includeWebDomains: false)
+                        ForEach(Array(restrictions.selection.applicationTokens.enumerated()), id: \.element) { index, token in
+                            if index > 0 { Divider().overlay(NoxaTheme.border) }
+                            Label(token)
+                                .labelStyle(NoxaAppRowLabelStyle())
+                        }
+                        ForEach(Array(restrictions.selection.categoryTokens), id: \.self) { token in
+                            if !restrictions.selection.applicationTokens.isEmpty {
+                                Divider().overlay(NoxaTheme.border)
+                            }
+                            Label(token)
+                                .labelStyle(NoxaAppRowLabelStyle())
+                        }
                     }
-
-                    Button(focusSession.isActive ? "Add Apps" : (restrictions.hasSelection ? "Edit Apps" : "Choose Apps")) {
-                        presentRestrictionPicker()
-                    }
-                    .buttonStyle(NoxaSecondaryButtonStyle())
-                    .disabled(!authorization.state.isApproved || (focusSession.hasPomodoroCycle && !focusSession.isActive))
                 }
-                .noxaCard()
+                .noxaCard(padding: 20)
 
-                websiteCard
-                pomodoroCard
-
+                NavigationLink {
+                    ScrollView {
+                        websiteCard
+                            .padding(.horizontal, NoxaTheme.Spacing.screen)
+                            .padding(.vertical, 12)
+                    }
+                    .noxaScreenBackground()
+                    .navigationTitle("Websites")
+                } label: {
+                    HStack(spacing: 16) {
+                        Image(systemName: "globe")
+                            .font(.system(size: 22, weight: .medium))
+                            .foregroundStyle(NoxaTheme.accent)
+                            .frame(width: 52, height: 52)
+                            .background(NoxaTheme.elevated, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Websites")
+                                .font(NoxaType.headline)
+                                .foregroundStyle(NoxaTheme.primaryText)
+                            Text("\(siteCount) website\(siteCount == 1 ? "" : "s") selected")
+                                .font(NoxaType.subheadline)
+                                .foregroundStyle(NoxaTheme.secondaryText)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(NoxaType.subheadlineSemibold)
+                            .foregroundStyle(NoxaTheme.secondaryText)
+                    }
+                    .noxaCard(padding: 20)
+                }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, NoxaTheme.Spacing.screen)
-            .padding(.top, 8)
-            .padding(.bottom, 24)
+            .padding(.top, 4)
+            .padding(.bottom, 40)
         }
         .scrollIndicators(.hidden)
         .noxaScreenBackground()
@@ -91,17 +184,17 @@ extension ContentView {
     var websiteCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                NoxaCardHeader(title: "Website blocklist", systemImage: "globe")
+                NoxaCardHeader(
+                    title: "Websites",
+                    systemImage: "globe",
+                    info: "Add domains like reddit.com. Noxa cleans them up and blocks them on this device during Focus."
+                )
                 Spacer()
                 Text("\(websites.domains.count)/\(WebsiteBlocklistService.maximumDomains)")
                     .font(NoxaType.caption.monospacedDigit())
                     .foregroundStyle(NoxaTheme.secondaryText)
                     .accessibilityLabel("\(websites.domains.count) of \(WebsiteBlocklistService.maximumDomains) websites")
             }
-
-            Text("Add domains such as reddit.com or news.ycombinator.com. Noxa normalizes them and applies them locally during a focus session.")
-                .font(NoxaType.subheadline)
-                .foregroundStyle(NoxaTheme.secondaryText)
 
             HStack(spacing: 10) {
                 TextField("reddit.com", text: $newDomain)
@@ -110,10 +203,10 @@ extension ContentView {
                     .autocorrectionDisabled()
                     .textFieldStyle(NoxaTextFieldStyle())
 
-                Button("Add Website") {
+                Button("Add") {
                     if websites.addDomain(newDomain) {
                         newDomain = ""
-                        NoxaHaptics.tap()
+                        showToast("Website added")
                     }
                 }
                 .buttonStyle(NoxaSecondaryButtonStyle())
@@ -169,164 +262,8 @@ extension ContentView {
         .noxaCard()
     }
 
-    var pomodoroCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                NoxaCardHeader(title: "Pomodoro", systemImage: "timer.circle")
-                Spacer()
-                Text("\(pomodoroWorkMinutes)/\(pomodoroBreakMinutes)")
-                    .font(NoxaType.captionSemibold.monospacedDigit())
-                    .foregroundStyle(NoxaTheme.accent)
-                    .accessibilityLabel("\(pomodoroWorkMinutes) minutes focus, \(pomodoroBreakMinutes) minutes break")
-            }
-
-            Text("Four work rounds start automatically, with a break between each. Noxa releases the focus blocklist during breaks and reminds you before work resumes.")
-                .font(NoxaType.subheadline)
-                .foregroundStyle(NoxaTheme.secondaryText)
-
-            LazyVGrid(columns: durationGridColumns(regularCount: 4, spacing: 8), spacing: 8) {
-                ForEach([(25, 5), (50, 10), (90, 15)], id: \.0) { preset in
-                    Button("\(preset.0)/\(preset.1)") {
-                        pomodoroWorkMinutes = preset.0
-                        pomodoroBreakMinutes = preset.1
-                        isCustomPomodoro = false
-                    }
-                    .accessibilityLabel("\(preset.0) minutes focus, \(preset.1) minutes break")
-                    .buttonStyle(
-                        NoxaDurationButtonStyle(
-                            isSelected: pomodoroWorkMinutes == preset.0
-                                && pomodoroBreakMinutes == preset.1
-                                && !isCustomPomodoro
-                        )
-                    )
-                }
-
-                Button("Custom") {
-                    isCustomPomodoro = true
-                }
-                .buttonStyle(NoxaDurationButtonStyle(isSelected: isCustomPomodoro))
-            }
-
-            if isCustomPomodoro {
-                VStack(spacing: 10) {
-                    Stepper(value: $pomodoroWorkMinutes, in: 15...240, step: 5) {
-                        HStack {
-                            Text("Focus time")
-                            Spacer()
-                            Text(Self.durationLabel(minutes: pomodoroWorkMinutes))
-                                .monospacedDigit()
-                                .foregroundStyle(NoxaTheme.accent)
-                        }
-                    }
-                    Stepper(value: $pomodoroBreakMinutes, in: 5...60, step: 5) {
-                        HStack {
-                            Text("Break time")
-                            Spacer()
-                            Text(Self.durationLabel(minutes: pomodoroBreakMinutes))
-                                .monospacedDigit()
-                                .foregroundStyle(NoxaTheme.accent)
-                        }
-                    }
-                }
-                .font(NoxaType.subheadlineMedium)
-                .padding(14)
-                .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            }
-
-            if hasFocusRestrictions {
-                Button("Start \(pomodoroWorkMinutes)-minute Pomodoro") {
-                    isPomodoroStartConfirmationPresented = true
-                }
-                .buttonStyle(NoxaPrimaryButtonStyle())
-                .disabled(
-                    !authorization.state.isApproved
-                        || focusSession.isActive
-                        || focusSession.hasPomodoroCycle
-                        || restrictions.isShieldActive
-                        || monitoring.isMonitoring
-                )
-            } else {
-                Button("Choose Apps and Websites First") {
-                    presentRestrictionPicker()
-                }
-                .buttonStyle(NoxaSecondaryButtonStyle())
-                .disabled(!authorization.state.isApproved)
-            }
-        }
-        .noxaCard()
-    }
-
     func openInstagramInSafari() {
         InstagramSiteProtectionService.openInSafari()
-    }
-
-    @ViewBuilder
-    var instagramAppBlockControls: some View {
-        Toggle("Block Instagram app", isOn: $instagramAppBlockEnabled)
-            .tint(NoxaTheme.accent)
-            .onChange(of: instagramAppBlockEnabled) { enabled in
-                guard enabled else {
-                    AppGroupStore.shared.setInstagramAppBlockEnabled(false)
-                    InstagramSiteProtectionService.reconcile()
-                    return
-                }
-                guard safariFilterRecentlyConnected else {
-                    instagramAppBlockEnabled = false
-                    instagramAppBlockMessage = "First open Instagram in Safari, refresh the page, then return here. Noxa must connect to the filter before blocking the app."
-                    return
-                }
-                guard authorization.state.isApproved else {
-                    instagramAppBlockEnabled = false
-                    instagramAppBlockMessage = "Allow Screen Time access before blocking Instagram."
-                    return
-                }
-                guard instagramAppSelection?.applicationTokens.count == 1 else {
-                    presentInstagramAppPicker()
-                    return
-                }
-                AppGroupStore.shared.setInstagramAppBlockEnabled(true)
-                InstagramSiteProtectionService.reconcile()
-                instagramAppBlockMessage = InstagramSiteProtectionService.isAppBlockApplied
-                    ? nil : "Noxa could not activate the app block. Try again after reopening Noxa."
-            }
-        Text("When on, iOS prevents the selected Instagram app from opening. Use Noxa's Open Instagram in Safari button to continue on the filtered website.")
-            .font(NoxaType.footnote)
-            .foregroundStyle(NoxaTheme.secondaryText)
-        if let selection = instagramAppSelection, !selection.applicationTokens.isEmpty {
-            HStack(spacing: 10) {
-                ForEach(Array(selection.applicationTokens), id: \.self) { token in
-                    Label(token)
-                        .labelStyle(.titleAndIcon)
-                        .font(NoxaType.subheadlineSemibold)
-                }
-                Spacer()
-                Text(instagramAppBlockEnabled && InstagramSiteProtectionService.isAppBlockApplied ? "Blocked" : "Selected")
-                    .font(NoxaType.captionSemibold)
-                    .foregroundStyle(NoxaTheme.accent)
-                Button("Change") { presentInstagramAppPicker() }
-                    .font(NoxaType.captionSemibold)
-                    .foregroundStyle(NoxaTheme.secondaryText)
-                    .disabled(!authorization.state.isApproved)
-            }
-        } else {
-            Text("Choose only Instagram in Apple's app picker.")
-                .font(NoxaType.footnote)
-                .foregroundStyle(NoxaTheme.secondaryText)
-            Button("Choose Instagram App") { presentInstagramAppPicker() }
-                .buttonStyle(NoxaSecondaryButtonStyle())
-                .disabled(!authorization.state.isApproved)
-        }
-        if let instagramAppBlockMessage {
-            Text(instagramAppBlockMessage)
-                .font(NoxaType.footnote)
-                .foregroundStyle(.orange)
-        }
-        Button {
-            InstagramSiteProtectionService.openInSafari()
-        } label: {
-            Label("Open Instagram in Safari", systemImage: "safari")
-        }
-        .buttonStyle(NoxaSecondaryButtonStyle())
     }
 
     var instagramAppPickerSheet: some View {
@@ -351,6 +288,18 @@ extension ContentView {
         .preferredColorScheme(.dark)
     }
 
+    /// The app block follows the filter. A release on the recovery screen or
+    /// at paid-access expiry clears the flag, so restore it once the paid app
+    /// is open again; this also turns it on for people who kept it off before.
+    func restoreInstagramAppBlockIfNeeded() {
+        let store = AppGroupStore.shared
+        guard store.instagramSiteMode == .distractionFree,
+              !store.instagramAppBlockEnabled else { return }
+        store.setInstagramAppBlockEnabled(true)
+        instagramAppBlockEnabled = true
+        InstagramSiteProtectionService.reconcile()
+    }
+
     func presentInstagramAppPicker() {
         instagramPickerSelection = instagramAppSelection ?? FamilyActivitySelection()
         isInstagramAppPickerPresented = true
@@ -364,6 +313,7 @@ extension ContentView {
         do {
             try AppGroupStore.shared.saveInstagramAppSelection(selection)
             instagramAppSelection = selection
+            instagramAppBlockEnabled = instagramSiteMode == .distractionFree
             AppGroupStore.shared.setInstagramAppBlockEnabled(instagramAppBlockEnabled)
             InstagramSiteProtectionService.reconcile()
             instagramAppBlockMessage = instagramAppBlockEnabled && !InstagramSiteProtectionService.isAppBlockApplied
@@ -373,6 +323,63 @@ extension ContentView {
             instagramAppBlockEnabled = false
             instagramAppBlockMessage = "Noxa could not save the Instagram app selection. Please try again."
             isInstagramAppPickerPresented = false
+        }
+    }
+
+    var youtubeAppPickerSheet: some View {
+        NavigationStack {
+            FamilyActivityPicker(selection: $youtubePickerSelection)
+                .navigationTitle("Choose YouTube")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            isYouTubeAppPickerPresented = false
+                            youtubeAppBlockEnabled = AppGroupStore.shared.youtubeAppBlockEnabled
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { saveYouTubeAppSelection() }
+                            .disabled(youtubePickerSelection.applicationTokens.count != 1)
+                    }
+                }
+        }
+        .tint(NoxaTheme.accent)
+        .preferredColorScheme(.dark)
+    }
+
+    /// Like Instagram: a release on the recovery screen or at paid-access
+    /// expiry clears the flag, so restore it once the paid app is open again.
+    func restoreYouTubeAppBlockIfNeeded() {
+        let store = AppGroupStore.shared
+        guard store.youtubeShortsHidden, !store.youtubeAppBlockEnabled else { return }
+        store.setYouTubeAppBlockEnabled(true)
+        youtubeAppBlockEnabled = true
+        YouTubeShortsProtectionService.reconcile()
+    }
+
+    func presentYouTubeAppPicker() {
+        youtubePickerSelection = youtubeAppSelection ?? FamilyActivitySelection()
+        isYouTubeAppPickerPresented = true
+    }
+
+    /// Keeps only the app itself, so a category can't block unrelated apps.
+    func saveYouTubeAppSelection() {
+        var selection = FamilyActivitySelection()
+        selection.applicationTokens = youtubePickerSelection.applicationTokens
+        do {
+            try AppGroupStore.shared.saveYouTubeAppSelection(selection)
+            youtubeAppSelection = selection
+            youtubeAppBlockEnabled = youtubeShortsHidden
+            AppGroupStore.shared.setYouTubeAppBlockEnabled(youtubeAppBlockEnabled)
+            YouTubeShortsProtectionService.reconcile()
+            youtubeAppBlockMessage = youtubeAppBlockEnabled && !YouTubeShortsProtectionService.isAppBlockApplied
+                ? "Noxa could not activate the app block. Try again after reopening Noxa." : nil
+            isYouTubeAppPickerPresented = false
+        } catch {
+            youtubeAppBlockEnabled = false
+            youtubeAppBlockMessage = "Noxa could not save the YouTube app selection. Please try again."
+            isYouTubeAppPickerPresented = false
         }
     }
 

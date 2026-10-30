@@ -10,6 +10,7 @@ struct RestrictionRuleID: nonisolated Hashable, nonisolated Equatable {
         case manualShield
         case websiteBlocklist
         case instagramAppBlock
+        case youtubeAppBlock
     }
 
     let source: Source

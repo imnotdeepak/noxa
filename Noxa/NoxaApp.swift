@@ -34,6 +34,7 @@ struct NoxaApp: App {
             || dailyLimits.isShieldActive
             || schedules.enabledCount > 0
             || InstagramSiteProtectionService.isAppBlockApplied
+            || YouTubeShortsProtectionService.isAppBlockApplied
     }
 
     var body: some Scene {
@@ -51,9 +52,12 @@ struct NoxaApp: App {
                             initialMode: initialAuthenticationMode,
                             initialEmail: initialAuthenticationMode == .signIn
                                 ? (authentication.rememberedUserEmail ?? "")
-                                : ""
+                                : "",
+                            onBack: leaveAuthentication
                         )
-                    } else if onboarding.isPersonalizationRequested {
+                    } else if onboarding.isPersonalizationRequested
+                                || onboarding.hasUnfinishedNewUserDraft {
+                        // A relaunch quietly returns to an unfinished setup.
                         OnboardingView()
                     } else if authentication.hasRememberedAccount {
                         ReturningUserView()
@@ -64,14 +68,8 @@ struct NoxaApp: App {
                     for: authentication.userID,
                     remoteCompletion: authentication.hasCompletedOnboarding
                 ) {
-                    if onboarding.progress.hasSeenValueOverview,
-                       !onboarding.progress.hasSeenPricingPreview {
-                        PaywallView(allowsDismissal: false) {
-                            _ = onboarding.completePricingPreview()
-                        }
-                    } else {
-                        OnboardingView()
-                    }
+                    // Setup, the paywall and the Pact all live in the flow.
+                    OnboardingView()
                 } else {
                     if cloudSync.boundUserID != authentication.userID {
                         NoxaLoadingView(message: "Loading your account…")
@@ -100,6 +98,7 @@ struct NoxaApp: App {
             .task {
                 RestrictionStoreMigration.migrateIfNeeded()
                 InstagramSiteProtectionService.reconcile()
+                YouTubeShortsProtectionService.reconcile()
                 restrictions.reconcile()
                 websites.reconcile()
                 analytics.configure()
@@ -118,6 +117,7 @@ struct NoxaApp: App {
             .onChange(of: scenePhase) { newPhase in
                 guard newPhase == .active else { return }
                 InstagramSiteProtectionService.reconcile()
+                YouTubeShortsProtectionService.reconcile()
                 reconcileFocusAndNotifications()
                 Task { await FocusPresentationCoordinator.reconcile(session: focusSession.activeSession) }
                 restrictions.reconcile()
@@ -221,6 +221,16 @@ struct NoxaApp: App {
             return .signIn
         }
         return mode
+    }
+
+    /// Back from sign-in or sign-up: to the narrative when the user came from
+    /// it, otherwise to Welcome. Answers are kept either way.
+    private func leaveAuthentication() {
+        if onboarding.progress.hasSeenProductDemo && !onboarding.progress.isComplete {
+            onboarding.returnToPersonalization()
+        } else {
+            onboarding.clearTransientRoute()
+        }
     }
 
     @MainActor
@@ -376,6 +386,13 @@ private struct RestrictionRecoveryView: View {
                 }
             }
 
+            if YouTubeShortsProtectionService.isAppBlockApplied && !focusSession.isActive {
+                RecoveryActionButton(title: "Remove YouTube App Block") {
+                    AppGroupStore.shared.setYouTubeAppBlockEnabled(false)
+                    YouTubeShortsProtectionService.reconcile()
+                }
+            }
+
             if monitoring.isMonitoring {
                 RecoveryActionButton(title: "Stop Usage Monitor") {
                     monitoring.stop()
@@ -384,7 +401,16 @@ private struct RestrictionRecoveryView: View {
 
             if dailyLimits.isMonitoring || dailyLimits.isShieldActive {
                 RecoveryActionButton(title: "Stop Daily Limits") {
-                    dailyLimits.stopMonitoring()
+                    if authentication.isAuthenticated {
+                        dailyLimits.stopMonitoring()
+                    } else {
+                        dailyLimits.requestStop()
+                    }
+                }
+                if !authentication.isAuthenticated, let message = dailyLimits.errorMessage {
+                    Text(message)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
 

@@ -1,5 +1,7 @@
 # Physical-device restriction checks
 
+**October 30 release candidate:** Version 1.1 (9) builds for the paired iPhone and as a Release archive. The current source passed 146 simulator app tests and 16 Safari script tests. App Store export is blocked because Apple reports a pending Developer Program agreement and this Mac has no usable iOS Distribution signing identity. No build has been uploaded. YouTube device validation is in progress below.
+
 **October 27 scope update:** The owner removed Instagram Full Block from the intended product. Do not count its former device check as remaining testing. Its implementation was removed from the code on October 27: Settings offers only Off and Hide Reels and Explore, and a saved Full Block choice loads as Off.
 
 ## October 28 release-readiness matrix
@@ -341,6 +343,12 @@ The app and monitor now use one shared writer for app, category, and website sel
 | Select Instagram Full Block, then Off | Safari shows “Website Not Allowed” for instagram.com while Full Block is selected and loads the page again after Off. **Observed on the paired iPhone.** |
 | Start focus and watch its status with Noxa open, then with Noxa relaunched | The app first shows that blocks were requested. A matching monitor callback changes the status to “Screen Time monitor applied your block settings.” Verify the selected app and site actually show a shield separately; the status alone does not prove that. A stale receipt from an earlier session never changes the new session's status. |
 | Open a shielded app or site with focus, schedule, manual, or daily-limit rules active | The shield names matching rules, shows the focus or schedule end when known, and never implies that one rule ending releases a target held by another rule. Unknown rule state uses the generic message. |
+
+## October 30 release candidate — YouTube Shorts
+
+- Debug build 1.1 (9) from the current working tree was installed on the paired iPhone.
+- The YouTube Shorts toggle was on, but Shorts remained usable in Safari until youtube.com was allowed for Noxa Safari Filter in iPhone Safari extension settings. After that permission was enabled, the owner reported the Shorts filter worked. The shared device record then showed a successful Safari-to-Noxa YouTube connection at 4:01 PM EDT.
+- A follow-up check of normal YouTube video and search access, plus native YouTube app blocking, is pending. The in-app connection warning now names the website permission to grant; that copy change needs installation with the final build.
 
 ## Evidence to retain
 

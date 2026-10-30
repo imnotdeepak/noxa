@@ -19,8 +19,11 @@ struct ScheduleLockTests {
         start: Int = 21 * 60,
         end: Int = 23 * 60,
         weekdays: Set<Int> = Set(1...7),
-        locked: Bool = true
+        locked: Bool = true,
+        anchor: Date? = nil
     ) -> ScheduleRule {
+        // By default the weekly lock is in its open day on October 28, so
+        // these tests see only the active-window lock.
         ScheduleRule(
             name: "Evening",
             mode: mode,
@@ -29,11 +32,12 @@ struct ScheduleLockTests {
             weekdays: weekdays,
             startMinutes: start,
             endMinutes: end,
-            lockWhileActive: locked
+            lockWhileActive: locked,
+            lockAnchor: anchor ?? date(21, 0)
         )
     }
 
-    @Test func olderSchedulesDecodeUnlocked() throws {
+    @Test func olderSchedulesStillLock() throws {
         let encoded = try JSONEncoder().encode(rule())
         var payload = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
         payload.removeValue(forKey: "lockWhileActive")
@@ -41,7 +45,8 @@ struct ScheduleLockTests {
             ScheduleRule.self, from: JSONSerialization.data(withJSONObject: payload)
         )
         #expect(!old.lockWhileActive)
-        #expect(ScheduleCommitmentPolicy.lockedUntil(old, at: date(28, 22), calendar: calendar) == nil)
+        // The lock is mandatory, so the old flag no longer opts out.
+        #expect(ScheduleCommitmentPolicy.lockedUntil(old, at: date(28, 22), calendar: calendar) == date(28, 23))
     }
 
     @Test func lockedBlockedHoursProtectOnlyTheActiveWindow() {
@@ -51,8 +56,8 @@ struct ScheduleLockTests {
         #expect(ScheduleCommitmentPolicy.lockedUntil(schedule, at: date(28, 23, 1), calendar: calendar) == nil)
     }
 
-    @Test func unlockedAndAllowedHoursSchedulesAreNeverLocked() {
-        #expect(ScheduleCommitmentPolicy.lockedUntil(rule(locked: false), at: date(28, 22), calendar: calendar) == nil)
+    @Test func allowedHoursAndDisabledSchedulesAreNeverLocked() {
+        #expect(ScheduleCommitmentPolicy.lockedUntil(rule(locked: false), at: date(28, 22), calendar: calendar) == date(28, 23))
         let allowed = rule(mode: .allowedHours, start: 9 * 60, end: 10 * 60)
         #expect(ScheduleCommitmentPolicy.lockedUntil(allowed, at: date(28, 22), calendar: calendar) == nil)
         var disabled = rule()
@@ -69,11 +74,9 @@ struct ScheduleLockTests {
         fewerTargets.websiteDomains = []
         var otherMode = saved
         otherMode.mode = .allowedHours
-        var unlocked = saved
-        unlocked.lockWhileActive = false
         var fewerDays = saved
         fewerDays.weekdays = [2]
-        for proposed in [shorter, fewerTargets, otherMode, unlocked, fewerDays] {
+        for proposed in [shorter, fewerTargets, otherMode, fewerDays] {
             #expect(ScheduleCommitmentPolicy.update(from: saved, to: proposed, at: now, calendar: calendar)
                 == .locked(until: date(28, 23)))
         }
@@ -87,6 +90,8 @@ struct ScheduleLockTests {
         renamed.name = "Night"
         renamed.notifyAtStart = true
         renamed.notifyAtEnd = true
+        // Re-saving an older schedule sets the flag; that isn't a weakening.
+        renamed.lockWhileActive = false
         #expect(ScheduleCommitmentPolicy.update(from: saved, to: renamed, at: date(28, 22), calendar: calendar) == .allowed)
     }
 
@@ -169,13 +174,27 @@ struct ScheduleLockTests {
         #expect(try store.loadScheduleRules().first?.name == "Deep work")
     }
 
-    @Test @MainActor func unlockedScheduleStaysEditableImmediately() throws {
+    @Test @MainActor func olderUnlockedScheduleIsLockedToo() throws {
         let (service, store, active) = try serviceWithActiveRule(locked: false)
-        #expect(service.lockedUntil(active) == nil)
+        #expect(service.lockedUntil(active) != nil)
         service.setEnabled(false, for: active)
-        #expect(try store.loadScheduleRules().first?.isEnabled == false)
-        service.remove(active)
-        #expect(service.configurations.isEmpty)
+        #expect(try store.loadScheduleRules().first?.isEnabled == true)
+    }
+
+    @Test @MainActor func newBlockedHoursSchedulesAlwaysSaveLocked() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.ScheduleLockNew.\(UUID())"))
+        let service = RestrictionScheduleService(store: AppGroupStore(defaults: defaults))
+        service.add(
+            name: "Evening",
+            mode: .blockedHours,
+            selection: FamilyActivitySelection(),
+            websiteDomains: ["example.com"],
+            weekdays: Set(1...7),
+            start: Date(),
+            end: Date().addingTimeInterval(3_600),
+            lockWhileActive: false
+        )
+        #expect(service.configurations.first?.lockWhileActive == true)
     }
 
     @Test @MainActor func allowedHoursCannotBeSavedLocked() throws {
@@ -192,5 +211,49 @@ struct ScheduleLockTests {
             lockWhileActive: true
         )
         #expect(service.configurations.first?.lockWhileActive == false)
+    }
+
+    // MARK: Weekly lock
+
+    @Test func scheduleLocksForAWeekThenOpensForADay() {
+        let saved = rule(start: 9 * 60, end: 10 * 60, anchor: date(1, 12))
+        // Outside its blocking hours, the week alone keeps it locked.
+        #expect(ScheduleCommitmentPolicy.removal(of: saved, at: date(5, 12), calendar: calendar)
+            == .locked(until: date(8, 12)))
+        #expect(ScheduleCommitmentPolicy.weeklyState(saved, at: date(8, 13))
+            == .changeWindow(until: date(9, 12)))
+        #expect(ScheduleCommitmentPolicy.removal(of: saved, at: date(8, 13), calendar: calendar) == .allowed)
+        // Left alone through the open day, it locks for another week.
+        #expect(ScheduleCommitmentPolicy.weeklyState(saved, at: date(9, 13))
+            == .locked(until: date(16, 12)))
+    }
+
+    @Test func weeklyLockStillAllowsRenamesAndReminders() {
+        let saved = rule(start: 9 * 60, end: 10 * 60, anchor: date(1, 12))
+        var renamed = saved
+        renamed.name = "Mornings"
+        renamed.notifyAtEnd = true
+        #expect(ScheduleCommitmentPolicy.update(from: saved, to: renamed, at: date(5, 12), calendar: calendar) == .allowed)
+        var later = saved
+        later.startMinutes = 11 * 60
+        #expect(ScheduleCommitmentPolicy.update(from: saved, to: later, at: date(5, 12), calendar: calendar)
+            == .locked(until: date(8, 12)))
+    }
+
+    @Test func offAndAllowedHoursSchedulesAreNotWeeklyLocked() {
+        var off = rule(start: 9 * 60, end: 10 * 60, anchor: date(1, 12))
+        off.isEnabled = false
+        #expect(ScheduleCommitmentPolicy.weeklyState(off, at: date(5, 12)) == .unlocked)
+        let allowed = rule(mode: .allowedHours, start: 9 * 60, end: 10 * 60, anchor: date(1, 12))
+        #expect(ScheduleCommitmentPolicy.weeklyState(allowed, at: date(5, 12)) == .unlocked)
+    }
+
+    @Test func olderSchedulesUseTheirCreationDate() throws {
+        let saved = rule(anchor: date(1, 12))
+        let encoded = try JSONEncoder().encode(saved)
+        var payload = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        payload.removeValue(forKey: "lockAnchor")
+        let old = try JSONDecoder().decode(ScheduleRule.self, from: JSONSerialization.data(withJSONObject: payload))
+        #expect(old.lockAnchor == old.createdAt)
     }
 }

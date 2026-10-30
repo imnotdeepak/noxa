@@ -31,6 +31,12 @@ final class AppGroupStore {
         static let instagramSiteMode = "noxa.instagramSiteMode"
         static let instagramAppSelection = "noxa.instagramAppSelection"
         static let instagramAppBlockEnabled = "noxa.instagramAppBlockEnabled"
+        static let youtubeShortsHidden = "noxa.youtubeShortsHidden"
+        static let youtubeAppSelection = "noxa.youtubeAppSelection"
+        static let youtubeAppBlockEnabled = "noxa.youtubeAppBlockEnabled"
+        static let youtubeFilterLastSeenAt = "noxa.youtubeFilterLastSeenAt"
+        static let instagramLockAnchor = "noxa.instagramLockAnchor"
+        static let youtubeLockAnchor = "noxa.youtubeLockAnchor"
         static let scheduleCommitmentEvents = "noxa.scheduleCommitmentEvents"
         static let scheduleShieldOwners = "noxa.scheduleShieldOwners"
         static let manualShield = "noxa.manualShield"
@@ -153,18 +159,47 @@ final class AppGroupStore {
         return isSafariFilterEnabled ? .distractionFree : .off
     }
 
+    /// Start of the weekly lock while Reels are hidden; nil when off.
+    var instagramLockAnchor: Date? {
+        defaults.object(forKey: Key.instagramLockAnchor) as? Date
+    }
+
+    var youtubeLockAnchor: Date? {
+        defaults.object(forKey: Key.youtubeLockAnchor) as? Date
+    }
+
+    /// Filters already on before weekly locks existed start their week now.
+    func startMissingFilterLocks(at date: Date = Date()) {
+        if instagramSiteMode == .distractionFree, instagramLockAnchor == nil {
+            defaults.set(date, forKey: Key.instagramLockAnchor)
+        }
+        if youtubeShortsHidden, youtubeLockAnchor == nil {
+            defaults.set(date, forKey: Key.youtubeLockAnchor)
+        }
+    }
+
     func setInstagramSiteMode(_ mode: InstagramSiteMode) {
+        if mode == .distractionFree {
+            if instagramSiteMode != .distractionFree {
+                defaults.set(Date(), forKey: Key.instagramLockAnchor)
+            }
+        } else {
+            defaults.removeObject(forKey: Key.instagramLockAnchor)
+        }
         defaults.set(mode.rawValue, forKey: Key.instagramSiteMode)
         // The existing Safari native handler uses this boolean; only the
         // selective mode may change Instagram pages.
         defaults.set(mode == .distractionFree, forKey: Key.safariFilterEnabled)
+        // Hiding Reels and Explore always blocks the native app, which would
+        // otherwise show them unfiltered.
+        defaults.set(mode == .distractionFree, forKey: Key.instagramAppBlockEnabled)
         if mode != .distractionFree {
-            defaults.set(false, forKey: Key.instagramAppBlockEnabled)
             defaults.removeObject(forKey: Key.safariFilterLastSeenAt)
         }
     }
 
     func clearInstagramSiteMode() {
+        defaults.removeObject(forKey: Key.instagramLockAnchor)
         defaults.removeObject(forKey: Key.instagramSiteMode)
         defaults.set(false, forKey: Key.safariFilterEnabled)
         defaults.set(false, forKey: Key.instagramAppBlockEnabled)
@@ -191,6 +226,56 @@ final class AppGroupStore {
 
     func setInstagramAppBlockEnabled(_ enabled: Bool) {
         defaults.set(enabled, forKey: Key.instagramAppBlockEnabled)
+    }
+
+    /// Read by the Safari native handler before it hides Shorts on YouTube.
+    var youtubeShortsHidden: Bool {
+        defaults.bool(forKey: Key.youtubeShortsHidden)
+    }
+
+    func setYouTubeShortsHidden(_ hidden: Bool) {
+        if hidden {
+            if !youtubeShortsHidden { defaults.set(Date(), forKey: Key.youtubeLockAnchor) }
+        } else {
+            defaults.removeObject(forKey: Key.youtubeLockAnchor)
+        }
+        defaults.set(hidden, forKey: Key.youtubeShortsHidden)
+        // Hiding Shorts always blocks the native app, which would otherwise
+        // show them unfiltered.
+        defaults.set(hidden, forKey: Key.youtubeAppBlockEnabled)
+        if !hidden {
+            defaults.removeObject(forKey: Key.youtubeFilterLastSeenAt)
+        }
+    }
+
+    func clearYouTubeShorts() {
+        setYouTubeShortsHidden(false)
+    }
+
+    /// The YouTube app chosen in Apple's picker for the native-app block.
+    func loadYouTubeAppSelection() throws -> FamilyActivitySelection? {
+        guard let data = defaults.data(forKey: Key.youtubeAppSelection) else { return nil }
+        return try JSONDecoder().decode(FamilyActivitySelection.self, from: data)
+    }
+
+    func saveYouTubeAppSelection(_ selection: FamilyActivitySelection) throws {
+        defaults.set(try JSONEncoder().encode(selection), forKey: Key.youtubeAppSelection)
+    }
+
+    func clearYouTubeAppSelection() {
+        defaults.removeObject(forKey: Key.youtubeAppSelection)
+    }
+
+    var youtubeAppBlockEnabled: Bool {
+        defaults.bool(forKey: Key.youtubeAppBlockEnabled)
+    }
+
+    func setYouTubeAppBlockEnabled(_ enabled: Bool) {
+        defaults.set(enabled, forKey: Key.youtubeAppBlockEnabled)
+    }
+
+    var youtubeFilterLastSeenAt: Date? {
+        defaults.object(forKey: Key.youtubeFilterLastSeenAt) as? Date
     }
 
     var safariFilterLastSeenAt: Date? {

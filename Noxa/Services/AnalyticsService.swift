@@ -120,6 +120,23 @@ struct AnalyticsEvent {
         .init("subscription_purchase_cancelled", properties: ["product_id": productID])
     }
 
+    /// Step names only: no answers, estimates or app selections.
+    static func onboardingStepViewed(_ step: String) -> Self {
+        .init("onboarding_step_viewed", properties: ["step": step])
+    }
+
+    static func onboardingScreenTimeResult(_ state: String) -> Self {
+        .init("onboarding_screen_time_result", properties: ["state": state])
+    }
+
+    static func onboardingPaywallLoadFailed() -> Self {
+        .init("onboarding_paywall_load_failed")
+    }
+
+    static func onboardingPactFinished(_ status: String) -> Self {
+        .init("onboarding_pact_finished", properties: ["status": status])
+    }
+
     private static func durationBucket(_ minutes: Int) -> String {
         switch minutes {
         case ..<15: return "under_15"

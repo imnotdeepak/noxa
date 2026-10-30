@@ -37,5 +37,8 @@ enum LocalDataCleanupService {
         store.clearInstagramAppSelection()
         store.setInstagramAppBlockEnabled(false)
         InstagramSiteProtectionService.reconcile(store: store)
+        store.clearYouTubeShorts()
+        store.clearYouTubeAppSelection()
+        YouTubeShortsProtectionService.reconcile(store: store)
     }
 }

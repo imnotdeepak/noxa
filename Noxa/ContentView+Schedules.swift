@@ -6,52 +6,86 @@ import UIKit
 extension ContentView {
     var schedulePickerSheet: some View {
         NavigationStack {
-            VStack(spacing: 12) {
-                TextField("Schedule name", text: $scheduleName)
-                    .textFieldStyle(NoxaTextFieldStyle())
-                    .textInputAutocapitalization(.words)
-                    .padding(.horizontal, NoxaTheme.Spacing.screen)
-                if let lockedUntil = editedScheduleLockedUntil {
-                    // Only safe edits are offered while the window is locked.
-                    VStack(alignment: .leading, spacing: 12) {
-                        Label(
-                            "Locked until \(lockedUntil.formatted(date: .omitted, time: .shortened))",
-                            systemImage: "lock.fill"
-                        )
-                        .font(NoxaType.subheadlineSemibold)
-                        .foregroundStyle(NoxaTheme.accent)
-                        Text("This block can't be turned off, removed, or changed until its window ends. You can still rename it or change reminders.")
-                            .font(NoxaType.caption)
-                            .foregroundStyle(NoxaTheme.secondaryText)
-                        scheduleReminderToggles
-                    }
-                    .padding(.horizontal, NoxaTheme.Spacing.screen)
-                    Spacer()
-                } else {
-                    scheduleTimingControls
-                        .padding(.horizontal, NoxaTheme.Spacing.screen)
-                    TextField("Websites, separated by commas (optional)", text: $scheduleCustomDomains)
+            ScrollView {
+                VStack(spacing: 12) {
+                    TextField("Schedule name", text: $scheduleName)
                         .textFieldStyle(NoxaTextFieldStyle())
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.words)
                         .padding(.horizontal, NoxaTheme.Spacing.screen)
-                }
-                if let errorMessage = schedules.errorMessage {
-                    Text(errorMessage)
-                        .font(NoxaType.footnote)
-                        .foregroundStyle(.red)
+                    if let lockedUntil = editedScheduleLockedUntil {
+                        // Only safe edits are offered while the window is locked.
+                        VStack(alignment: .leading, spacing: 12) {
+                            Label(
+                                "Locked until \(Self.lockEndLabel(lockedUntil))",
+                                systemImage: "lock.fill"
+                            )
+                            .font(NoxaType.subheadlineSemibold)
+                            .foregroundStyle(NoxaTheme.accent)
+                            Text("You can still rename it or change reminders.")
+                                .font(NoxaType.footnote)
+                                .foregroundStyle(NoxaTheme.secondaryText)
+                            scheduleReminderToggles
+                        }
                         .padding(.horizontal, NoxaTheme.Spacing.screen)
+                    } else {
+                        scheduleTimingControls
+                            .padding(.horizontal, NoxaTheme.Spacing.screen)
+                        scheduleAppsButton
+                            .padding(.horizontal, NoxaTheme.Spacing.screen)
+                        TextField("Websites (optional), e.g. reddit.com", text: $scheduleCustomDomains)
+                            .textFieldStyle(NoxaTextFieldStyle())
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .padding(.horizontal, NoxaTheme.Spacing.screen)
+                    }
+                    if let errorMessage = schedules.errorMessage {
+                        Text(errorMessage)
+                            .font(NoxaType.footnote)
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, NoxaTheme.Spacing.screen)
+                    }
+                    // Only offered while the schedule isn't locked.
+                    if let scheduleToEdit, editedScheduleLockedUntil == nil {
+                        Button("Remove Schedule", role: .destructive) {
+                            schedules.remove(scheduleToEdit)
+                            if schedules.errorMessage == nil { isSchedulePickerPresented = false }
+                        }
+                        .buttonStyle(NoxaSecondaryButtonStyle())
+                        .padding(.horizontal, NoxaTheme.Spacing.screen)
+                        .padding(.top, 8)
+                    }
                 }
-                if editedScheduleLockedUntil == nil {
+                .padding(.vertical, 12)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .noxaScreenBackground()
+            // Apple's picker gets the whole screen so the app list isn't cropped.
+            .sheet(isPresented: $isScheduleAppPickerPresented) {
+                NavigationStack {
                     FamilyActivityPicker(selection: $scheduleSelection)
+                        .navigationTitle("Choose apps")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { isScheduleAppPickerPresented = false }
+                            }
+                        }
                 }
+                .preferredColorScheme(.dark)
             }
             .navigationTitle(scheduleToEdit == nil ? "New schedule" : "Edit schedule")
-            .alert("Lock this block now?", isPresented: $isScheduleLockConfirmationPresented) {
+            .alert(
+                scheduleToEdit == nil ? "Lock this schedule for a week?" : "Lock this block now?",
+                isPresented: $isScheduleLockConfirmationPresented
+            ) {
                 Button("Cancel", role: .cancel) {}
-                Button("Lock Now") { saveSchedule() }
+                Button(scheduleToEdit == nil ? "Lock for a Week" : "Lock Now") { saveSchedule() }
             } message: {
-                Text("This schedule is blocking right now. Once you save, you can't turn it off, remove, or change it in Noxa until \(proposedScheduleWindowEnd ?? "this window ends").")
+                if scheduleToEdit == nil {
+                    Text("Until \(Date().addingTimeInterval(WeeklyCommitment.lockDuration).formatted(date: .abbreviated, time: .omitted)) you can't turn it off, change or remove it. Then you get one day to change it before it locks for another week.")
+                } else {
+                    Text("It's blocking now, so it locks as soon as you save, until \(proposedScheduleWindowEnd ?? "this window ends").")
+                }
             }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -79,13 +113,35 @@ extension ContentView {
         .preferredColorScheme(.dark)
     }
 
+    var scheduleAppsButton: some View {
+        let count = scheduleSelection.applicationTokens.count
+            + scheduleSelection.categoryTokens.count
+            + scheduleSelection.webDomainTokens.count
+        return Button {
+            isScheduleAppPickerPresented = true
+        } label: {
+            HStack {
+                Label(count == 0 ? "Choose apps" : "\(count) selected", systemImage: "square.grid.2x2")
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(NoxaType.captionBold)
+                    .foregroundStyle(NoxaTheme.secondaryText)
+            }
+        }
+        .buttonStyle(NoxaSecondaryButtonStyle())
+        .accessibilityHint("Opens Apple's app picker")
+    }
+
     var scheduleTimingControls: some View {
         VStack(spacing: 12) {
-            Picker("Schedule mode", selection: $scheduleMode) {
-                Text("Blocked hours").tag(ScheduleRule.Mode.blockedHours)
-                Text("Allowed hours").tag(ScheduleRule.Mode.allowedHours)
+            // New schedules always block during their hours. Older
+            // allowed-hours schedules keep working exactly as saved.
+            if scheduleMode == .allowedHours {
+                Label("Older allowed-hours schedule: apps are blocked outside these hours. New schedules use blocked hours.", systemImage: "info.circle")
+                    .font(NoxaType.footnote)
+                    .foregroundStyle(NoxaTheme.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .pickerStyle(.segmented)
 
             HStack(spacing: 5) {
                 ForEach(1...7, id: \.self) { weekday in
@@ -127,18 +183,17 @@ extension ContentView {
             }
 
             if ScheduleCommitmentPolicy.canLock(scheduleMode) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Toggle("Lock while active", isOn: $scheduleLockWhileActive)
-                        .tint(NoxaTheme.accent)
-                    Text("Once this scheduled block starts, you can't disable, delete, or weaken it in Noxa until its blocking window ends.")
-                        .font(NoxaType.caption)
-                        .foregroundStyle(NoxaTheme.secondaryText)
-                    if scheduleLockWhileActive, let window = proposedScheduleWindowDescription {
-                        Text(window)
-                            .font(NoxaType.captionSemibold)
-                            .foregroundStyle(NoxaTheme.accent)
-                    }
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text("These apps will be blocked from \(scheduleAllowedStart.formatted(date: .omitted, time: .shortened)) until \(scheduleAllowedEnd.formatted(date: .omitted, time: .shortened)).")
+                        .font(NoxaType.subheadlineSemibold)
+                        .foregroundStyle(NoxaTheme.accent)
+                        .fixedSize(horizontal: false, vertical: true)
+                    NoxaInfoButton(
+                        title: "Locked while active",
+                        message: "Once a block starts, you can't turn it off, remove it, or weaken it in Noxa until it ends. You can still rename it and change reminders."
+                    )
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             scheduleReminderToggles
@@ -147,19 +202,24 @@ extension ContentView {
 
     var scheduleReminderToggles: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Toggle("Remind me when this schedule starts", isOn: $scheduleNotifyAtStart)
+            Toggle(isOn: $scheduleNotifyAtStart) {
+                HStack(spacing: 4) {
+                    Text("Remind me at start")
+                    NoxaInfoButton(
+                        title: "Reminders",
+                        message: "Reminders need notification permission and can arrive late if iOS delays a schedule. Blocking doesn't depend on them."
+                    )
+                }
+            }
+            .tint(NoxaTheme.accent)
+            Toggle("Remind me at end", isOn: $scheduleNotifyAtEnd)
                 .tint(NoxaTheme.accent)
-            Toggle("Remind me when this schedule ends", isOn: $scheduleNotifyAtEnd)
-                .tint(NoxaTheme.accent)
-            Text("Reminders need notification permission and may arrive late if iOS delays a schedule callback. Blocking does not depend on reminders.")
-                .font(NoxaType.caption)
-                .foregroundStyle(NoxaTheme.secondaryText)
         }
     }
 
     /// The saved rule's lock, so pending edits can't change their own release.
     var editedScheduleLockedUntil: Date? {
-        scheduleToEdit.flatMap { schedules.lockedUntil($0) }
+        scheduleToEdit.flatMap { schedules.commitmentLockedUntil($0) }
     }
 
     /// The rule as it would be saved from the editor's current fields.
@@ -180,20 +240,10 @@ extension ContentView {
         rule.endMinutes = Self.minutesSinceMidnight(scheduleAllowedEnd)
         rule.notifyAtStart = scheduleNotifyAtStart
         rule.notifyAtEnd = scheduleNotifyAtEnd
-        rule.lockWhileActive = scheduleLockWhileActive && ScheduleCommitmentPolicy.canLock(scheduleMode)
+        rule.lockWhileActive = ScheduleCommitmentPolicy.canLock(scheduleMode)
         rule.isEnabled = scheduleToEdit?.isEnabled ?? true
         rule.pendingLegacyRelaxation = nil
         return rule
-    }
-
-    var proposedScheduleWindowDescription: String? {
-        guard !scheduleWeekdays.isEmpty,
-              let window = ScheduleCommitmentPolicy.upcomingWindow(
-                  for: proposedScheduleRule, after: Date(), calendar: .current
-              ) else { return nil }
-        let end = window.end.formatted(date: .abbreviated, time: .shortened)
-        guard let start = window.start else { return "Blocking now. Locked until \(end) once saved." }
-        return "Next locked window: \(start.formatted(date: .abbreviated, time: .shortened)) – \(end)"
     }
 
     var proposedScheduleWindowEnd: String? {
@@ -201,9 +251,18 @@ extension ContentView {
             .formatted(date: .omitted, time: .shortened)
     }
 
-    /// Turning the lock on during an active window starts it immediately.
+    /// A new schedule locks for a week; an edit during an active window
+    /// locks that window immediately.
     var needsScheduleLockConfirmation: Bool {
-        editedScheduleLockedUntil == nil && proposedScheduleWindowEnd != nil
+        scheduleToEdit == nil
+            || (editedScheduleLockedUntil == nil && proposedScheduleWindowEnd != nil)
+    }
+
+    /// "11:00 PM" for later today, otherwise the date only.
+    static func lockEndLabel(_ end: Date) -> String {
+        Calendar.autoupdatingCurrent.isDateInToday(end)
+            ? end.formatted(date: .omitted, time: .shortened)
+            : end.formatted(date: .abbreviated, time: .omitted)
     }
 
     func saveSchedule() {
@@ -220,156 +279,40 @@ extension ContentView {
                 end: scheduleAllowedEnd,
                 notifyAtStart: scheduleNotifyAtStart,
                 notifyAtEnd: scheduleNotifyAtEnd,
-                lockWhileActive: scheduleLockWhileActive && ScheduleCommitmentPolicy.canLock(scheduleMode)
+                lockWhileActive: ScheduleCommitmentPolicy.canLock(scheduleMode)
             )
         }
         if schedules.errorMessage == nil {
             isSchedulePickerPresented = false
+            showToast("Schedule saved")
         }
     }
 
-    var scheduleCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                NoxaCardHeader(title: "Schedules", systemImage: "calendar.badge.clock")
-                Spacer()
-                Text("\(schedules.configurations.count)/\(RestrictionScheduleService.maximumConfigurations)")
-                    .font(NoxaType.caption.monospacedDigit())
-                    .foregroundStyle(NoxaTheme.secondaryText)
-            }
-
-            Text("Choose blocked or allowed hours, the days they apply, and the apps, categories, or websites. Changes take effect immediately.")
-                .font(NoxaType.subheadline)
-                .foregroundStyle(NoxaTheme.secondaryText)
-
-            Button("Add Schedule") {
-                schedules.clearError()
-                scheduleToEdit = nil
-                scheduleName = ""
-                scheduleCustomDomains = ""
-                scheduleSelection = FamilyActivitySelection()
-                scheduleMode = .allowedHours
-                scheduleWeekdays = Set(1...7)
-                scheduleNotifyAtStart = false
-                scheduleNotifyAtEnd = false
-                scheduleLockWhileActive = false
-                scheduleAllowedStart = Self.dateForScheduleMinute(21 * 60)
-                scheduleAllowedEnd = Self.dateForScheduleMinute(22 * 60)
-                isSchedulePickerPresented = true
-            }
-            .buttonStyle(NoxaSecondaryButtonStyle())
-            .disabled(
-                !authorization.state.isApproved
-                    || schedules.configurations.count >= RestrictionScheduleService.maximumConfigurations
+    var schedulesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            limitsSectionHeader(
+                "Schedules",
+                info: "Choose the hours to block, the days they apply, and the apps, categories or websites. Each schedule locks for a week: you can't turn it off, change or remove it. After the week you get one day to change it, then it locks again. It also can't be weakened while it's blocking.",
+                add: openNewScheduleEditor,
+                canAdd: authorization.state.isApproved
+                    && schedules.configurations.count < RestrictionScheduleService.maximumConfigurations
             )
 
             if schedules.configurations.isEmpty {
-                Text("No schedules configured.")
+                Text("No schedules yet.")
                     .font(NoxaType.subheadline)
                     .foregroundStyle(NoxaTheme.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .noxaCard(padding: 20)
             } else {
-                ForEach(schedules.configurations) { configuration in
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 12) {
-                            Button {
-                                schedules.setEnabled(!configuration.isEnabled, for: configuration)
-                            } label: {
-                                Image(systemName: configuration.isEnabled ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(configuration.isEnabled ? NoxaTheme.accent : .secondary)
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(schedules.lockedUntil(configuration) != nil)
-
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(configuration.name)
-                                    .font(NoxaType.subheadlineSemibold)
-                                Text("\(configuration.mode == .allowedHours ? "Available" : "Blocked") \(Self.timeLabel(minutes: configuration.startMinutes))–\(Self.timeLabel(minutes: configuration.endMinutes))")
-                                    .font(NoxaType.caption)
-                                Text(Self.weekdaySummary(configuration.weekdays))
-                                    .font(NoxaType.caption)
-                                    .foregroundStyle(NoxaTheme.secondaryText)
-                                if let lockedUntil = schedules.lockedUntil(configuration) {
-                                    Label(
-                                        "Locked until \(lockedUntil.formatted(date: .omitted, time: .shortened))",
-                                        systemImage: "lock.fill"
-                                    )
-                                    .font(NoxaType.captionSemibold)
-                                    .foregroundStyle(NoxaTheme.accent)
-                                } else if configuration.lockWhileActive {
-                                    Label("Locks while active", systemImage: "lock")
-                                        .font(NoxaType.caption)
-                                        .foregroundStyle(NoxaTheme.secondaryText)
-                                }
-                            }
-                            Spacer()
-                            Button("Edit") {
-                                schedules.clearError()
-                                scheduleToEdit = configuration
-                                scheduleName = configuration.name
-                                scheduleMode = configuration.mode
-                                scheduleWeekdays = configuration.weekdays
-                                scheduleNotifyAtStart = configuration.notifyAtStart
-                                scheduleNotifyAtEnd = configuration.notifyAtEnd
-                                scheduleLockWhileActive = configuration.lockWhileActive
-                                scheduleAllowedStart = Self.dateForScheduleMinute(configuration.startMinutes)
-                                scheduleAllowedEnd = Self.dateForScheduleMinute(configuration.endMinutes)
-                                scheduleSelection = configuration.selection
-                                scheduleCustomDomains = configuration.websiteDomains.joined(separator: ", ")
-                                isSchedulePickerPresented = true
-                            }
-                            .font(NoxaType.captionSemibold)
-                            .foregroundStyle(NoxaTheme.accent)
-                            Button("Rename") {
-                                scheduleToRename = configuration
-                                renamedScheduleName = configuration.name
-                            }
-                            .font(NoxaType.captionSemibold)
-                            .foregroundStyle(NoxaTheme.secondaryText)
-                            Button("Remove") {
-                                schedules.remove(configuration)
-                            }
-                            .font(NoxaType.captionSemibold)
-                            .foregroundStyle(NoxaTheme.secondaryText)
-                            .disabled(schedules.lockedUntil(configuration) != nil)
-                        }
-
-                        tokenRows(for: configuration.selection)
-                        ForEach(configuration.websiteDomains, id: \.self) { domain in
-                            Label(domain, systemImage: "globe")
-                                .font(NoxaType.subheadline)
-                        }
-
-                        if let pending = configuration.pendingLegacyRelaxation {
-                            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Label(
-                                        pending.action == .remove ? "Removal pending" : "Disable pending",
-                                        systemImage: "clock.badge.exclamationmark"
-                                    )
-                                    .font(NoxaType.captionSemibold)
-                                    .foregroundStyle(NoxaTheme.warning)
-
-                                    Text("Takes effect \(pending.effectiveAt.formatted(date: .abbreviated, time: .shortened))")
-                                        .font(NoxaType.caption2)
-                                        .foregroundStyle(NoxaTheme.secondaryText)
-                                }
-
-                                Spacer()
-
-                                Button("Cancel Change") {
-                                    schedules.cancelPendingRelaxation(for: configuration)
-                                }
-                                .font(NoxaType.captionSemibold)
-                                .foregroundStyle(NoxaTheme.accent)
-                            }
-                            .padding(12)
-                            .background(
-                                NoxaTheme.warning.opacity(0.08),
-                                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            )
+                TimelineView(.periodic(from: .now, by: 60)) { context in
+                    VStack(spacing: 0) {
+                        ForEach(Array(schedules.configurations.enumerated()), id: \.element.id) { index, configuration in
+                            if index > 0 { Divider().overlay(NoxaTheme.border) }
+                            scheduleRow(configuration, now: context.date)
                         }
                     }
-                    .padding(.vertical, 4)
+                    .noxaCard(padding: 20)
                 }
             }
 
@@ -379,22 +322,204 @@ extension ContentView {
                     .foregroundStyle(.red)
             }
         }
-        .noxaCard()
-        .alert(
-            "Rename schedule",
-            isPresented: Binding(
-                get: { scheduleToRename != nil },
-                set: { if !$0 { scheduleToRename = nil } }
-            )
-        ) {
-            TextField("Schedule name", text: $renamedScheduleName)
-            Button("Save") {
-                if let scheduleToRename {
-                    schedules.rename(scheduleToRename, to: renamedScheduleName)
+    }
+
+    func scheduleRow(_ configuration: ScheduleRule, now: Date) -> some View {
+        let lockedUntil = schedules.lockedUntil(configuration)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 16) {
+                Button {
+                    openScheduleEditor(configuration)
+                } label: {
+                    HStack(spacing: 16) {
+                        let isBlocking = configuration.isEnabled
+                            && ScheduleRuleEvaluator.isBlocking(configuration, at: now, calendar: .autoupdatingCurrent)
+                        // Only a schedule that is blocking right now gets light.
+                        Image(systemName: Self.scheduleIcon(configuration))
+                            .font(.system(size: 20))
+                            .foregroundStyle(configuration.isEnabled ? NoxaTheme.accent : NoxaTheme.tertiaryText)
+                            .frame(width: 40, height: 40)
+                            .background {
+                                if isBlocking {
+                                    Circle().fill(RadialGradient(
+                                        colors: [NoxaTheme.olive.opacity(0.9), .clear],
+                                        center: .center,
+                                        startRadius: 0,
+                                        endRadius: 26
+                                    ))
+                                }
+                            }
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(configuration.name)
+                                .font(NoxaType.body)
+                                .foregroundStyle(NoxaTheme.primaryText)
+                                .lineLimit(1)
+                            Text("\(Self.timeLabel(minutes: configuration.startMinutes)) – \(Self.timeLabel(minutes: configuration.endMinutes)) · \(Self.shortWeekdaySummary(configuration.weekdays))")
+                                .font(NoxaType.subheadline)
+                                .foregroundStyle(NoxaTheme.secondaryText)
+                            scheduleStateLabel(configuration, lockedUntil: lockedUntil, now: now)
+                            weeklyLockLabel(schedules.weeklyState(configuration, at: now))
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
                 }
-                scheduleToRename = nil
+                .buttonStyle(.plain)
+
+                noxaStatePill(
+                    isOn: configuration.isEnabled,
+                    isDisabled: configuration.isEnabled && schedules.commitmentLockedUntil(configuration, at: now) != nil,
+                    label: configuration.name
+                ) {
+                    schedules.setEnabled(!configuration.isEnabled, for: configuration)
+                }
             }
-            Button("Cancel", role: .cancel) { scheduleToRename = nil }
+
+            scheduleTargetsDisclosure(for: configuration)
+                .padding(.leading, 56)
+
+            if let pending = configuration.pendingLegacyRelaxation {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Label(
+                            pending.action == .remove ? "Removal pending" : "Disable pending",
+                            systemImage: "clock.badge.exclamationmark"
+                        )
+                        .font(NoxaType.captionSemibold)
+                        .foregroundStyle(NoxaTheme.warning)
+                        Text("Takes effect \(pending.effectiveAt.formatted(date: .abbreviated, time: .shortened))")
+                            .font(NoxaType.caption)
+                            .foregroundStyle(NoxaTheme.secondaryText)
+                    }
+                    Spacer()
+                    Button("Cancel Change") {
+                        schedules.cancelPendingRelaxation(for: configuration)
+                    }
+                    .font(NoxaType.captionSemibold)
+                    .foregroundStyle(NoxaTheme.accent)
+                }
+                .padding(12)
+                .background(NoxaTheme.elevated, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+        }
+        .padding(.vertical, 12)
+    }
+
+    /// The row's state, from the shared rule vocabulary.
+    func scheduleStateLabel(_ configuration: ScheduleRule, lockedUntil: Date?, now: Date) -> some View {
+        let status = RuleStatus.schedule(
+            configuration,
+            isAuthorized: authorization.state.isApproved,
+            lockedUntil: lockedUntil,
+            at: now,
+            calendar: .autoupdatingCurrent
+        )
+        return ruleStatusLabel(status, now: now)
+    }
+
+    /// Text plus icon for every state, so status never relies on color alone.
+    func ruleStatusLabel(_ status: RuleStatus, now: Date) -> some View {
+        let time: (Date) -> String = { date in
+            let day = Calendar.autoupdatingCurrent.isDate(date, inSameDayAs: now)
+                ? "" : date.formatted(.dateTime.weekday(.abbreviated)) + " "
+            return day + date.formatted(date: .omitted, time: .shortened)
+        }
+        let (text, icon, color): (String, String, Color) = switch status {
+        case .needsPermission: ("Needs permission", "exclamationmark.triangle.fill", NoxaTheme.warning)
+        case .off: ("Off", "circle.slash", NoxaTheme.tertiaryText)
+        case .paused: ("Paused · daily limits are stopped", "pause.circle.fill", NoxaTheme.warning)
+        case .scheduled(let next): ("Scheduled · next at \(time(next))", "clock", NoxaTheme.secondaryText)
+        case .blockingNow: ("Blocking now", "shield.fill", NoxaTheme.accent)
+        case .lockedUntil(let end): ("Blocking now · until \(time(end))", "shield.fill", NoxaTheme.accent)
+        case .counting: ("Counting today's use", "hourglass", NoxaTheme.secondaryText)
+        }
+        return Label(text, systemImage: icon)
+            .font(NoxaType.captionSemibold)
+            .foregroundStyle(color)
+    }
+
+    static func scheduleIcon(_ configuration: ScheduleRule) -> String {
+        if configuration.mode == .allowedHours { return "sun.max" }
+        let start = configuration.startMinutes
+        return (start >= 19 * 60 || start < 5 * 60) ? "moon" : "calendar"
+    }
+
+    nonisolated static func shortWeekdaySummary(_ weekdays: Set<Int>) -> String {
+        if weekdays == Set(1...7) { return "Daily" }
+        if weekdays == Set(2...6) { return "Weekdays" }
+        if weekdays == [1, 7] { return "Weekends" }
+        return weekdays.sorted().map(weekdayName).joined(separator: ", ")
+    }
+
+    func openNewScheduleEditor() {
+        schedules.clearError()
+        scheduleToEdit = nil
+        scheduleName = ""
+        scheduleCustomDomains = ""
+        scheduleSelection = FamilyActivitySelection()
+        scheduleMode = .blockedHours
+        scheduleWeekdays = Set(1...7)
+        scheduleNotifyAtStart = false
+        scheduleNotifyAtEnd = false
+        scheduleAllowedStart = Self.dateForScheduleMinute(21 * 60)
+        scheduleAllowedEnd = Self.dateForScheduleMinute(22 * 60)
+        isSchedulePickerPresented = true
+    }
+
+    func openScheduleEditor(_ configuration: ScheduleRule) {
+        schedules.clearError()
+        scheduleToEdit = configuration
+        scheduleName = configuration.name
+        scheduleMode = configuration.mode
+        scheduleWeekdays = configuration.weekdays
+        scheduleNotifyAtStart = configuration.notifyAtStart
+        scheduleNotifyAtEnd = configuration.notifyAtEnd
+        scheduleAllowedStart = Self.dateForScheduleMinute(configuration.startMinutes)
+        scheduleAllowedEnd = Self.dateForScheduleMinute(configuration.endMinutes)
+        scheduleSelection = configuration.selection
+        scheduleCustomDomains = configuration.websiteDomains.joined(separator: ", ")
+        isSchedulePickerPresented = true
+    }
+
+    /// Keeps each schedule row short: the apps and sites sit behind a chevron.
+    @ViewBuilder
+    func scheduleTargetsDisclosure(for configuration: ScheduleRule) -> some View {
+        let isExpanded = expandedScheduleIDs.contains(configuration.id)
+        let count = configuration.selection.applicationTokens.count
+            + configuration.selection.categoryTokens.count
+            + configuration.selection.webDomainTokens.count
+            + configuration.websiteDomains.count
+        Button {
+            withAnimation(NoxaMotion.spring) {
+                NoxaHaptics.selection()
+                if isExpanded {
+                    expandedScheduleIDs.remove(configuration.id)
+                } else {
+                    expandedScheduleIDs.insert(configuration.id)
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text("\(count) \(count == 1 ? "app or site" : "apps and sites")")
+                    .font(NoxaType.footnoteMedium)
+                Image(systemName: "chevron.down")
+                    .font(NoxaType.captionBold)
+                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                Spacer()
+            }
+            .foregroundStyle(NoxaTheme.secondaryText)
+            .frame(minHeight: 32)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+
+        if isExpanded {
+            tokenRows(for: configuration.selection)
+            ForEach(configuration.websiteDomains, id: \.self) { domain in
+                Label(domain, systemImage: "globe")
+                    .font(NoxaType.subheadline)
+            }
         }
     }
 

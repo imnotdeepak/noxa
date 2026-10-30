@@ -32,11 +32,14 @@ struct ScheduleRule: Codable, Equatable, Identifiable, Sendable {
     /// Blocked hours only: the active window can't be weakened in Noxa.
     var lockWhileActive: Bool
     var pendingLegacyRelaxation: PendingScheduleRelaxation?
+    /// Start of the weekly lock cycle: set when the schedule is created or
+    /// turned back on. Older schedules use their creation date.
+    var lockAnchor: Date
 
     private enum CodingKeys: String, CodingKey {
         case id, name, mode, selection, websiteDomains, weekdays
         case startMinutes, endMinutes, createdAt, isEnabled
-        case notifyAtStart, notifyAtEnd, lockWhileActive, pendingLegacyRelaxation
+        case notifyAtStart, notifyAtEnd, lockWhileActive, pendingLegacyRelaxation, lockAnchor
     }
 
     init(
@@ -53,7 +56,8 @@ struct ScheduleRule: Codable, Equatable, Identifiable, Sendable {
         notifyAtStart: Bool = false,
         notifyAtEnd: Bool = false,
         lockWhileActive: Bool = false,
-        pendingLegacyRelaxation: PendingScheduleRelaxation? = nil
+        pendingLegacyRelaxation: PendingScheduleRelaxation? = nil,
+        lockAnchor: Date? = nil
     ) {
         self.id = id
         self.name = name
@@ -69,6 +73,7 @@ struct ScheduleRule: Codable, Equatable, Identifiable, Sendable {
         self.notifyAtEnd = notifyAtEnd
         self.lockWhileActive = lockWhileActive
         self.pendingLegacyRelaxation = pendingLegacyRelaxation
+        self.lockAnchor = lockAnchor ?? createdAt
     }
 
     init(from decoder: Decoder) throws {
@@ -90,6 +95,7 @@ struct ScheduleRule: Codable, Equatable, Identifiable, Sendable {
         pendingLegacyRelaxation = try values.decodeIfPresent(
             PendingScheduleRelaxation.self, forKey: .pendingLegacyRelaxation
         )
+        lockAnchor = try values.decodeIfPresent(Date.self, forKey: .lockAnchor) ?? createdAt
     }
 
     init(legacy: RestrictionScheduleConfiguration) {

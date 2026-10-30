@@ -1,15 +1,41 @@
 {
   "manifest_version": 3,
-  "name": "Noxa Instagram Filter Prototype",
-  "version": "0.1.0",
-  "description": "Prototype that hides Instagram Reels and Explore in Safari.",
-  "permissions": ["nativeMessaging"],
-  "host_permissions": ["*://www.instagram.com/*", "*://instagram.com/*"],
-  "background": { "service_worker": "background.js" },
+  "name": "Noxa Safari Filter",
+  "version": "0.2.0",
+  "description": "Hides Instagram Reels and Explore, and YouTube Shorts, in Safari.",
+  "permissions": [
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "*://www.instagram.com/*",
+    "*://instagram.com/*",
+    "*://www.youtube.com/*",
+    "*://youtube.com/*",
+    "*://m.youtube.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
-      "matches": ["*://www.instagram.com/*", "*://instagram.com/*"],
-      "js": ["instagram-filter.js"],
+      "matches": [
+        "*://www.instagram.com/*",
+        "*://instagram.com/*"
+      ],
+      "js": [
+        "instagram-filter.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "*://www.youtube.com/*",
+        "*://youtube.com/*",
+        "*://m.youtube.com/*"
+      ],
+      "js": [
+        "youtube-filter.js"
+      ],
       "run_at": "document_start"
     }
   ]

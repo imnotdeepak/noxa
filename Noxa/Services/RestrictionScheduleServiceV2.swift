@@ -124,6 +124,10 @@ final class RestrictionScheduleService: ObservableObject {
         }
         let wasEnabled = configurations[index].isEnabled
         configurations[index].isEnabled = enabled
+        if enabled && !wasEnabled {
+            // Turning a schedule back on starts a new locked week.
+            configurations[index].lockAnchor = Date()
+        }
         configurations[index].pendingLegacyRelaxation = nil
         let changed = ScheduleCommitmentEvent(rule: configurations[index])
         if !enabled {
@@ -159,7 +163,7 @@ final class RestrictionScheduleService: ObservableObject {
         var lockedMessage: String?
         for index in configurations.indices where configurations[index].isEnabled {
             // Locked windows end on their own; every other schedule stops now.
-            if let end = ScheduleCommitmentPolicy.lockedUntil(
+            if let end = ScheduleCommitmentPolicy.commitmentLockedUntil(
                 configurations[index], at: Date(), calendar: .autoupdatingCurrent
             ) {
                 lockedMessage = ScheduleCommitmentPolicy.lockedMessage(
@@ -182,6 +186,17 @@ final class RestrictionScheduleService: ObservableObject {
     func lockedUntil(_ configuration: ScheduleRule, at date: Date = Date()) -> Date? {
         let saved = configurations.first { $0.id == configuration.id } ?? configuration
         return ScheduleCommitmentPolicy.lockedUntil(saved, at: date, calendar: .autoupdatingCurrent)
+    }
+
+    /// When the rule can next be changed: its active window or locked week.
+    func commitmentLockedUntil(_ configuration: ScheduleRule, at date: Date = Date()) -> Date? {
+        let saved = configurations.first { $0.id == configuration.id } ?? configuration
+        return ScheduleCommitmentPolicy.commitmentLockedUntil(saved, at: date, calendar: .autoupdatingCurrent)
+    }
+
+    func weeklyState(_ configuration: ScheduleRule, at date: Date = Date()) -> WeeklyCommitment.State {
+        let saved = configurations.first { $0.id == configuration.id } ?? configuration
+        return ScheduleCommitmentPolicy.weeklyState(saved, at: date)
     }
 
     private func allowsChange(_ rule: ScheduleRule, decision: ScheduleCommitmentPolicy.Decision) -> Bool {
@@ -389,8 +404,9 @@ final class RestrictionScheduleService: ObservableObject {
         }
         var normalized = rule
         normalized.name = String(name.prefix(50))
-        // Allowed hours can block open-endedly, so the lock is Blocked hours only.
-        normalized.lockWhileActive = rule.lockWhileActive && ScheduleCommitmentPolicy.canLock(rule.mode)
+        // Every Blocked hours schedule locks while active. Allowed hours can
+        // block open-endedly, so they never lock.
+        normalized.lockWhileActive = ScheduleCommitmentPolicy.canLock(rule.mode)
         normalized.websiteDomains = Array(Set(normalizedDomains)).sorted()
         return normalized
     }

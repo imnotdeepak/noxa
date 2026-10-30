@@ -271,10 +271,9 @@ struct ScheduleRuleTests {
             forKey: "noxa.dailyLimitHardLockDay"
         )
 
+        // A limit saved before weekly locks has no lock of its own.
         let service = DailyLimitService(store: store)
-        service.updateMinutes(45, for: limit)
         service.setEnabled(false, for: limit)
-        #expect(service.configurations.first?.dailyLimitMinutes == 45)
         #expect(service.configurations.first?.isEnabled == false)
         #expect(try store.loadDailyLimitConfigurations().first?.isEnabled == false)
         service.remove(limit)

@@ -2,6 +2,8 @@
 
 Status: Approved product direction, October 18, 2026, revised October 28, 2026 to follow the simplified product plan (always-committed Focus, optional locked schedules, and honest insights; the Noxa Key is deferred). This document records decisions made after review of `NOXA_PRODUCT_ROADMAP.md`. Platform behavior and implementation details still require build and physical-device validation.
 
+**October 30 release scope:** Include the new YouTube Shorts Safari filter in the next update alongside Instagram. Verify on an iPhone that Shorts pages and shelves are hidden, normal videos and search remain usable, and the native YouTube app is blocked only when the filter is enabled. This supersedes the earlier plan to defer YouTube.
+
 **Product rule:** choose what to block, choose when or for how long, confirm the commitment, and let Noxa handle the rest. Noxa should not become a collection of blocking modes.
 
 ## Product direction and release order
@@ -87,7 +89,7 @@ All planned features remain in the current subscription. Users cannot use the ap
 - Label selective filtering as Safari-only. The native Instagram app remains an all-or-nothing Screen Time block.
 - If a filter is known to be broken or unavailable, warn the user and suggest blocking the site with a schedule or the blocklist; do not switch modes without their choice or claim the filter is working.
 - Provide a simple in-app broken-filter report action.
-- Validate Instagram filtering before expanding to YouTube. Website changes and unsupported states require honest status and maintenance.
+- Validate both Instagram and YouTube filtering on an iPhone before release. Website changes and unsupported states require honest status and maintenance.
 
 ## Insights, shields, and convenience
 

@@ -150,6 +150,8 @@ final class DailyLimitService: ObservableObject {
         configurations.filter(\.isEnabled).count
     }
 
+    func clearError() { errorMessage = nil }
+
     func add(selection: FamilyActivitySelection, minutes: Int) {
         errorMessage = nil
         guard !selection.applicationTokens.isEmpty else {
@@ -174,27 +176,75 @@ final class DailyLimitService: ObservableObject {
 
         let configuration = DailyLimitConfiguration(
             selection: selection,
-            dailyLimitMinutes: minutes
+            dailyLimitMinutes: minutes,
+            lockAnchor: now
         )
         configurations.append(configuration)
         persistAndRestartIfNeeded()
+        // A new limit is a week-long commitment, so it starts counting now.
+        if !isMonitoring { startMonitoring() }
+    }
+
+    func lockState(_ configuration: DailyLimitConfiguration) -> DailyLimitCommitmentPolicy.State {
+        DailyLimitCommitmentPolicy.state(for: saved(configuration), at: now)
+    }
+
+    func lockedUntil(_ configuration: DailyLimitConfiguration) -> Date? {
+        DailyLimitCommitmentPolicy.lockedUntil(saved(configuration), at: now)
+    }
+
+    /// True while any limit that is on is inside its locked week.
+    var hasLockedLimits: Bool {
+        configurations.contains { $0.isEnabled && lockedUntil($0) != nil }
     }
 
     func remove(_ configuration: DailyLimitConfiguration) {
+        guard allowsWeakening(configuration) else { return }
         configurations.removeAll { $0.id == configuration.id }
         persistAndRestartIfNeeded()
     }
 
     func setEnabled(_ enabled: Bool, for configuration: DailyLimitConfiguration) {
         guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
+        guard enabled || allowsWeakening(configuration) else { return }
         configurations[index].isEnabled = enabled
         persistAndRestartIfNeeded()
     }
 
     func updateMinutes(_ minutes: Int, for configuration: DailyLimitConfiguration) {
         guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
+        let saved = configurations[index]
+        guard DailyLimitCommitmentPolicy.canChangeMinutes(of: saved, to: minutes, at: now) else {
+            errorMessage = lockedUntil(saved).map(DailyLimitCommitmentPolicy.lockedMessage(until:))
+            return
+        }
         configurations[index].dailyLimitMinutes = min(max(minutes, 5), 240)
+        // Setting an older limit's time starts its weekly cycle.
+        if configurations[index].lockAnchor == nil {
+            configurations[index].lockAnchor = now
+        }
         persistAndRestartIfNeeded()
+    }
+
+    /// Stops every limit unless one that is on is still in its locked week.
+    func requestStop() {
+        if let end = configurations.compactMap({ $0.isEnabled ? lockedUntil($0) : nil }).min() {
+            errorMessage = DailyLimitCommitmentPolicy.lockedMessage(until: end)
+            return
+        }
+        stopMonitoring()
+    }
+
+    private var now: Date { Date() }
+
+    private func saved(_ configuration: DailyLimitConfiguration) -> DailyLimitConfiguration {
+        configurations.first { $0.id == configuration.id } ?? configuration
+    }
+
+    private func allowsWeakening(_ configuration: DailyLimitConfiguration) -> Bool {
+        guard let end = lockedUntil(configuration) else { return true }
+        errorMessage = DailyLimitCommitmentPolicy.lockedMessage(until: end)
+        return false
     }
 
     func startMonitoring() {
