@@ -18,8 +18,8 @@ Baseline: branch `codex/product-roadmap`, last commit `ee621f3`, plus uncommitte
 | Brand-new paid account | Open | Onboarding → Screen Time permission → targets → committed first Focus → completed session. |
 | Upgrade from the App Store version | Open | Old allowed-window schedule with active restrictions; an old non-Strict session keeps its early end. |
 | Production-signed Live Activity push cleanup | Passed on paired iPhone | TestFlight 1.2 (13): production APNs end push accepted; Lock Screen card cleared with Noxa closed. Push-only causality was not separately isolated. |
-| Accessibility and privacy | Partly done | Blocklist labels fixed in `ee621f3`. Still open: contrast, the account-deletion flow, and the PostHog deletion gap. |
-| Repeated schedule boundary releases | Open | Repeat across locked/foreground states and record late callbacks rather than hiding them. |
+| Accessibility and privacy | Partly done | Largest text was visually checked on the paired iPhone and Blocklist labels were fixed in `ee621f3`. Manual VoiceOver was declined. Contrast, the account-deletion flow, and deletion of identified PostHog data remain unverified or unresolved. |
+| Schedule boundary core cases | Passed on paired iPhone | Overlapping schedules, an overnight rule, a foreground 9:00 PM release with Noxa closed, and other schedule/Focus overlaps were observed. Callback latency varies; an extended stress run is optional rather than a repeat of these passes. |
 
 ## October 30 TestFlight production Live Activity check
 
@@ -47,7 +47,7 @@ The owner reported these results on “iphony 5x” from the Debug build install
 | Light/dark appearance and largest text | Pass across the checked screens. |
 | Overnight allowed-hours schedule | Pass: blocked after 11:30 PM and released at 7:00 AM. |
 
-Still open: paid-access expiry (Instagram release with Noxa closed, Focus during expiry), first use with a test account, upgrade from an older saved schedule, and the Blocklist accessibility label and privacy/account-deletion reviews.
+Not recorded as completed: paid-access expiry (Instagram release with Noxa closed, Focus during expiry), first use with a new paid account, and upgrade from an older saved schedule/session. The owner may have run these independently; confirm before repeating them. Manual VoiceOver was declined, and the account-deletion/PostHog review remains open. The schedule core cases and largest-text check have already passed and need no routine rerun.
 
 ## October 26–27 paired-iPhone regression run
 
