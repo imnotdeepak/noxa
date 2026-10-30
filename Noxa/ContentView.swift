@@ -167,14 +167,6 @@ struct ContentView: View {
         dailyLimits.isMonitoring || dailyLimits.isShieldActive
     }
 
-    var dailyFocusMinutes: Int {
-        FocusStatistics(
-            history: focusSession.history,
-            now: statsReferenceDate,
-            calendar: .autoupdatingCurrent
-        ).dailyFocusMinutes
-    }
-
     var body: some View {
         let presentedTabs = mainTabs
         .overlay(alignment: .top) { AnyView(toastView) }

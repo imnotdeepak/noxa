@@ -13,14 +13,6 @@ extension ContentView {
     // sits at the edge of what the runtime can copy safely and crashes.
     var homeContent: some View {
         homeScrollView
-            .safeAreaInset(edge: .bottom) {
-                if focusSession.activeSession == nil && focusSession.pomodoroBreakEndsAt == nil {
-                    AnyView(homeStartButton)
-                        .padding(.horizontal, NoxaTheme.Spacing.screen)
-                        .padding(.top, 12)
-                        .padding(.bottom, 8)
-                }
-            }
             .noxaScreenBackground()
             .onChange(of: focusSession.activeSession?.id) { newID in
                 celebrateCompletionIfNeeded(endedSessionID: lastHomeSessionID, newSessionID: newID)
@@ -57,22 +49,6 @@ extension ContentView {
                     Text(errorMessage)
                         .font(NoxaType.footnote)
                         .foregroundStyle(.red)
-                }
-
-                AnyView(nextScheduledBlockCard)
-
-                if instagramSiteMode == .distractionFree && instagramAppBlockEnabled {
-                    Button(action: openInstagramInSafari) {
-                        Label("Open Instagram in Safari", systemImage: "safari")
-                    }
-                    .buttonStyle(NoxaSecondaryButtonStyle())
-                }
-
-                if youtubeShortsHidden && youtubeAppBlockEnabled {
-                    Button(action: YouTubeShortsProtectionService.openInSafari) {
-                        Label("Open YouTube in Safari", systemImage: "safari")
-                    }
-                    .buttonStyle(NoxaSecondaryButtonStyle())
                 }
             }
             .noxaAnimation(value: authorization.state.isApproved)
@@ -204,9 +180,7 @@ extension ContentView {
     }
 
     var homeEyebrow: String {
-        let date = Date().formatted(.dateTime.weekday(.wide).month(.abbreviated).day()).uppercased()
-        guard dailyFocusMinutes > 0 else { return date }
-        return "\(date) · \(dailyFocusMinutes) MIN TODAY"
+        Date().formatted(.dateTime.weekday(.wide).month(.abbreviated).day()).uppercased()
     }
 
     var idleFocusView: some View {
@@ -240,6 +214,9 @@ extension ContentView {
             }
 
             distractionsRow
+
+            // Sits right under what it will block, not pinned to the bottom.
+            AnyView(homeStartButton)
         }
     }
 
@@ -501,52 +478,6 @@ extension ContentView {
             }
             .buttonStyle(NoxaSecondaryButtonStyle())
         }
-    }
-
-    /// The soonest enabled schedule window, or the one blocking now.
-    @ViewBuilder
-    var nextScheduledBlockCard: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { context in
-            let windows = schedules.configurations
-                .filter(\.isEnabled)
-                .compactMap { rule in
-                    ScheduleCommitmentPolicy.upcomingWindow(for: rule, after: context.date, calendar: .autoupdatingCurrent)
-                        .map { (rule: rule, start: $0.start, end: $0.end) }
-                }
-                .sorted { ($0.start ?? .distantPast) < ($1.start ?? .distantPast) }
-            if let next = windows.first {
-                Button {
-                    selectedTab = .dailyLimits
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(next.start == nil ? "\(next.rule.name) is blocking now" : "Your next scheduled block")
-                                .font(NoxaType.headline)
-                                .foregroundStyle(NoxaTheme.primaryText)
-                            Text(Self.scheduleWindowText(start: next.start, end: next.end, now: context.date))
-                                .font(NoxaType.subheadline)
-                                .foregroundStyle(NoxaTheme.secondaryText)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(NoxaType.subheadlineSemibold)
-                            .foregroundStyle(NoxaTheme.secondaryText)
-                    }
-                    .noxaCard()
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
-    static func scheduleWindowText(start: Date?, end: Date, now: Date) -> String {
-        let time: (Date) -> String = { $0.formatted(date: .omitted, time: .shortened) }
-        guard let start else { return "Until \(time(end))" }
-        let calendar = Calendar.autoupdatingCurrent
-        let day = calendar.isDate(start, inSameDayAs: now)
-            ? "Today"
-            : (calendar.isDateInTomorrow(start) ? "Tomorrow" : start.formatted(.dateTime.weekday(.wide)))
-        return "\(day) · \(time(start)) – \(time(end))"
     }
 
     var focusStartReviewSheet: some View {

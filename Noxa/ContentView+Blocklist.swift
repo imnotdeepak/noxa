@@ -262,10 +262,6 @@ extension ContentView {
         .noxaCard()
     }
 
-    func openInstagramInSafari() {
-        InstagramSiteProtectionService.openInSafari()
-    }
-
     var instagramAppPickerSheet: some View {
         NavigationStack {
             FamilyActivityPicker(selection: $instagramPickerSelection)

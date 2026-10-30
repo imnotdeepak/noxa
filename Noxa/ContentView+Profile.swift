@@ -73,9 +73,7 @@ extension ContentView {
                         .frame(maxWidth: .infinity)
                     HStack(spacing: 0) {
                         profileStat(value: Self.compactFocusTime(minutes: statistics.totalFocusMinutes), title: "Focus time")
-                        Divider().overlay(NoxaTheme.border).frame(height: 40)
                         profileStat(value: "\(statistics.currentStreak)", title: "Day streak")
-                        Divider().overlay(NoxaTheme.border).frame(height: 40)
                         profileStat(value: "\(statistics.completedSessions)", title: "Completed")
                     }
                 }
