@@ -290,7 +290,7 @@ struct OnboardingAnalyticsStep: View {
 
             OnboardingHeading(
                 title: "Help improve Noxa.",
-                subtitle: "Share anonymous usage data, like which screens you use and what you set up. Never your apps, websites or name. You can change this anytime in Settings.",
+                subtitle: "Share optional usage data, like which screens you use and what you set up. It's linked to your Noxa account, but never includes your name or selected apps and websites. Change this anytime in Settings.",
                 alignment: .center
             )
         } actions: {
