@@ -11,6 +11,7 @@ final class RestrictionScheduleService: ObservableObject {
     static let maximumConfigurations = 8
 
     @Published private(set) var configurations: [ScheduleRule]
+    @Published private(set) var activeAccountID: UUID? = nil
     @Published private(set) var commitmentEvents: [ScheduleCommitmentEvent]
     @Published private(set) var errorMessage: String?
 
@@ -37,6 +38,27 @@ final class RestrictionScheduleService: ObservableObject {
 
     var enabledCount: Int { configurations.filter(\.isEnabled).count }
 
+    var visibleConfigurations: [ScheduleRule] {
+        guard let activeAccountID else { return configurations }
+        return configurations.filter { $0.ownerUserID == activeAccountID }
+    }
+
+    func bindAccount(_ userID: UUID, claimingUnownedRulesFor legacyOwner: UUID?) {
+        if let legacyOwner, configurations.contains(where: { $0.ownerUserID == nil }) {
+            configurations = configurations.map { rule in
+                var rule = rule
+                if rule.ownerUserID == nil { rule.ownerUserID = legacyOwner }
+                return rule
+            }
+            do {
+                try store.saveScheduleRules(configurations)
+            } catch {
+                errorMessage = "Could not assign saved schedules to their account: \(error.localizedDescription)"
+            }
+        }
+        activeAccountID = userID
+    }
+
     var nextPendingRelaxationDate: Date? {
         configurations.compactMap(\.pendingLegacyRelaxation?.effectiveAt).min()
     }
@@ -56,12 +78,13 @@ final class RestrictionScheduleService: ObservableObject {
         lockWhileActive: Bool = false
     ) {
         errorMessage = nil
-        guard configurations.count < Self.maximumConfigurations else {
+        guard visibleConfigurations.count < Self.maximumConfigurations else {
             errorMessage = "You can create up to \(Self.maximumConfigurations) schedules."
             return
         }
         let calendar = Calendar.autoupdatingCurrent
         let rule = ScheduleRule(
+            ownerUserID: activeAccountID,
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             mode: mode,
             selection: selection,
@@ -76,13 +99,22 @@ final class RestrictionScheduleService: ObservableObject {
         guard let normalized = validated(rule) else { return }
         configurations.append(normalized)
         persistAndReschedule(recording: [ScheduleCommitmentEvent(rule: normalized)])
+        if errorMessage == nil {
+            let length = (normalized.endMinutes - normalized.startMinutes + 1_440) % 1_440
+            AnalyticsService.shared.capture(.scheduleCreated(
+                blockMinutes: length == 0 ? 1_440 : length,
+                dayCount: normalized.weekdays.count
+            ))
+        }
     }
 
     func update(_ configuration: ScheduleRule) {
         errorMessage = nil
         guard let index = configurations.firstIndex(where: { $0.id == configuration.id }),
-              let normalized = validated(configuration) else { return }
+              var normalized = validated(configuration) else { return }
         let previous = configurations[index]
+        guard activeAccountID == nil || previous.ownerUserID == activeAccountID else { return }
+        normalized.ownerUserID = previous.ownerUserID
         guard allowsChange(previous, decision: ScheduleCommitmentPolicy.update(
             from: previous, to: normalized, at: Date(), calendar: .autoupdatingCurrent
         )) else { return }
@@ -96,6 +128,9 @@ final class RestrictionScheduleService: ObservableObject {
             || previous.isEnabled != normalized.isEnabled
         persistAndReschedule(recording: affectsCommitment
             ? [ScheduleCommitmentEvent(rule: normalized)] : [])
+        if errorMessage == nil {
+            AnalyticsService.shared.capture(.scheduleEdited())
+        }
     }
 
     func rename(_ configuration: ScheduleRule, to name: String) {
@@ -105,7 +140,8 @@ final class RestrictionScheduleService: ObservableObject {
             errorMessage = "Give this schedule a name."
             return
         }
-        guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
+        guard let index = configurations.firstIndex(where: { $0.id == configuration.id }),
+              canEdit(configurations[index]) else { return }
         configurations[index].name = String(trimmed.prefix(50))
         do {
             try store.saveScheduleRules(configurations)
@@ -116,13 +152,15 @@ final class RestrictionScheduleService: ObservableObject {
 
     func setEnabled(_ enabled: Bool, for configuration: ScheduleRule) {
         errorMessage = nil
-        guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
+        guard let index = configurations.firstIndex(where: { $0.id == configuration.id }),
+              canEdit(configurations[index]) else { return }
         if !enabled {
             guard allowsChange(configurations[index], decision: ScheduleCommitmentPolicy.removal(
                 of: configurations[index], at: Date(), calendar: .autoupdatingCurrent
             )) else { return }
         }
         let wasEnabled = configurations[index].isEnabled
+        let lockState = AnalyticsEvent.lockStateName(weeklyState(configurations[index]))
         configurations[index].isEnabled = enabled
         if enabled && !wasEnabled {
             // Turning a schedule back on starts a new locked week.
@@ -136,29 +174,43 @@ final class RestrictionScheduleService: ObservableObject {
             stopLegacyActivities(for: configuration.id)
         }
         persistAndReschedule(recording: wasEnabled == enabled ? [] : [changed])
+        if errorMessage == nil, wasEnabled != enabled {
+            AnalyticsService.shared.capture(.scheduleToggled(on: enabled, lockState: lockState))
+        }
     }
 
     func remove(_ configuration: ScheduleRule) {
         errorMessage = nil
         guard let index = configurations.firstIndex(where: { $0.id == configuration.id }),
+              canEdit(configurations[index]),
               allowsChange(configurations[index], decision: ScheduleCommitmentPolicy.removal(
                   of: configurations[index], at: Date(), calendar: .autoupdatingCurrent
               )) else { return }
+        let lockState = AnalyticsEvent.lockStateName(weeklyState(configurations[index]))
         recordImmediateLegacyStop(for: configuration.id, remove: true)
         coordinator.stop(configuration)
         stopLegacyActivities(for: configuration.id)
         configurations.remove(at: index)
         persistAndReschedule(recording: [ScheduleCommitmentEvent(rule: configuration, isRemoved: true)])
+        if errorMessage == nil {
+            AnalyticsService.shared.capture(.scheduleRemoved(lockState: lockState))
+        }
     }
 
     func cancelPendingRelaxation(for configuration: ScheduleRule) {
-        guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
+        guard let index = configurations.firstIndex(where: { $0.id == configuration.id }),
+              canEdit(configurations[index]) else { return }
         configurations[index].pendingLegacyRelaxation = nil
         persistAndReschedule()
     }
 
     func requestDisableAll() {
         guard configurations.contains(where: \.isEnabled) else { return }
+        if let activeAccountID,
+           configurations.contains(where: { $0.isEnabled && $0.ownerUserID != activeAccountID }) {
+            errorMessage = "Another account's schedules are still active on this iPhone."
+            return
+        }
         var changes: [ScheduleCommitmentEvent] = []
         var lockedMessage: String?
         for index in configurations.indices where configurations[index].isEnabled {
@@ -180,6 +232,12 @@ final class RestrictionScheduleService: ObservableObject {
         }
         persistAndReschedule(recording: changes)
         if let lockedMessage { errorMessage = lockedMessage }
+    }
+
+    private func canEdit(_ rule: ScheduleRule) -> Bool {
+        guard let activeAccountID, rule.ownerUserID != activeAccountID else { return true }
+        errorMessage = "This schedule belongs to another Noxa account."
+        return false
     }
 
     /// The release time of a rule's active locked window, if any.
@@ -224,6 +282,23 @@ final class RestrictionScheduleService: ObservableObject {
         commitmentEvents = []
         store.clearRestrictionSchedules()
         errorMessage = nil
+    }
+
+    func removeConfigurations(ownedBy userID: UUID) {
+        let removed = configurations.filter { $0.ownerUserID == userID }
+        guard !removed.isEmpty else { return }
+        removed.forEach { coordinator.stop($0) }
+        removed.forEach { stopLegacyActivities(for: $0.id) }
+        let removedIDs = Set(removed.map(\.id))
+        configurations.removeAll { removedIDs.contains($0.id) }
+        commitmentEvents.removeAll { removedIDs.contains($0.ruleID) }
+        do {
+            try store.saveScheduleRules(configurations)
+            try store.saveScheduleCommitmentEvents(commitmentEvents)
+            rescheduleAll()
+        } catch {
+            errorMessage = "Could not remove this account's schedules: \(error.localizedDescription)"
+        }
     }
 
     private func persistAndReschedule(recording changes: [ScheduleCommitmentEvent] = []) {

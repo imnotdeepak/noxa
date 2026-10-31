@@ -13,6 +13,7 @@ enum OnboardingStep: Int, CaseIterable, Sendable {
     case screenTime
     case selection
     case notifications
+    case analyticsConsent
     case subscription
     case pact
 
@@ -39,6 +40,7 @@ enum OnboardingStep: Int, CaseIterable, Sendable {
         if !isScreenTimeApproved { return .screenTime }
         if !hasSelection { return .selection }
         if !progress.hasSeenNotificationExplainer { return .notifications }
+        if !progress.hasAnsweredAnalyticsConsent { return .analyticsConsent }
         if !hasSubscription { return .subscription }
         return .pact
     }
@@ -55,6 +57,7 @@ enum OnboardingStep: Int, CaseIterable, Sendable {
         case .productDemo: .insight
         case .selection: .screenTime
         case .notifications: .selection
+        case .analyticsConsent: .notifications
         }
     }
 }

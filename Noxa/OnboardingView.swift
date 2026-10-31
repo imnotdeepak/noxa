@@ -303,8 +303,12 @@ struct OnboardingView: View {
             return AnyView(OnboardingSelectionStep(isPreview: isReplay, onBack: back(from: .selection)) { go(.notifications) })
         case .notifications:
             return AnyView(OnboardingNotificationsStep(isPreview: isReplay, onBack: back(from: .notifications)) {
+                if isReplay || onboarding.completeNotificationExplainer() { go(.analyticsConsent) }
+            })
+        case .analyticsConsent:
+            return AnyView(OnboardingAnalyticsStep(isPreview: isReplay, onBack: back(from: .analyticsConsent)) {
                 // An existing subscriber passes straight through the paywall.
-                if isReplay || onboarding.completeNotificationExplainer() { go(.subscription) }
+                if isReplay || onboarding.completeAnalyticsConsent() { go(.subscription) }
             })
         case .subscription:
             return AnyView(OnboardingSubscriptionStep(isPreview: isReplay) {

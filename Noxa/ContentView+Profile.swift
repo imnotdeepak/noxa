@@ -115,6 +115,7 @@ extension ContentView {
         accountContent
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear { AnalyticsService.shared.screen("Settings") }
     }
 
     var profileInitial: String {
@@ -173,6 +174,7 @@ extension ContentView {
             }
             NavigationLink {
                 moreMilestonesScreen
+                    .onAppear { AnalyticsService.shared.screen("More milestones") }
             } label: {
                 HStack {
                     Text("More milestones")

@@ -1,2 +1,5 @@
 [functions.dispatch-focus-live-activity-ends]
 verify_jwt = false
+
+[functions.release-policy]
+verify_jwt = false

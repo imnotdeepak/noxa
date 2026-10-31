@@ -20,6 +20,16 @@ struct ContentView: View {
         case account
     }
 
+    static func screenName(for tab: MainTab) -> String {
+        switch tab {
+        case .dailyLimits: "Limits & Schedules"
+        case .blocklist: "Blocklist"
+        case .home: "Home"
+        case .stats: "Insights"
+        case .account: "Profile"
+        }
+    }
+
     enum StatsRange: CaseIterable, Hashable {
         case day, week, month, year
 
@@ -115,7 +125,6 @@ struct ContentView: View {
     @State var pomodoroBreakMinutes = 5
     @State var isCustomPomodoro = false
     @State var isPaywallPresented = false
-    @State var isOnboardingReplayPresented = false
     @State var isDeleteAccountConfirmationPresented = false
     @State var isCustomDuration = false
     @State var customDurationText = "30"
@@ -147,7 +156,7 @@ struct ContentView: View {
     }
 
     var existingDailyLimitSelection: FamilyActivitySelection {
-        combinedSelection(from: dailyLimits.configurations.map(\.selection))
+        combinedSelection(from: dailyLimits.visibleConfigurations.map(\.selection))
     }
 
     var newDailyLimitSelection: FamilyActivitySelection {
@@ -164,7 +173,8 @@ struct ContentView: View {
     }
 
     var hasActiveDailyLimits: Bool {
-        dailyLimits.isMonitoring || dailyLimits.isShieldActive
+        dailyLimits.visibleConfigurations.contains(where: \.isEnabled)
+            && (dailyLimits.isMonitoring || dailyLimits.isShieldActive)
     }
 
     var body: some View {
@@ -213,6 +223,7 @@ struct ContentView: View {
         let observedTabs = presentedTabs
         .task {
             authorization.refresh()
+            AnalyticsService.shared.screen(Self.screenName(for: selectedTab))
             AppGroupStore.shared.startMissingFilterLocks()
             restoreInstagramAppBlockIfNeeded()
             restoreYouTubeAppBlockIfNeeded()
@@ -247,8 +258,9 @@ struct ContentView: View {
             Task { await refreshSafariExtensionStatus() }
             Task { await notifications.refreshAuthorizationStatus() }
         }
-        .onChange(of: selectedTab) { _ in
+        .onChange(of: selectedTab) { tab in
             NoxaHaptics.selection()
+            AnalyticsService.shared.screen(Self.screenName(for: tab))
         }
         .onChange(of: authorization.state) { _ in
             // Pause or resume a running session as soon as access changes.
@@ -606,7 +618,7 @@ struct ContentView: View {
         guard onboarding.progress.isComplete,
               subscriptions.canEnterApp(for: authentication.userID),
               authorization.state.isApproved,
-              schedules.configurations.count < RestrictionScheduleService.maximumConfigurations,
+              schedules.visibleConfigurations.count < RestrictionScheduleService.maximumConfigurations,
               focusSession.completedSessionCount > 0,
               !focusSession.isActive,
               !focusSession.hasPomodoroCycle,

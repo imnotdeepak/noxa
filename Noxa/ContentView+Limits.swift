@@ -194,10 +194,10 @@ extension ContentView {
                     isDailyLimitPickerPresented = true
                 },
                 canAdd: authorization.state.isApproved
-                    && dailyLimits.configurations.count < DailyLimitService.maximumConfigurations
+                    && dailyLimits.visibleConfigurations.count < DailyLimitService.maximumConfigurations
             )
 
-            if dailyLimits.configurations.isEmpty {
+            if dailyLimits.visibleConfigurations.isEmpty {
                 Text("No limits yet.")
                     .font(NoxaType.subheadline)
                     .foregroundStyle(NoxaTheme.secondaryText)
@@ -205,7 +205,7 @@ extension ContentView {
                     .noxaCard(padding: 20)
             } else {
                 VStack(spacing: 0) {
-                    ForEach(Array(dailyLimits.configurations.enumerated()), id: \.element.id) { index, configuration in
+                    ForEach(Array(dailyLimits.visibleConfigurations.enumerated()), id: \.element.id) { index, configuration in
                         if index > 0 { Divider().overlay(NoxaTheme.border) }
                         dailyLimitRow(configuration)
                     }
@@ -213,8 +213,8 @@ extension ContentView {
                 .noxaCard(padding: 20)
             }
 
-            if !dailyLimits.configurations.isEmpty, !hasActiveDailyLimits,
-               dailyLimits.configurations.contains(where: \.isEnabled) {
+            if !dailyLimits.visibleConfigurations.isEmpty, !hasActiveDailyLimits,
+               dailyLimits.visibleConfigurations.contains(where: \.isEnabled) {
                 HStack {
                     Text("Limits are paused")
                         .font(NoxaType.subheadline)
@@ -302,7 +302,7 @@ extension ContentView {
 
     /// Opened from a limit row: the allowance, its lock and removal.
     func dailyLimitDetailSheet(_ configuration: DailyLimitConfiguration) -> some View {
-        let saved = dailyLimits.configurations.first { $0.id == configuration.id } ?? configuration
+        let saved = dailyLimits.visibleConfigurations.first { $0.id == configuration.id } ?? configuration
         let lockedUntil = dailyLimits.lockedUntil(saved)
         return NavigationStack {
             ScrollView {
@@ -340,7 +340,7 @@ extension ContentView {
                         .buttonStyle(NoxaSecondaryButtonStyle())
                     }
 
-                    if hasActiveDailyLimits && !dailyLimits.hasLockedLimits {
+                    if hasActiveDailyLimits && !dailyLimits.hasLockedVisibleLimits {
                         Button("Stop All Limits") {
                             dailyLimits.requestStop()
                         }

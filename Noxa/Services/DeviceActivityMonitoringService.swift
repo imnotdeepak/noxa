@@ -126,6 +126,7 @@ final class DailyLimitService: ObservableObject {
     static let maximumConfigurations = 20
 
     @Published private(set) var configurations: [DailyLimitConfiguration]
+    @Published private(set) var activeAccountID: UUID? = nil
     @Published private(set) var isMonitoring = false
     @Published private(set) var isShieldActive = false
     @Published private(set) var errorMessage: String?
@@ -150,6 +151,30 @@ final class DailyLimitService: ObservableObject {
         configurations.filter(\.isEnabled).count
     }
 
+    var visibleConfigurations: [DailyLimitConfiguration] {
+        guard let activeAccountID else { return configurations }
+        return configurations.filter { $0.ownerUserID == activeAccountID }
+    }
+
+    func bindAccount(_ userID: UUID, claimingUnownedLimitsFor legacyOwner: UUID?) {
+        if let legacyOwner, configurations.contains(where: { $0.ownerUserID == nil }) {
+            configurations = configurations.map { limit in
+                var limit = limit
+                if limit.ownerUserID == nil { limit.ownerUserID = legacyOwner }
+                return limit
+            }
+            do {
+                try store.saveDailyLimitConfigurations(configurations)
+                var snapshot = (try store.loadSnapshot()) ?? NoxaLocalSnapshot()
+                snapshot.dailyLimits = configurations
+                try store.saveSnapshot(snapshot)
+            } catch {
+                errorMessage = "Could not assign saved daily limits to their account: \(error.localizedDescription)"
+            }
+        }
+        activeAccountID = userID
+    }
+
     func clearError() { errorMessage = nil }
 
     func add(selection: FamilyActivitySelection, minutes: Int) {
@@ -158,7 +183,7 @@ final class DailyLimitService: ObservableObject {
             errorMessage = "Select at least one app for a daily limit."
             return
         }
-        let existingSelection = configurations.reduce(into: FamilyActivitySelection()) { combined, configuration in
+        let existingSelection = visibleConfigurations.reduce(into: FamilyActivitySelection()) { combined, configuration in
             combined.applicationTokens.formUnion(configuration.selection.applicationTokens)
             combined.categoryTokens.formUnion(configuration.selection.categoryTokens)
             combined.webDomainTokens.formUnion(configuration.selection.webDomainTokens)
@@ -169,12 +194,13 @@ final class DailyLimitService: ObservableObject {
             errorMessage = "One or more selected apps already has a daily limit."
             return
         }
-        guard configurations.count < Self.maximumConfigurations else {
+        guard visibleConfigurations.count < Self.maximumConfigurations else {
             errorMessage = "You can configure up to \(Self.maximumConfigurations) daily limits."
             return
         }
 
         let configuration = DailyLimitConfiguration(
+            ownerUserID: activeAccountID,
             selection: selection,
             dailyLimitMinutes: minutes,
             lockAnchor: now
@@ -183,6 +209,12 @@ final class DailyLimitService: ObservableObject {
         persistAndRestartIfNeeded()
         // A new limit is a week-long commitment, so it starts counting now.
         if !isMonitoring { startMonitoring() }
+        if errorMessage == nil {
+            AnalyticsService.shared.capture(.dailyLimitAdded(
+                minutes: configuration.dailyLimitMinutes,
+                appCount: selection.applicationTokens.count
+            ))
+        }
     }
 
     func lockState(_ configuration: DailyLimitConfiguration) -> DailyLimitCommitmentPolicy.State {
@@ -198,41 +230,67 @@ final class DailyLimitService: ObservableObject {
         configurations.contains { $0.isEnabled && lockedUntil($0) != nil }
     }
 
+    var hasLockedVisibleLimits: Bool {
+        visibleConfigurations.contains { $0.isEnabled && lockedUntil($0) != nil }
+    }
+
     func remove(_ configuration: DailyLimitConfiguration) {
         guard allowsWeakening(configuration) else { return }
+        let lockState = AnalyticsEvent.lockStateName(lockState(configuration))
         configurations.removeAll { $0.id == configuration.id }
         persistAndRestartIfNeeded()
+        if errorMessage == nil {
+            AnalyticsService.shared.capture(.dailyLimitRemoved(lockState: lockState))
+        }
     }
 
     func setEnabled(_ enabled: Bool, for configuration: DailyLimitConfiguration) {
-        guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
+        guard let index = configurations.firstIndex(where: { $0.id == configuration.id }),
+              canEdit(configurations[index]) else { return }
         guard enabled || allowsWeakening(configuration) else { return }
+        let lockState = AnalyticsEvent.lockStateName(lockState(configuration))
         configurations[index].isEnabled = enabled
         persistAndRestartIfNeeded()
+        if errorMessage == nil {
+            AnalyticsService.shared.capture(.dailyLimitToggled(on: enabled, lockState: lockState))
+        }
     }
 
     func updateMinutes(_ minutes: Int, for configuration: DailyLimitConfiguration) {
-        guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
+        guard let index = configurations.firstIndex(where: { $0.id == configuration.id }),
+              canEdit(configurations[index]) else { return }
         let saved = configurations[index]
         guard DailyLimitCommitmentPolicy.canChangeMinutes(of: saved, to: minutes, at: now) else {
             errorMessage = lockedUntil(saved).map(DailyLimitCommitmentPolicy.lockedMessage(until:))
             return
         }
+        let previousMinutes = configurations[index].dailyLimitMinutes
         configurations[index].dailyLimitMinutes = min(max(minutes, 5), 240)
         // Setting an older limit's time starts its weekly cycle.
         if configurations[index].lockAnchor == nil {
             configurations[index].lockAnchor = now
         }
         persistAndRestartIfNeeded()
+        if errorMessage == nil, configurations[index].dailyLimitMinutes != previousMinutes {
+            AnalyticsService.shared.capture(.dailyLimitAllowanceChanged(
+                lowered: configurations[index].dailyLimitMinutes < previousMinutes
+            ))
+        }
     }
 
     /// Stops every limit unless one that is on is still in its locked week.
     func requestStop() {
+        if let activeAccountID,
+           configurations.contains(where: { $0.isEnabled && $0.ownerUserID != activeAccountID }) {
+            errorMessage = "Another account's limits are still active on this iPhone."
+            return
+        }
         if let end = configurations.compactMap({ $0.isEnabled ? lockedUntil($0) : nil }).min() {
             errorMessage = DailyLimitCommitmentPolicy.lockedMessage(until: end)
             return
         }
         stopMonitoring()
+        AnalyticsService.shared.capture(.dailyLimitsStopped())
     }
 
     private var now: Date { Date() }
@@ -242,8 +300,15 @@ final class DailyLimitService: ObservableObject {
     }
 
     private func allowsWeakening(_ configuration: DailyLimitConfiguration) -> Bool {
+        guard canEdit(saved(configuration)) else { return false }
         guard let end = lockedUntil(configuration) else { return true }
         errorMessage = DailyLimitCommitmentPolicy.lockedMessage(until: end)
+        return false
+    }
+
+    private func canEdit(_ configuration: DailyLimitConfiguration) -> Bool {
+        guard let activeAccountID, configuration.ownerUserID != activeAccountID else { return true }
+        errorMessage = "This daily limit belongs to another Noxa account."
         return false
     }
 
@@ -339,6 +404,12 @@ final class DailyLimitService: ObservableObject {
             snapshot.dailyLimits = []
             try? store.saveSnapshot(snapshot)
         }
+    }
+
+    func removeConfigurations(ownedBy userID: UUID) {
+        guard configurations.contains(where: { $0.ownerUserID == userID }) else { return }
+        configurations.removeAll { $0.ownerUserID == userID }
+        persistAndRestartIfNeeded()
     }
 
     /// Re-registers an existing monitor after an app update while preserving

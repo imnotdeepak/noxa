@@ -256,6 +256,10 @@ final class FocusSessionService: ObservableObject {
                 )
             }
             pomodoroCycle = cycle
+            AnalyticsService.shared.capture(.pomodoroStarted(
+                workMinutes: plan.workMinutes,
+                breakMinutes: plan.breakMinutes
+            ))
             acknowledgePomodoroCompletion()
             schedulePomodoroBoundaryReconciliation(for: firstSession.plannedEndAt)
         } catch {

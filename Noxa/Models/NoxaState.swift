@@ -216,6 +216,8 @@ struct ManualShieldConfiguration: Codable, Equatable, Sendable {
 /// selection is kept local and is never converted to bundle identifiers.
 struct DailyLimitConfiguration: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
+    /// The Noxa account that created this limit. Nil only for pre-migration data.
+    var ownerUserID: UUID?
     var selection: FamilyActivitySelection
     var dailyLimitMinutes: Int
     var createdAt: Date
@@ -226,6 +228,7 @@ struct DailyLimitConfiguration: Codable, Equatable, Identifiable, Sendable {
 
     init(
         id: UUID = UUID(),
+        ownerUserID: UUID? = nil,
         selection: FamilyActivitySelection,
         dailyLimitMinutes: Int,
         createdAt: Date = Date(),
@@ -233,6 +236,7 @@ struct DailyLimitConfiguration: Codable, Equatable, Identifiable, Sendable {
         lockAnchor: Date? = nil
     ) {
         self.id = id
+        self.ownerUserID = ownerUserID
         self.selection = selection
         self.dailyLimitMinutes = min(max(dailyLimitMinutes, 5), 240)
         self.createdAt = createdAt
@@ -310,6 +314,9 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
     var hasSeenInsight = false
     var hasSeenProductDemo = false
     var pactStatus: PactStatus?
+    /// Allow or Skip on the analytics question; the answer itself lives
+    /// with AnalyticsService.
+    var hasAnsweredAnalyticsConsent = false
     var draftPersonalizationAnswers: [String] = []
     var draftSetupConfiguration: [String: String] = [:]
 
@@ -354,6 +361,7 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
         case hasSeenInsight
         case hasSeenProductDemo
         case pactStatus
+        case hasAnsweredAnalyticsConsent
         case draftPersonalizationAnswers
         case draftSetupConfiguration
     }
@@ -402,6 +410,9 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
         hasSeenProductDemo = try container.decodeIfPresent(Bool.self, forKey: .hasSeenProductDemo)
             ?? passedLegacyNarrative
         pactStatus = try container.decodeIfPresent(PactStatus.self, forKey: .pactStatus)
+        hasAnsweredAnalyticsConsent = try container.decodeIfPresent(
+            Bool.self, forKey: .hasAnsweredAnalyticsConsent
+        ) ?? false
         draftPersonalizationAnswers = try container.decodeIfPresent([String].self, forKey: .draftPersonalizationAnswers) ?? []
         draftSetupConfiguration = try container.decodeIfPresent([String: String].self, forKey: .draftSetupConfiguration) ?? [:]
     }
@@ -428,6 +439,7 @@ struct OnboardingProgress: Codable, Equatable, Sendable {
         try container.encode(hasSeenInsight, forKey: .hasSeenInsight)
         try container.encode(hasSeenProductDemo, forKey: .hasSeenProductDemo)
         try container.encodeIfPresent(pactStatus, forKey: .pactStatus)
+        try container.encode(hasAnsweredAnalyticsConsent, forKey: .hasAnsweredAnalyticsConsent)
         try container.encode(draftPersonalizationAnswers, forKey: .draftPersonalizationAnswers)
         try container.encode(draftSetupConfiguration, forKey: .draftSetupConfiguration)
     }

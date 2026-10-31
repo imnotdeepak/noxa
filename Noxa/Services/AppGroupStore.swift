@@ -59,6 +59,24 @@ final class AppGroupStore {
         static let pendingPomodoroCompletion = "noxa.pendingPomodoroCompletion"
         static let cloudSyncState = "noxa.cloudSyncState"
         static let cloudAccountCaches = "noxa.cloudAccountCaches"
+        static let localConfigurationOwner = "noxa.localConfigurationOwner"
+        static let editableConfigurationByAccount = "noxa.editableConfigurationByAccount"
+    }
+
+    private struct EditableConfiguration: Codable {
+        var focusSelection: Data?
+        var websiteDomains: Data?
+        var websiteShieldActive: Bool
+        var instagramMode: String?
+        var instagramSelection: Data?
+        var instagramAppBlockEnabled: Bool
+        var instagramLockAnchor: Date?
+        var youtubeShortsHidden: Bool
+        var youtubeSelection: Data?
+        var youtubeAppBlockEnabled: Bool
+        var youtubeLockAnchor: Date?
+        var hasOfferedScheduleSuggestion: Bool?
+        var pendingScheduleSuggestion: Data?
     }
 
     let usesSharedSuite: Bool
@@ -111,6 +129,109 @@ final class AppGroupStore {
 
     func clearFamilyActivitySelection() {
         defaults.removeObject(forKey: Key.familyActivitySelection)
+    }
+
+    var localConfigurationOwner: UUID? {
+        defaults.string(forKey: Key.localConfigurationOwner).flatMap(UUID.init(uuidString:))
+    }
+
+    /// Saves the previous account's editable device choices and loads the next
+    /// account's. Schedules and daily limits stay in their shared enforcement
+    /// archives with an owner ID, so a committed rule keeps running.
+    func bindEditableConfiguration(to userID: UUID, legacyOwner: UUID? = nil) throws {
+        let previousOwner = localConfigurationOwner ?? legacyOwner
+        if previousOwner == userID {
+            if localConfigurationOwner == nil {
+                defaults.set(userID.uuidString, forKey: Key.localConfigurationOwner)
+            }
+            return
+        }
+        guard let previousOwner else {
+            // Existing installations first claim their current local choices.
+            defaults.set(userID.uuidString, forKey: Key.localConfigurationOwner)
+            return
+        }
+
+        var accounts = try loadEditableConfigurations()
+        let incoming = accounts[userID.uuidString]
+        if let data = incoming?.focusSelection {
+            _ = try JSONDecoder().decode(FamilyActivitySelection.self, from: data)
+        }
+        if let data = incoming?.websiteDomains {
+            _ = try JSONDecoder().decode([String].self, from: data)
+        }
+        accounts[previousOwner.uuidString] = EditableConfiguration(
+            focusSelection: defaults.data(forKey: Key.familyActivitySelection),
+            websiteDomains: defaults.data(forKey: Key.websiteBlocklist),
+            websiteShieldActive: defaults.bool(forKey: Key.websiteShieldActive),
+            instagramMode: defaults.string(forKey: Key.instagramSiteMode),
+            instagramSelection: defaults.data(forKey: Key.instagramAppSelection),
+            instagramAppBlockEnabled: defaults.bool(forKey: Key.instagramAppBlockEnabled),
+            instagramLockAnchor: defaults.object(forKey: Key.instagramLockAnchor) as? Date,
+            youtubeShortsHidden: defaults.bool(forKey: Key.youtubeShortsHidden),
+            youtubeSelection: defaults.data(forKey: Key.youtubeAppSelection),
+            youtubeAppBlockEnabled: defaults.bool(forKey: Key.youtubeAppBlockEnabled),
+            youtubeLockAnchor: defaults.object(forKey: Key.youtubeLockAnchor) as? Date,
+            hasOfferedScheduleSuggestion: defaults.bool(forKey: Key.hasOfferedScheduleSuggestion),
+            pendingScheduleSuggestion: defaults.data(forKey: Key.pendingScheduleSuggestion)
+        )
+        defaults.set(try JSONEncoder().encode(accounts), forKey: Key.editableConfigurationByAccount)
+
+        set(incoming?.focusSelection, forKey: Key.familyActivitySelection)
+        set(incoming?.websiteDomains, forKey: Key.websiteBlocklist)
+        defaults.set(incoming?.websiteShieldActive ?? false, forKey: Key.websiteShieldActive)
+        set(incoming?.instagramMode, forKey: Key.instagramSiteMode)
+        set(incoming?.instagramSelection, forKey: Key.instagramAppSelection)
+        defaults.set(incoming?.instagramAppBlockEnabled ?? false, forKey: Key.instagramAppBlockEnabled)
+        set(incoming?.instagramLockAnchor, forKey: Key.instagramLockAnchor)
+        defaults.set(incoming?.instagramMode == InstagramSiteMode.distractionFree.rawValue,
+                     forKey: Key.safariFilterEnabled)
+        defaults.removeObject(forKey: Key.safariFilterLastSeenAt)
+        defaults.set(incoming?.youtubeShortsHidden ?? false, forKey: Key.youtubeShortsHidden)
+        set(incoming?.youtubeSelection, forKey: Key.youtubeAppSelection)
+        defaults.set(incoming?.youtubeAppBlockEnabled ?? false, forKey: Key.youtubeAppBlockEnabled)
+        set(incoming?.youtubeLockAnchor, forKey: Key.youtubeLockAnchor)
+        defaults.removeObject(forKey: Key.youtubeFilterLastSeenAt)
+        defaults.set(incoming?.hasOfferedScheduleSuggestion ?? false,
+                     forKey: Key.hasOfferedScheduleSuggestion)
+        set(incoming?.pendingScheduleSuggestion, forKey: Key.pendingScheduleSuggestion)
+        defaults.set(userID.uuidString, forKey: Key.localConfigurationOwner)
+    }
+
+    private func loadEditableConfigurations() throws -> [String: EditableConfiguration] {
+        guard let data = defaults.data(forKey: Key.editableConfigurationByAccount) else { return [:] }
+        return try JSONDecoder().decode([String: EditableConfiguration].self, from: data)
+    }
+
+    func removeEditableConfiguration(for userID: UUID) {
+        var accounts = (try? loadEditableConfigurations()) ?? [:]
+        accounts.removeValue(forKey: userID.uuidString)
+        if let data = try? JSONEncoder().encode(accounts) {
+            defaults.set(data, forKey: Key.editableConfigurationByAccount)
+        } else {
+            defaults.removeObject(forKey: Key.editableConfigurationByAccount)
+        }
+        guard localConfigurationOwner == userID else { return }
+        for key in [
+            Key.familyActivitySelection, Key.websiteBlocklist, Key.websiteShieldActive,
+            Key.instagramSiteMode, Key.instagramAppSelection, Key.instagramAppBlockEnabled,
+            Key.instagramLockAnchor, Key.youtubeShortsHidden, Key.youtubeAppSelection,
+            Key.youtubeAppBlockEnabled, Key.youtubeLockAnchor, Key.safariFilterEnabled,
+            Key.safariFilterLastSeenAt, Key.youtubeFilterLastSeenAt,
+            Key.hasOfferedScheduleSuggestion, Key.pendingScheduleSuggestion
+        ] {
+            defaults.removeObject(forKey: key)
+        }
+        // Retain the owner marker so the next sign-in loads its archived
+        // profile instead of claiming this now-empty profile as legacy data.
+    }
+
+    private func set(_ value: Any?, forKey key: String) {
+        if let value {
+            defaults.set(value, forKey: key)
+        } else {
+            defaults.removeObject(forKey: key)
+        }
     }
 
     /// Stores the immutable device-local restriction snapshot for the active
@@ -575,5 +696,16 @@ final class AppGroupStore {
 
     func clearCloudAccountCaches() {
         defaults.removeObject(forKey: Key.cloudAccountCaches)
+    }
+
+    func removeCloudAccountCache(userID: UUID) {
+        guard let data = defaults.data(forKey: Key.cloudAccountCaches) else { return }
+        var caches = (try? JSONDecoder().decode([String: CloudAccountCache].self, from: data)) ?? [:]
+        caches.removeValue(forKey: userID.uuidString)
+        if let data = try? JSONEncoder().encode(caches) {
+            defaults.set(data, forKey: Key.cloudAccountCaches)
+        } else {
+            defaults.removeObject(forKey: Key.cloudAccountCaches)
+        }
     }
 }

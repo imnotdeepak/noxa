@@ -25,12 +25,6 @@ extension ContentView {
                 }
                 .noxaCard()
 
-                Button("Preview Onboarding") {
-                    isOnboardingReplayPresented = true
-                }
-                .buttonStyle(NoxaSecondaryButtonStyle())
-                .accessibilityHint("View setup, pricing, and the Pact without changing your account")
-
                 VStack(alignment: .leading, spacing: 12) {
                     Label("Noxa subscription", systemImage: subscriptions.hasAccess ? "checkmark.seal.fill" : "creditcard")
                         .font(NoxaType.headline)
@@ -54,7 +48,7 @@ extension ContentView {
                             Text("Share usage analytics")
                             NoxaInfoButton(
                                 title: "Usage analytics",
-                                message: "Helps improve Noxa with feature events and rough counts. Noxa never sends your email, name, selected apps or websites, typed intentions, or screen recordings."
+                                message: "Helps improve Noxa: which screens you visit and what you set up, with rough counts. Noxa never sends your email, name, selected apps or websites, typed intentions, or screen recordings. Change this anytime."
                             )
                         }
                     }
@@ -141,9 +135,6 @@ extension ContentView {
             PaywallView()
                 .environmentObject(subscriptions)
         }
-        .fullScreenCover(isPresented: $isOnboardingReplayPresented) {
-            OnboardingReplayView()
-        }
     }
 
     func settingsSectionTitle(_ title: String) -> some View {
@@ -193,8 +184,10 @@ extension ContentView {
 
     func deleteAccountAndLocalData() async {
         guard !focusSession.isActive && !focusSession.hasPomodoroCycle else { return }
+        guard let accountID = authentication.userID else { return }
         guard await authentication.deleteAccount() else { return }
         LocalDataCleanupService.clear(
+            accountID: accountID,
             focusSession: focusSession,
             restrictions: restrictions,
             monitoring: monitoring,

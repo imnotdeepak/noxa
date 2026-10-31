@@ -315,6 +315,8 @@ struct NoxaTextFieldStyle: TextFieldStyle {
 
 struct NoxaPrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
+    /// Lime by default; white for an equal-weight alternative choice.
+    var fill: Color = NoxaTheme.accent
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -325,7 +327,7 @@ struct NoxaPrimaryButtonStyle: ButtonStyle {
             // Opaque even when disabled, so nothing behind it shows through.
             .background(
                 isEnabled
-                    ? AnyShapeStyle(NoxaTheme.accent.opacity(configuration.isPressed ? 0.88 : 1))
+                    ? AnyShapeStyle(fill.opacity(configuration.isPressed ? 0.88 : 1))
                     : AnyShapeStyle(NoxaTheme.pressed),
                 in: RoundedRectangle(cornerRadius: NoxaTheme.Radius.control, style: .continuous)
             )

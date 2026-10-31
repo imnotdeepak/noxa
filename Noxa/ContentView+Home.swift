@@ -41,6 +41,10 @@ extension ContentView {
                     AnyView(screenTimePauseNotice)
                 }
 
+                if hasOtherAccountCommitments {
+                    AnyView(otherAccountCommitmentNotice)
+                }
+
                 // The Halo's light spreads past the ring; keep it behind cards.
                 focusSection
                     .zIndex(-1)
@@ -59,6 +63,26 @@ extension ContentView {
             .padding(.top, 4)
             .padding(.bottom, 16)
         )
+    }
+
+    var hasOtherAccountCommitments: Bool {
+        schedules.configurations.contains {
+            $0.isEnabled && $0.ownerUserID != schedules.activeAccountID
+        } || dailyLimits.configurations.contains {
+            $0.isEnabled && $0.ownerUserID != dailyLimits.activeAccountID
+        }
+    }
+
+    var otherAccountCommitmentNotice: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Blocks from another Noxa account")
+                .font(NoxaType.subheadlineSemibold)
+            Text("Committed schedules and daily limits on this iPhone still run until their release. They are separate from this account's setup.")
+                .font(NoxaType.footnote)
+                .foregroundStyle(NoxaTheme.secondaryText)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .noxaCard()
     }
 
     /// A light success tap when a session really completes; never for an
@@ -589,8 +613,8 @@ extension ContentView {
         return RestrictionOwnershipPlan.evaluate(
             .init(
                 focus: focus,
-                schedules: schedules.configurations,
-                dailyLimits: dailyLimits.configurations,
+                schedules: schedules.visibleConfigurations,
+                dailyLimits: dailyLimits.visibleConfigurations,
                 reachedDailyEventNames: localStore.reachedDailyLimitEventNames(at: date),
                 isDailyMonitoring: dailyLimits.isMonitoring,
                 manualShield: try? localStore.loadManualShield(),

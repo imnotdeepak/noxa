@@ -198,6 +198,12 @@ final class CloudSyncService: ObservableObject {
             state.userID = userID
             boundUserID = userID
             persist(state)
+            if let existingCache = try? store.loadCloudAccountCache(userID: userID) {
+                return CloudSyncMergeResult(
+                    websiteDomains: existingCache.websiteDomains,
+                    focusHistory: existingCache.focusHistory
+                )
+            }
             let result = CloudSyncMergeResult(
                 websiteDomains: Self.normalizedDomains(websiteDomains),
                 focusHistory: Self.normalizedHistory(history)

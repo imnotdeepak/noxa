@@ -295,10 +295,10 @@ extension ContentView {
                 info: "Choose the hours to block, the days they apply, and the apps, categories or websites. Each schedule locks for a week: you can't turn it off, change or remove it. After the week you get one day to change it, then it locks again. It also can't be weakened while it's blocking.",
                 add: openNewScheduleEditor,
                 canAdd: authorization.state.isApproved
-                    && schedules.configurations.count < RestrictionScheduleService.maximumConfigurations
+                    && schedules.visibleConfigurations.count < RestrictionScheduleService.maximumConfigurations
             )
 
-            if schedules.configurations.isEmpty {
+            if schedules.visibleConfigurations.isEmpty {
                 Text("No schedules yet.")
                     .font(NoxaType.subheadline)
                     .foregroundStyle(NoxaTheme.secondaryText)
@@ -307,7 +307,7 @@ extension ContentView {
             } else {
                 TimelineView(.periodic(from: .now, by: 60)) { context in
                     VStack(spacing: 0) {
-                        ForEach(Array(schedules.configurations.enumerated()), id: \.element.id) { index, configuration in
+                        ForEach(Array(schedules.visibleConfigurations.enumerated()), id: \.element.id) { index, configuration in
                             if index > 0 { Divider().overlay(NoxaTheme.border) }
                             scheduleRow(configuration, now: context.date)
                         }

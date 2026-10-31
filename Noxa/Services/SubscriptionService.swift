@@ -38,10 +38,34 @@ final class SubscriptionService: NSObject, ObservableObject {
 
     private let defaults: UserDefaults
     private var isConfigured = false
+    private var analyticsConsent: AnyCancellable?
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         super.init()
+        // Follow the Usage analytics choice as it changes.
+        analyticsConsent = AnalyticsService.shared.$isEnabled
+            .dropFirst()
+            .sink { [weak self] isEnabled in
+                self?.updatePostHogLink(analyticsEnabled: isEnabled)
+            }
+    }
+
+    /// RevenueCat's PostHog integration matches people by this attribute,
+    /// so it is set only while the user shares usage analytics; an empty
+    /// value removes it.
+    nonisolated static func postHogLinkValue(accountID: String, analyticsEnabled: Bool) -> String {
+        analyticsEnabled ? accountID : ""
+    }
+
+    private func updatePostHogLink(analyticsEnabled: Bool) {
+        guard isConfigured, let boundUserID else { return }
+        Purchases.shared.attribution.setAttributes([
+            "$posthogUserId": Self.postHogLinkValue(
+                accountID: boundUserID.uuidString.lowercased(),
+                analyticsEnabled: analyticsEnabled
+            )
+        ])
     }
 
     func canEnterApp(for userID: UUID?) -> Bool {
@@ -107,7 +131,12 @@ final class SubscriptionService: NSObject, ObservableObject {
                 customerInfo = try await Purchases.shared.customerInfo()
             }
 
-            Purchases.shared.attribution.setAttributes(["$posthogUserId": accountID])
+            Purchases.shared.attribution.setAttributes([
+                "$posthogUserId": Self.postHogLinkValue(
+                    accountID: accountID,
+                    analyticsEnabled: AnalyticsService.shared.isEnabled
+                )
+            ])
             apply(customerInfo)
 
             if !defaults.bool(forKey: migrationKey(for: userID)) {

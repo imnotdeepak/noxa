@@ -273,6 +273,44 @@ struct OnboardingNotificationsStep: View {
     }
 }
 
+// MARK: Step 11b — Usage analytics
+
+/// Asks once, everywhere. Analytics stays off unless the user agrees here
+/// or later in Settings.
+struct OnboardingAnalyticsStep: View {
+    @EnvironmentObject private var analytics: AnalyticsService
+    var isPreview = false
+    let onBack: () -> Void
+    let onContinue: () -> Void
+
+    var body: some View {
+        OnboardingScaffold(centered: true, onBack: onBack) {
+            setupIcon("chart.bar.xaxis")
+                .frame(maxWidth: .infinity)
+
+            OnboardingHeading(
+                title: "Help improve Noxa.",
+                subtitle: "Share anonymous usage data, like which screens you use and what you set up. Never your apps, websites or name. You can change this anytime in Settings.",
+                alignment: .center
+            )
+        } actions: {
+            OnboardingPrimaryButton("Share Usage Data") {
+                if !isPreview { analytics.isEnabled = true }
+                onContinue()
+            }
+            // Same size as Share, so skipping is just as easy to choose.
+            Button {
+                if !isPreview { analytics.isEnabled = false }
+                onContinue()
+            } label: {
+                Text("Skip").frame(maxWidth: .infinity).contentShape(Rectangle())
+            }
+            .buttonStyle(NoxaPrimaryButtonStyle(fill: .white))
+            .padding(.top, 4)
+        }
+    }
+}
+
 // MARK: Step 12 — Subscription
 
 struct OnboardingSubscriptionStep: View {

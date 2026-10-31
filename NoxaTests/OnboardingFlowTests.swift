@@ -67,15 +67,25 @@ struct OnboardingFlowTests {
     @Test func setupIsRecheckedLiveBeforePayment() {
         var progress = narrativeDone()
         progress.hasSeenNotificationExplainer = true
+        progress.hasAnsweredAnalyticsConsent = true
         #expect(resume(progress, approved: false) == .screenTime)
         #expect(resume(progress, selection: false) == .selection)
         #expect(resume(progress) == .subscription)
+    }
+
+    // The analytics question comes right after notifications, before payment.
+    @Test func analyticsIsAskedAfterNotifications() {
+        var progress = narrativeDone()
+        progress.hasSeenNotificationExplainer = true
+        #expect(resume(progress) == .analyticsConsent)
+        #expect(OnboardingStep.analyticsConsent.previous == .notifications)
     }
 
     // ONB-11: an existing subscriber skips the purchase.
     @Test func existingSubscriberGoesStraightToThePact() {
         var progress = narrativeDone()
         progress.hasSeenNotificationExplainer = true
+        progress.hasAnsweredAnalyticsConsent = true
         #expect(resume(progress, subscribed: true) == .pact)
     }
 

@@ -83,6 +83,9 @@ extension ContentView {
         .task { await refreshSafariExtensionStatus() }
         .sheet(item: $filterSetupGuide) { guide in
             AnyView(filterSetupSheet(guide.filter))
+                .onAppear {
+                    AnalyticsService.shared.capture(.shortVideoFilterSetupOpened(site: guide.filter?.rawValue ?? "both"))
+                }
         }
         .alert(
             "Lock this for a week?",
@@ -216,6 +219,7 @@ extension ContentView {
             YouTubeShortsProtectionService.reconcile()
         }
         showToast(on ? "\(filter.title) hidden · locked for a week" : "\(filter.title) back on")
+        AnalyticsService.shared.capture(.shortVideoFilterChanged(site: filter.rawValue, on: on))
         // First time on, or never connected: walk through the Safari setup.
         if on, !isFilterConnected(filter) {
             // Wait for the lock alert to finish closing before presenting.

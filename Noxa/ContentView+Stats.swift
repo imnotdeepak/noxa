@@ -33,7 +33,8 @@ extension ContentView {
         }
         .scrollIndicators(.hidden)
         .noxaScreenBackground()
-        .onChange(of: selectedStatsRange) { _ in
+        .onChange(of: selectedStatsRange) { range in
+            AnalyticsService.shared.capture(.insightsRangeChanged(range.title.lowercased()))
             selectedFocusBucket = nil
             statsAnchorDate = statsReferenceDate
         }
@@ -237,6 +238,7 @@ extension ContentView {
     var activityHistoryLink: some View {
         NavigationLink {
             activityHistoryScreen
+                .onAppear { AnalyticsService.shared.screen("Activity & History") }
         } label: {
             HStack(spacing: 14) {
                 Image(systemName: "list.bullet.rectangle")

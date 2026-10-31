@@ -32,6 +32,33 @@ server-only service-role environment variable to delete that exact Auth user.
 Foreign-key cascades remove the user's product rows. The iOS app clears local
 Screen Time configuration only after the server confirms deletion.
 
+It also asks PostHog to delete the analytics person the app identified by that
+user ID, along with their events. Set these secrets to enable it:
+
+- `POSTHOG_PERSONAL_API_KEY`: a PostHog personal API key with the
+  `person:write` scope. Server-only; never put it in the app.
+- `POSTHOG_PROJECT_ID`: the numeric project ID from PostHog's project settings.
+- `POSTHOG_API_HOST` (optional): defaults to `https://us.posthog.com`; use
+  `https://eu.posthog.com` for an EU project.
+
+Without them the function still deletes the account and reports
+`"analytics": "skipped"`. A PostHog error is logged and reported as
+`"failed"`, but never blocks the account deletion. PostHog processes person
+deletions in the background, so the record can take a while to disappear.
+
+## Minimum supported iPhone build
+
+The public `release-policy` function returns `minimumIOSBuild`. It defaults to
+`0`, so deploying it does not require anyone to update. Noxa caches the last
+successful value and checks again when opened or returned to the foreground.
+Set the `MINIMUM_IOS_BUILD` Supabase secret to a build number **only after that
+build is available on the App Store**, and only when an older build cannot
+safely continue. Lower the value to undo a mistaken requirement. Active Focus
+and Pomodoro sessions stay on their existing screen until they end; their
+Screen Time callbacks, schedules, and daily limits continue independently of
+this check. Versions released before this check was added cannot be gated
+remotely, so data migration is still required.
+
 ## Live Activity removal while Noxa is closed
 
 The optional Lock Screen Live Activity uses a per-activity Apple push token so

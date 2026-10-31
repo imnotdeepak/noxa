@@ -208,6 +208,12 @@ final class OnboardingService: ObservableObject {
         commit { $0.hasSeenNotificationExplainer = true }
     }
 
+    /// Allow and Skip both continue; only the answer differs.
+    @discardableResult
+    func completeAnalyticsConsent() -> Bool {
+        commit { $0.hasAnsweredAnalyticsConsent = true }
+    }
+
     /// Records a verified entitlement. The caller checks access first; this
     /// is never set from a purchase button tap alone.
     @discardableResult
@@ -290,5 +296,6 @@ final class OnboardingService: ObservableObject {
         progress.hasSeenProjection = true
         progress.hasSeenInsight = true
         progress.hasSeenProductDemo = true
+        progress.hasAnsweredAnalyticsConsent = true
     }
 }

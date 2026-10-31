@@ -47,6 +47,12 @@ final class ScreenTimeRestrictionService: ObservableObject {
         selectedItemCount > 0
     }
 
+    func reloadSelectionForAccount() {
+        selection = (try? store.loadFamilyActivitySelection()) ?? nil
+            ?? FamilyActivitySelection()
+        errorMessage = nil
+    }
+
     /// Selection edits are locked while a focus session is pending or active.
     /// The persisted check protects the invariant even after app relaunch.
     var isLockedForFocusSession: Bool {
@@ -62,6 +68,11 @@ final class ScreenTimeRestrictionService: ObservableObject {
         }
         do {
             try store.saveFamilyActivitySelection(selection)
+            AnalyticsService.shared.capture(.focusBlocklistSaved(
+                apps: selection.applicationTokens.count,
+                categories: selection.categoryTokens.count,
+                websites: selection.webDomainTokens.count
+            ))
         } catch {
             errorMessage = "Could not save the selection: \(error.localizedDescription)"
             logger.error("Selection persistence failed: \(error.localizedDescription, privacy: .public)")
