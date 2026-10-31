@@ -20,6 +20,12 @@ enum NoxaDeviceActivityConfiguration {
     static let scheduleActivityPrefix = "noxa.schedule"
     static let dailyLimitReachedEventsKey = "noxa.dailyLimitReachedEvents"
     static let dailyLimitResetDayKey = "noxa.dailyLimitResetDay"
+    /// What the running daily-limit monitor was registered with. A launch
+    /// only re-registers when this no longer matches.
+    static let dailyLimitMonitorSignatureKey = "noxa.dailyLimitMonitorSignature"
+    /// Bump this only when the event definition changes. Earlier use today
+    /// remains part of the limit's allowance.
+    static let dailyLimitMonitorVersion = "v1"
     static let scheduleRelaxationActivityPrefix = "noxa.schedule.relax"
     static let minimumFocusSessionMinutes = 15
     /// Every new Focus session is committed, so one four-hour cap applies.
@@ -44,6 +50,16 @@ enum NoxaDeviceActivityConfiguration {
     static func dailyLimitDayStamp(for date: Date = Date(), calendar: Calendar = .autoupdatingCurrent) -> String {
         let components = calendar.dateComponents([.era, .year, .month, .day], from: date)
         return "\(components.era ?? 0)-\(components.year ?? 0)-\(components.month ?? 0)-\(components.day ?? 0)"
+    }
+
+    /// Identifies the limits a monitor was registered for: each enabled
+    /// limit's ID and allowance, plus the event-definition version.
+    static func dailyLimitMonitorSignature(configurations: [DailyLimitConfiguration]) -> String {
+        let limits = configurations
+            .filter(\.isEnabled)
+            .map { "\($0.id.uuidString.lowercased()):\($0.dailyLimitMinutes)" }
+            .sorted()
+        return ([dailyLimitMonitorVersion] + limits).joined(separator: "|")
     }
 
     static func retainedDailyLimitEventNames(
@@ -374,6 +390,10 @@ final class DailyLimitService: ObservableObject {
                 during: schedule,
                 events: events
             )
+            defaults?.set(
+                NoxaDeviceActivityConfiguration.dailyLimitMonitorSignature(configurations: active),
+                forKey: NoxaDeviceActivityConfiguration.dailyLimitMonitorSignatureKey
+            )
             isMonitoring = true
             errorMessage = nil
             logger.info("Started daily limit monitor for \(active.count) configuration(s)")
@@ -390,6 +410,7 @@ final class DailyLimitService: ObservableObject {
         let defaults = UserDefaults(suiteName: AppGroupStore.suiteName)
         defaults?.removeObject(forKey: NoxaDeviceActivityConfiguration.dailyLimitReachedEventsKey)
         defaults?.removeObject(forKey: NoxaDeviceActivityConfiguration.dailyLimitResetDayKey)
+        defaults?.removeObject(forKey: NoxaDeviceActivityConfiguration.dailyLimitMonitorSignatureKey)
         isMonitoring = false
         isShieldActive = false
         errorMessage = nil
@@ -412,15 +433,37 @@ final class DailyLimitService: ObservableObject {
         persistAndRestartIfNeeded()
     }
 
-    /// Re-registers an existing monitor after an app update while preserving
-    /// any limits already reached today. This also upgrades older events to
-    /// include activity recorded before Noxa started monitoring.
+    /// Called on launch. Avoid re-registering a running monitor: the existing
+    /// event already counts use since midnight, and restarting it mid-day can
+    /// cause an extra threshold callback.
     func rescheduleActiveMonitoring() {
         reconcileDayBoundary()
         guard isMonitoring, configurations.contains(where: \.isEnabled) else { return }
-        // Re-registering an already-running monitor is maintenance, not a new
-        // user commitment. Do not renew yesterday's hard lock on app launch.
-        startMonitoring(resetReachedState: false)
+        let defaults = UserDefaults(suiteName: AppGroupStore.suiteName)
+        let saved = defaults?.string(forKey: NoxaDeviceActivityConfiguration.dailyLimitMonitorSignatureKey)
+        let current = NoxaDeviceActivityConfiguration.dailyLimitMonitorSignature(configurations: configurations)
+        switch Self.launchAction(savedSignature: saved, currentSignature: current) {
+        case .keep:
+            // Build 14 did not save a signature, but its event definition is
+            // unchanged. Adopt the running monitor without restarting it.
+            if saved == nil {
+                defaults?.set(current, forKey: NoxaDeviceActivityConfiguration.dailyLimitMonitorSignatureKey)
+            }
+            return
+        case .reregister:
+            startMonitoring(resetReachedState: false)
+        }
+    }
+
+    enum LaunchAction: Equatable {
+        case keep
+        case reregister
+    }
+
+    nonisolated static func launchAction(savedSignature: String?, currentSignature: String) -> LaunchAction {
+        guard let savedSignature else { return .keep }
+        if savedSignature == currentSignature { return .keep }
+        return .reregister
     }
 
     /// Clears yesterday's reached-limit state when the app crosses local
@@ -476,6 +519,8 @@ final class DailyLimitService: ObservableObject {
         }
     }
 
+    /// Include today's use before a limit was added or a monitor was
+    /// re-registered, so the allowance always measures the whole day.
     private func dailyLimitEvent(for configuration: DailyLimitConfiguration) -> DeviceActivityEvent {
         if #available(iOS 17.4, *) {
             return DeviceActivityEvent(
