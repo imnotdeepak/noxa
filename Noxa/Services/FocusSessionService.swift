@@ -19,8 +19,6 @@ final class FocusSessionService: ObservableObject {
     @Published private(set) var history: [ActiveSessionRecord]
     @Published private(set) var errorMessage: String?
     @Published private(set) var activeIntention: String?
-    @Published private(set) var strictModeEnabled: Bool
-    @Published private(set) var hasOfferedStrictMode: Bool
     @Published private(set) var pomodoroCycle: PomodoroCycleRecord?
     @Published private(set) var completedPomodoroCycleID: UUID?
     /// True while a session or Pomodoro cycle is waiting for Screen Time
@@ -36,8 +34,6 @@ final class FocusSessionService: ObservableObject {
 
     init(store: AppGroupStore? = nil) {
         self.store = store ?? AppGroupStore.shared
-        strictModeEnabled = self.store.isStrictModeEnabled
-        hasOfferedStrictMode = self.store.hasOfferedStrictMode
         pomodoroCycle = (try? self.store.loadPomodoroCycle()) ?? nil
         completedPomodoroCycleID = self.store.pendingPomodoroCompletionID
         let snapshot = try? self.store.loadSnapshot()
@@ -82,16 +78,6 @@ final class FocusSessionService: ObservableObject {
         case .scheduled: return "Starting soon"
         case .complete: return "Four rounds complete"
         }
-    }
-
-    func setStrictModeEnabled(_ enabled: Bool) {
-        store.isStrictModeEnabled = enabled
-        strictModeEnabled = enabled
-    }
-
-    func markStrictModeOffered() {
-        store.hasOfferedStrictMode = true
-        hasOfferedStrictMode = true
     }
 
     func acknowledgePomodoroCompletion() {
@@ -162,13 +148,14 @@ final class FocusSessionService: ObservableObject {
 
         errorMessage = nil
         let startedAt = Date()
-        let isStrict = strictModeEnabled
-        let duration = Self.normalizedDurationMinutes(durationMinutes, strict: isStrict) * 60
+        let duration = Self.normalizedDurationMinutes(durationMinutes) * 60
+        // Every new session is a commitment. `isStrict` stays on the record
+        // so sessions started by older versions keep their early-end option.
         let record = ActiveSessionRecord(
             startedAt: startedAt,
             plannedEndAt: startedAt.addingTimeInterval(TimeInterval(duration)),
             plannedDurationSeconds: duration,
-            isStrict: isStrict
+            isStrict: true
         )
         let restrictionConfiguration = FocusSessionRestrictionConfiguration(
             selection: selection,
@@ -269,6 +256,10 @@ final class FocusSessionService: ObservableObject {
                 )
             }
             pomodoroCycle = cycle
+            AnalyticsService.shared.capture(.pomodoroStarted(
+                workMinutes: plan.workMinutes,
+                breakMinutes: plan.breakMinutes
+            ))
             acknowledgePomodoroCompletion()
             schedulePomodoroBoundaryReconciliation(for: firstSession.plannedEndAt)
         } catch {
@@ -283,10 +274,12 @@ final class FocusSessionService: ObservableObject {
         }
     }
 
+    /// Only sessions started by an older version, before every session was
+    /// committed, can end early.
     func endEarly() {
         guard let activeSession else { return }
         guard !activeSession.isStrict else {
-            errorMessage = "Strict focus cannot end early. It ends at \(activeSession.plannedEndAt.formatted(date: .omitted, time: .shortened))."
+            errorMessage = "This focus session can't end early. It ends at \(activeSession.plannedEndAt.formatted(date: .omitted, time: .shortened))."
             return
         }
         if let pomodoroCycle {
@@ -501,12 +494,9 @@ final class FocusSessionService: ObservableObject {
         store.clearSnapshot()
         store.clearScreenTimeAccessPauses()
         isPausedForScreenTimeAccess = false
-        store.isStrictModeEnabled = false
-        store.hasOfferedStrictMode = false
+        store.clearLegacyStrictModePreference()
         store.hasOfferedScheduleSuggestion = false
         store.clearPendingScheduleSuggestion()
-        strictModeEnabled = false
-        hasOfferedStrictMode = false
     }
 
     func stopPomodoroDuringBreak() {
@@ -1002,12 +992,10 @@ final class FocusSessionService: ObservableObject {
         max(0, min(plannedDurationSeconds, Int(endedAt.timeIntervalSince(startedAt))))
     }
 
-    static func normalizedDurationMinutes(_ minutes: Int, strict: Bool = false) -> Int {
+    static func normalizedDurationMinutes(_ minutes: Int) -> Int {
         min(
             max(minutes, NoxaDeviceActivityConfiguration.minimumFocusSessionMinutes),
-            strict
-                ? NoxaDeviceActivityConfiguration.maximumStrictFocusSessionMinutes
-                : NoxaDeviceActivityConfiguration.maximumFocusSessionMinutes
+            NoxaDeviceActivityConfiguration.maximumFocusSessionMinutes
         )
     }
 }

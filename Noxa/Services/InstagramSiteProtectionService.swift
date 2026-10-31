@@ -19,6 +19,9 @@ enum InstagramSiteProtectionService {
         named: ManagedSettingsStore.Name("noxa.instagram.app-block")
     )
 
+    /// Lets the block work without the picker; a pick replaces it.
+    static let instagramBundleIdentifier = "com.burbn.instagram"
+
     static var isAppBlockApplied: Bool {
         appSettings.shield.applications != nil
             || appSettings.application.blockedApplications != nil
@@ -34,7 +37,8 @@ enum InstagramSiteProtectionService {
     ) -> Bool {
         mode == .distractionFree
             && isEnabled
-            && appSelection?.applicationTokens.count == 1
+            // No pick yet means the bundle ID; a pick must be exactly one app.
+            && (appSelection.map { $0.applicationTokens.count <= 1 } ?? true)
             // Release slightly before entitlement expiry, including when its
             // Device Activity callback lands on a whole-minute boundary.
             && (allowedUntil.map { $0 > now.addingTimeInterval(16 * 60) } ?? false)
@@ -74,16 +78,21 @@ enum InstagramSiteProtectionService {
             activityCenter.stopMonitoring([expiryActivity])
         }
 
-        if applyApp, let appSelection {
+        if applyApp {
             // Not a shield: iOS shields an app's website with the app, and
             // this mode must keep instagram.com usable in Safari.
             appSettings.shield.applications = nil
-            appSettings.application.blockedApplications = Set(
-                appSelection.applicationTokens.map(Application.init(token:))
-            )
+            appSettings.application.blockedApplications = blockedApps(for: appSelection)
         } else {
             appSettings.clearAllSettings()
         }
+    }
+
+    static func blockedApps(for selection: FamilyActivitySelection?) -> Set<Application> {
+        if let token = selection?.applicationTokens.first {
+            return [Application(token: token)]
+        }
+        return [Application(bundleIdentifier: instagramBundleIdentifier)]
     }
 
     private static func scheduleExpiryRelease(for expiry: Date) throws {

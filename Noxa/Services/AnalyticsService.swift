@@ -30,6 +30,7 @@ final class AnalyticsService: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        // Off until the user agrees, during onboarding or in Settings.
         isEnabled = defaults.bool(forKey: Self.consentKey)
     }
 
@@ -37,7 +38,8 @@ final class AnalyticsService: ObservableObject {
         guard !isConfigured, let token = AppConfiguration.postHogProjectToken else { return }
 
         let config = PostHogConfig(projectToken: token, host: AppConfiguration.postHogAPIHost)
-        config.captureApplicationLifecycleEvents = false
+        // App opened, backgrounded, installed and updated.
+        config.captureApplicationLifecycleEvents = true
         config.captureScreenViews = false
         config.captureElementInteractions = false
         config.captureSwiftUIElementInteractions = false
@@ -73,6 +75,13 @@ final class AnalyticsService: ObservableObject {
     func capture(_ event: AnalyticsEvent) {
         guard isConfigured, isEnabled, identifiedUserID != nil else { return }
         PostHogSDK.shared.capture(event.name, properties: event.properties)
+    }
+
+    /// Named screens, sent by hand: SwiftUI's hosting controllers would
+    /// otherwise all report the same meaningless UIKit class name.
+    func screen(_ name: String) {
+        guard isConfigured, isEnabled, identifiedUserID != nil else { return }
+        PostHogSDK.shared.screen(name)
     }
 }
 
@@ -118,6 +127,114 @@ struct AnalyticsEvent {
 
     static func purchaseCancelled(productID: String) -> Self {
         .init("subscription_purchase_cancelled", properties: ["product_id": productID])
+    }
+
+    /// Step names only: no answers, estimates or app selections.
+    static func onboardingStepViewed(_ step: String) -> Self {
+        .init("onboarding_step_viewed", properties: ["step": step])
+    }
+
+    static func onboardingScreenTimeResult(_ state: String) -> Self {
+        .init("onboarding_screen_time_result", properties: ["state": state])
+    }
+
+    static func onboardingPaywallLoadFailed() -> Self {
+        .init("onboarding_paywall_load_failed")
+    }
+
+    static func onboardingPactFinished(_ status: String) -> Self {
+        .init("onboarding_pact_finished", properties: ["status": status])
+    }
+
+    // MARK: Limits, schedules and filters
+    // Counts and buckets only: never app names, tokens or website domains.
+
+    static func dailyLimitAdded(minutes: Int, appCount: Int) -> Self {
+        .init("daily_limit_added", properties: [
+            "allowance_bucket": durationBucket(minutes),
+            "app_count": appCount
+        ])
+    }
+
+    static func dailyLimitAllowanceChanged(lowered: Bool) -> Self {
+        .init("daily_limit_allowance_changed", properties: ["direction": lowered ? "lower" : "higher"])
+    }
+
+    static func dailyLimitToggled(on: Bool, lockState: String) -> Self {
+        .init("daily_limit_toggled", properties: ["on": on, "lock_state": lockState])
+    }
+
+    static func dailyLimitRemoved(lockState: String) -> Self {
+        .init("daily_limit_removed", properties: ["lock_state": lockState])
+    }
+
+    static func dailyLimitsStopped() -> Self {
+        .init("daily_limits_stopped")
+    }
+
+    static func scheduleCreated(blockMinutes: Int, dayCount: Int) -> Self {
+        .init("schedule_created", properties: [
+            "block_length_bucket": durationBucket(blockMinutes),
+            "day_count": dayCount
+        ])
+    }
+
+    static func scheduleEdited() -> Self {
+        .init("schedule_edited")
+    }
+
+    static func scheduleToggled(on: Bool, lockState: String) -> Self {
+        .init("schedule_toggled", properties: ["on": on, "lock_state": lockState])
+    }
+
+    static func scheduleRemoved(lockState: String) -> Self {
+        .init("schedule_removed", properties: ["lock_state": lockState])
+    }
+
+    /// `site` is "instagram" or "youtube".
+    static func shortVideoFilterChanged(site: String, on: Bool) -> Self {
+        .init("short_video_filter_changed", properties: ["site": site, "on": on])
+    }
+
+    static func shortVideoFilterSetupOpened(site: String) -> Self {
+        .init("short_video_filter_setup_opened", properties: ["site": site])
+    }
+
+    static func focusBlocklistSaved(apps: Int, categories: Int, websites: Int) -> Self {
+        .init("focus_blocklist_saved", properties: [
+            "app_count": apps,
+            "category_count": categories,
+            "website_token_count": websites
+        ])
+    }
+
+    static func blockedWebsiteAdded(totalCount: Int) -> Self {
+        .init("blocked_website_added", properties: ["total_count": totalCount])
+    }
+
+    static func blockedWebsiteRemoved(totalCount: Int) -> Self {
+        .init("blocked_website_removed", properties: ["total_count": totalCount])
+    }
+
+    static func pomodoroStarted(workMinutes: Int, breakMinutes: Int) -> Self {
+        .init("pomodoro_started", properties: ["work_minutes": workMinutes, "break_minutes": breakMinutes])
+    }
+
+    static func widgetOpened(destination: String) -> Self {
+        .init("widget_opened", properties: ["destination": destination])
+    }
+
+    static func insightsRangeChanged(_ range: String) -> Self {
+        .init("insights_range_changed", properties: ["range": range])
+    }
+
+    /// "locked", "change_window" or "unlocked", for weekly commitments.
+    static func lockStateName(_ state: WeeklyCommitment.State) -> String {
+        switch state {
+        case .locked: "locked"
+        case .changeWindow: "change_window"
+        case .unlocked: "unlocked"
+        }
     }
 
     private static func durationBucket(_ minutes: Int) -> String {

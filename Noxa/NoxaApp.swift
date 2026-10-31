@@ -23,6 +23,7 @@ struct NoxaApp: App {
     @StateObject private var cloudSync = CloudSyncService()
     @StateObject private var notifications = FocusNotificationService()
     @StateObject private var focusLaunchRouter = FocusLaunchRouter.shared
+    @StateObject private var releasePolicy = ReleasePolicyService()
 
     private var hasActiveRestrictions: Bool {
         focusSession.isActive
@@ -34,6 +35,7 @@ struct NoxaApp: App {
             || dailyLimits.isShieldActive
             || schedules.enabledCount > 0
             || InstagramSiteProtectionService.isAppBlockApplied
+            || YouTubeShortsProtectionService.isAppBlockApplied
     }
 
     var body: some Scene {
@@ -41,6 +43,10 @@ struct NoxaApp: App {
             Group {
                 if authentication.isBootstrapping {
                     NoxaLoadingView(message: "Opening Noxa…")
+                } else if releasePolicy.requiresUpdate
+                            && !focusSession.isActive
+                            && !focusSession.hasPomodoroCycle {
+                    UpdateRequiredView()
                 } else if hasActiveRestrictions
                             && (!authentication.isAuthenticated
                                 || (subscriptions.hasLoaded && !subscriptions.hasAccess)) {
@@ -51,9 +57,12 @@ struct NoxaApp: App {
                             initialMode: initialAuthenticationMode,
                             initialEmail: initialAuthenticationMode == .signIn
                                 ? (authentication.rememberedUserEmail ?? "")
-                                : ""
+                                : "",
+                            onBack: leaveAuthentication
                         )
-                    } else if onboarding.isPersonalizationRequested {
+                    } else if onboarding.isPersonalizationRequested
+                                || onboarding.hasUnfinishedNewUserDraft {
+                        // A relaunch quietly returns to an unfinished setup.
                         OnboardingView()
                     } else if authentication.hasRememberedAccount {
                         ReturningUserView()
@@ -64,14 +73,8 @@ struct NoxaApp: App {
                     for: authentication.userID,
                     remoteCompletion: authentication.hasCompletedOnboarding
                 ) {
-                    if onboarding.progress.hasSeenValueOverview,
-                       !onboarding.progress.hasSeenPricingPreview {
-                        PaywallView(allowsDismissal: false) {
-                            _ = onboarding.completePricingPreview()
-                        }
-                    } else {
-                        OnboardingView()
-                    }
+                    // Setup, the paywall and the Pact all live in the flow.
+                    OnboardingView()
                 } else {
                     if cloudSync.boundUserID != authentication.userID {
                         NoxaLoadingView(message: "Loading your account…")
@@ -97,9 +100,12 @@ struct NoxaApp: App {
             .environmentObject(cloudSync)
             .environmentObject(notifications)
             .environmentObject(focusLaunchRouter)
+            .environmentObject(releasePolicy)
             .task {
+                Task { await releasePolicy.refresh() }
                 RestrictionStoreMigration.migrateIfNeeded()
                 InstagramSiteProtectionService.reconcile()
+                YouTubeShortsProtectionService.reconcile()
                 restrictions.reconcile()
                 websites.reconcile()
                 analytics.configure()
@@ -117,7 +123,9 @@ struct NoxaApp: App {
             }
             .onChange(of: scenePhase) { newPhase in
                 guard newPhase == .active else { return }
+                Task { await releasePolicy.refresh() }
                 InstagramSiteProtectionService.reconcile()
+                YouTubeShortsProtectionService.reconcile()
                 reconcileFocusAndNotifications()
                 Task { await FocusPresentationCoordinator.reconcile(session: focusSession.activeSession) }
                 restrictions.reconcile()
@@ -223,6 +231,16 @@ struct NoxaApp: App {
         return mode
     }
 
+    /// Back from sign-in or sign-up: to the narrative when the user came from
+    /// it, otherwise to Welcome. Answers are kept either way.
+    private func leaveAuthentication() {
+        if onboarding.progress.hasSeenProductDemo && !onboarding.progress.isComplete {
+            onboarding.returnToPersonalization()
+        } else {
+            onboarding.clearTransientRoute()
+        }
+    }
+
     @MainActor
     private func reconcileFocusAndNotifications() {
         let previousCycleID = focusSession.pomodoroCycle?.id
@@ -255,6 +273,48 @@ struct NoxaApp: App {
             await subscriptions.unbind()
             return
         }
+        let localStore = AppGroupStore.shared
+        let previousLocalOwner = localStore.localConfigurationOwner
+        let legacyOwner = previousLocalOwner
+            ?? (try? localStore.loadSnapshot())?.onboarding.ownerUserID
+            ?? userID
+        // Keep the outgoing account's values for cloud cache migration before
+        // changing the editable website list or focus history.
+        let outgoingHistory = focusSession.history
+        let outgoingWebsites = websites.domains
+        schedules.bindAccount(userID, claimingUnownedRulesFor: legacyOwner)
+        dailyLimits.bindAccount(userID, claimingUnownedLimitsFor: legacyOwner)
+        do {
+            try localStore.bindEditableConfiguration(to: userID, legacyOwner: legacyOwner)
+        } catch {
+            // Do not show another account's editable choices if its saved
+            // profile cannot be decoded. Existing device commitments remain.
+            await authentication.signOut()
+            return
+        }
+        if legacyOwner != userID {
+            restrictions.reloadSelectionForAccount()
+            websites.reloadForAccount()
+            InstagramSiteProtectionService.reconcile()
+            YouTubeShortsProtectionService.reconcile()
+        }
+        // Older installations may have local history without a cloud owner.
+        // Claim it for the account that owned the device setup before loading
+        // the newly signed-in account's empty cache.
+        if legacyOwner != userID,
+           (try? localStore.loadCloudSyncState())?.userID == nil {
+            _ = cloudSync.prepareLocalData(
+                for: legacyOwner,
+                history: outgoingHistory,
+                websiteDomains: outgoingWebsites
+            )
+        }
+        let preparedCloudData = cloudSync.prepareLocalData(
+            for: userID,
+            history: outgoingHistory,
+            websiteDomains: outgoingWebsites
+        )
+        applyCloudResult(preparedCloudData)
         analytics.identify(userID: userID)
         await subscriptions.bind(to: userID)
     }
@@ -302,6 +362,7 @@ struct NoxaApp: App {
 /// access is lost while any local restriction is still enforcing.
 private struct RestrictionRecoveryView: View {
     @EnvironmentObject private var authentication: AuthenticationService
+    @EnvironmentObject private var subscriptions: SubscriptionService
     @EnvironmentObject private var focusSession: FocusSessionService
     @EnvironmentObject private var restrictions: ScreenTimeRestrictionService
     @EnvironmentObject private var websites: WebsiteBlocklistService
@@ -310,6 +371,7 @@ private struct RestrictionRecoveryView: View {
     @EnvironmentObject private var schedules: RestrictionScheduleService
     @EnvironmentObject private var notifications: FocusNotificationService
     @State private var isLoginPresented = false
+    @State private var isPaywallPresented = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -336,6 +398,17 @@ private struct RestrictionRecoveryView: View {
             if !authentication.isAuthenticated {
                 RecoveryActionButton(title: "Log In Again") {
                     isLoginPresented = true
+                }
+            } else if subscriptions.hasLoaded && !subscriptions.hasAccess {
+                RecoveryActionButton(title: "View Subscription Plans") {
+                    isPaywallPresented = true
+                }
+            }
+            if authentication.isAuthenticated
+                && !focusSession.isActive
+                && !focusSession.hasPomodoroCycle {
+                RecoveryActionButton(title: "Sign Out") {
+                    Task { await authentication.signOut() }
                 }
             }
 
@@ -376,6 +449,13 @@ private struct RestrictionRecoveryView: View {
                 }
             }
 
+            if YouTubeShortsProtectionService.isAppBlockApplied && !focusSession.isActive {
+                RecoveryActionButton(title: "Remove YouTube App Block") {
+                    AppGroupStore.shared.setYouTubeAppBlockEnabled(false)
+                    YouTubeShortsProtectionService.reconcile()
+                }
+            }
+
             if monitoring.isMonitoring {
                 RecoveryActionButton(title: "Stop Usage Monitor") {
                     monitoring.stop()
@@ -384,7 +464,12 @@ private struct RestrictionRecoveryView: View {
 
             if dailyLimits.isMonitoring || dailyLimits.isShieldActive {
                 RecoveryActionButton(title: "Stop Daily Limits") {
-                    dailyLimits.stopMonitoring()
+                    dailyLimits.requestStop()
+                }
+                if let message = dailyLimits.errorMessage {
+                    Text(message)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -410,6 +495,9 @@ private struct RestrictionRecoveryView: View {
                 initialMode: .signIn,
                 initialEmail: authentication.rememberedUserEmail ?? ""
             )
+        }
+        .sheet(isPresented: $isPaywallPresented) {
+            PaywallView(allowsDismissal: true)
         }
         .onChange(of: authentication.isAuthenticated) { isAuthenticated in
             if isAuthenticated {

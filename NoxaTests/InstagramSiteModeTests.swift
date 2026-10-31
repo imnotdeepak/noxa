@@ -1,5 +1,6 @@
 import FamilyControls
 import Foundation
+import ManagedSettings
 import Testing
 @testable import Noxa
 
@@ -32,15 +33,19 @@ import Testing
 @MainActor struct InstagramAppBlockTests {
     @Test func appBlockFollowsTheSafariFilterModeAndPaidAccess() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let paid = now.addingTimeInterval(60)
+        let paid = now.addingTimeInterval(3_600)
         let chosen = FamilyActivitySelection()
 
-        // An empty selection (nothing picked yet) never blocks.
-        #expect(!InstagramSiteProtectionService.shouldApplyAppBlock(
+        // Nothing picked yet still blocks, by Instagram's app ID.
+        #expect(InstagramSiteProtectionService.shouldApplyAppBlock(
             mode: .distractionFree, isEnabled: true, allowedUntil: paid, appSelection: chosen, now: now
         ))
-        #expect(!InstagramSiteProtectionService.shouldApplyAppBlock(
+        #expect(InstagramSiteProtectionService.shouldApplyAppBlock(
             mode: .distractionFree, isEnabled: true, allowedUntil: paid, appSelection: nil, now: now
+        ))
+        // Released 15 minutes before paid access ends.
+        #expect(!InstagramSiteProtectionService.shouldApplyAppBlock(
+            mode: .distractionFree, isEnabled: true, allowedUntil: now.addingTimeInterval(60), appSelection: nil, now: now
         ))
         // Off and expired access leave the app alone.
         #expect(!InstagramSiteProtectionService.shouldApplyAppBlock(
@@ -49,6 +54,15 @@ import Testing
         #expect(!InstagramSiteProtectionService.shouldApplyAppBlock(
             mode: .distractionFree, isEnabled: true, allowedUntil: now.addingTimeInterval(-1), appSelection: chosen, now: now
         ))
+    }
+
+    @Test func hidingReelsAlsoBlocksTheApp() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.InstagramAuto.\(UUID())"))
+        let store = AppGroupStore(defaults: defaults)
+        store.setInstagramSiteMode(.distractionFree)
+        #expect(store.instagramAppBlockEnabled)
+        store.setInstagramSiteMode(.off)
+        #expect(!store.instagramAppBlockEnabled)
     }
 
     @Test func chosenInstagramAppPersistsAndClears() throws {
@@ -64,5 +78,87 @@ import Testing
         #expect(try store.loadInstagramAppSelection() == nil)
         store.setInstagramSiteMode(.off)
         #expect(!store.instagramAppBlockEnabled)
+    }
+}
+
+@MainActor struct YouTubeShortsTests {
+    @Test func hidingShortsAlsoBlocksTheAppAndClears() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.YouTube.\(UUID())"))
+        let store = AppGroupStore(defaults: defaults)
+        #expect(!store.youtubeShortsHidden)
+
+        store.setYouTubeShortsHidden(true)
+        #expect(store.youtubeShortsHidden)
+        #expect(store.youtubeAppBlockEnabled)
+        // The Safari handler reads this exact key.
+        #expect(defaults.bool(forKey: "noxa.youtubeShortsHidden"))
+
+        store.clearYouTubeShorts()
+        #expect(!store.youtubeShortsHidden)
+        #expect(!store.youtubeAppBlockEnabled)
+    }
+
+    @Test func appBlockNeedsShortsHiddenOneAppAndPaidAccess() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let paid = now.addingTimeInterval(3_600)
+        let empty = FamilyActivitySelection()
+        // Nothing picked still blocks, by YouTube's app ID.
+        #expect(YouTubeShortsProtectionService.shouldApplyAppBlock(
+            shortsHidden: true, isEnabled: true, allowedUntil: paid, appSelection: nil, now: now
+        ))
+        #expect(YouTubeShortsProtectionService.shouldApplyAppBlock(
+            shortsHidden: true, isEnabled: true, allowedUntil: paid, appSelection: empty, now: now
+        ))
+        #expect(YouTubeShortsProtectionService.blockedApps(for: nil)
+            == [Application(bundleIdentifier: "com.google.ios.youtube")])
+        #expect(!YouTubeShortsProtectionService.shouldApplyAppBlock(
+            shortsHidden: false, isEnabled: true, allowedUntil: paid, appSelection: empty, now: now
+        ))
+        // Released 15 minutes ahead of paid access ending.
+        #expect(!YouTubeShortsProtectionService.shouldApplyAppBlock(
+            shortsHidden: true, isEnabled: true, allowedUntil: now.addingTimeInterval(600), appSelection: empty, now: now
+        ))
+    }
+}
+
+@MainActor struct ShortVideoFilterLockTests {
+    @Test func turningOnStartsAWeekAndTurningOffClearsIt() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.FilterLock.\(UUID())"))
+        let store = AppGroupStore(defaults: defaults)
+        #expect(store.instagramLockAnchor == nil)
+        store.setInstagramSiteMode(.distractionFree)
+        let anchor = try #require(store.instagramLockAnchor)
+        // Saving the same choice again doesn't restart the week.
+        store.setInstagramSiteMode(.distractionFree)
+        #expect(store.instagramLockAnchor == anchor)
+        store.setInstagramSiteMode(.off)
+        #expect(store.instagramLockAnchor == nil)
+
+        store.setYouTubeShortsHidden(true)
+        #expect(store.youtubeLockAnchor != nil)
+        store.clearYouTubeShorts()
+        #expect(store.youtubeLockAnchor == nil)
+    }
+
+    @Test func filtersAlreadyOnStartTheirWeekOnce() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.FilterLock.\(UUID())"))
+        let store = AppGroupStore(defaults: defaults)
+        defaults.set("distractionFree", forKey: "noxa.instagramSiteMode")
+        defaults.set(true, forKey: "noxa.youtubeShortsHidden")
+        let now = Date()
+        store.startMissingFilterLocks(at: now)
+        #expect(store.instagramLockAnchor == now)
+        #expect(store.youtubeLockAnchor == now)
+        store.startMissingFilterLocks(at: now.addingTimeInterval(60))
+        #expect(store.instagramLockAnchor == now)
+    }
+
+    @Test func instagramBlocksByAppIDWithoutAPick() {
+        let paid = Date().addingTimeInterval(3_600)
+        #expect(InstagramSiteProtectionService.shouldApplyAppBlock(
+            mode: .distractionFree, isEnabled: true, allowedUntil: paid, appSelection: nil
+        ))
+        #expect(InstagramSiteProtectionService.blockedApps(for: nil)
+            == [Application(bundleIdentifier: "com.burbn.instagram")])
     }
 }

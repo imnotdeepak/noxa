@@ -38,7 +38,7 @@
 	<key>PostHogAPIHost</key>
 	<string>https://us.i.posthog.com</string>
 	<key>PostHogProjectToken</key>
-	<string>phc_rqmg6rr7w7euzS58kjixPJLb7gv657sVkTttr9ejCEg4</string>
+	<string>phc_tiYcNF8me32cAGtsXSpXwCvyzRcYSjuhBWwQP3FuXowS</string>
 	<key>RevenueCatPublicSDKKey</key>
 	<string>appl_RwgZASjqEdFNITxDuiZGYlMYmAt</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

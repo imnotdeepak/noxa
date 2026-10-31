@@ -18,6 +18,8 @@ struct ScheduleRule: Codable, Equatable, Identifiable, Sendable {
     }
 
     let id: UUID
+    /// The Noxa account that created this rule. Nil only for pre-migration data.
+    var ownerUserID: UUID?
     var name: String
     var mode: Mode
     var selection: FamilyActivitySelection
@@ -29,16 +31,22 @@ struct ScheduleRule: Codable, Equatable, Identifiable, Sendable {
     var isEnabled: Bool
     var notifyAtStart: Bool
     var notifyAtEnd: Bool
+    /// Blocked hours only: the active window can't be weakened in Noxa.
+    var lockWhileActive: Bool
     var pendingLegacyRelaxation: PendingScheduleRelaxation?
+    /// Start of the weekly lock cycle: set when the schedule is created or
+    /// turned back on. Older schedules use their creation date.
+    var lockAnchor: Date
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, mode, selection, websiteDomains, weekdays
+        case id, ownerUserID, name, mode, selection, websiteDomains, weekdays
         case startMinutes, endMinutes, createdAt, isEnabled
-        case notifyAtStart, notifyAtEnd, pendingLegacyRelaxation
+        case notifyAtStart, notifyAtEnd, lockWhileActive, pendingLegacyRelaxation, lockAnchor
     }
 
     init(
         id: UUID = UUID(),
+        ownerUserID: UUID? = nil,
         name: String,
         mode: Mode,
         selection: FamilyActivitySelection,
@@ -50,9 +58,12 @@ struct ScheduleRule: Codable, Equatable, Identifiable, Sendable {
         isEnabled: Bool = true,
         notifyAtStart: Bool = false,
         notifyAtEnd: Bool = false,
-        pendingLegacyRelaxation: PendingScheduleRelaxation? = nil
+        lockWhileActive: Bool = false,
+        pendingLegacyRelaxation: PendingScheduleRelaxation? = nil,
+        lockAnchor: Date? = nil
     ) {
         self.id = id
+        self.ownerUserID = ownerUserID
         self.name = name
         self.mode = mode
         self.selection = selection
@@ -64,12 +75,15 @@ struct ScheduleRule: Codable, Equatable, Identifiable, Sendable {
         self.isEnabled = isEnabled
         self.notifyAtStart = notifyAtStart
         self.notifyAtEnd = notifyAtEnd
+        self.lockWhileActive = lockWhileActive
         self.pendingLegacyRelaxation = pendingLegacyRelaxation
+        self.lockAnchor = lockAnchor ?? createdAt
     }
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id)
+        ownerUserID = try values.decodeIfPresent(UUID.self, forKey: .ownerUserID)
         name = try values.decode(String.self, forKey: .name)
         mode = try values.decode(Mode.self, forKey: .mode)
         selection = try values.decode(FamilyActivitySelection.self, forKey: .selection)
@@ -81,9 +95,12 @@ struct ScheduleRule: Codable, Equatable, Identifiable, Sendable {
         isEnabled = try values.decode(Bool.self, forKey: .isEnabled)
         notifyAtStart = try values.decodeIfPresent(Bool.self, forKey: .notifyAtStart) ?? false
         notifyAtEnd = try values.decodeIfPresent(Bool.self, forKey: .notifyAtEnd) ?? false
+        // Schedules saved before the lock existed stay unlocked.
+        lockWhileActive = try values.decodeIfPresent(Bool.self, forKey: .lockWhileActive) ?? false
         pendingLegacyRelaxation = try values.decodeIfPresent(
             PendingScheduleRelaxation.self, forKey: .pendingLegacyRelaxation
         )
+        lockAnchor = try values.decodeIfPresent(Date.self, forKey: .lockAnchor) ?? createdAt
     }
 
     init(legacy: RestrictionScheduleConfiguration) {

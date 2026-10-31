@@ -13,6 +13,45 @@ struct FocusPeriodStatistics: Equatable, Sendable {
     }
 }
 
+enum FocusPeriodUnit: CaseIterable, Hashable, Sendable {
+    case day, week, month, year
+
+    var component: Calendar.Component {
+        switch self {
+        case .day: .day
+        case .week: .weekOfYear
+        case .month: .month
+        case .year: .year
+        }
+    }
+}
+
+struct FocusPeriodSummary: Equatable, Sendable {
+    let focusMinutes: Int
+    let completedSessions: Int
+    let abandonedSessions: Int
+    let focusedDays: Int
+    let longestSessionMinutes: Int
+    let averageMinutesPerFocusedDay: Int
+
+    /// Completed out of completed plus ended early or interrupted.
+    var completionRate: Int {
+        let attempted = completedSessions + abandonedSessions
+        guard attempted > 0 else { return 0 }
+        return Int((Double(completedSessions) / Double(attempted) * 100).rounded())
+    }
+}
+
+struct FocusBucket: Equatable, Identifiable, Sendable {
+    let start: Date
+    let minutes: Int
+    let sessions: Int
+    /// Not happened yet: drawn blank, never as a recorded zero.
+    var isFuture = false
+
+    var id: Date { start }
+}
+
 struct FocusStatistics: Equatable, Sendable {
     let completedSessions: Int
     let abandonedSessions: Int
@@ -87,6 +126,145 @@ struct FocusStatistics: Equatable, Sendable {
             abandonedSessions: abandoned.count,
             focusedDays: Set(completed.map { calendar.startOfDay(for: $0.startedAt) }).count
         )
+    }
+
+    /// Different days with at least one completed session, all time.
+    static func totalFocusedDays(history: [ActiveSessionRecord], calendar: Calendar) -> Int {
+        Set(history.filter { $0.outcome.countsTowardFocusStatistics }
+            .map { calendar.startOfDay(for: $0.startedAt) }).count
+    }
+
+    /// Completed sessions whose blocked time reached `minimumMinutes`.
+    static func completedSessionCount(history: [ActiveSessionRecord], minimumMinutes: Int) -> Int {
+        history.filter {
+            $0.outcome.countsTowardFocusStatistics && protectedDurationSeconds(for: $0) >= minimumMinutes * 60
+        }.count
+    }
+
+    /// The calendar Insights uses: weeks run Monday to Sunday.
+    static func insightsCalendar(_ base: Calendar = .autoupdatingCurrent) -> Calendar {
+        var calendar = base
+        calendar.firstWeekday = 2
+        calendar.minimumDaysInFirstWeek = 4
+        return calendar
+    }
+
+    static func interval(
+        of unit: FocusPeriodUnit,
+        containing date: Date,
+        calendar: Calendar
+    ) -> DateInterval {
+        calendar.dateInterval(of: unit.component, for: date)
+            ?? DateInterval(start: calendar.startOfDay(for: date), duration: 86_400)
+    }
+
+    /// Totals for one calendar period. Sessions count in the period where
+    /// they started, as the chart buckets do.
+    static func summary(
+        history: [ActiveSessionRecord],
+        in interval: DateInterval,
+        calendar: Calendar
+    ) -> FocusPeriodSummary {
+        let inPeriod = history.filter { $0.startedAt >= interval.start && $0.startedAt < interval.end }
+        let completed = inPeriod.filter { $0.outcome.countsTowardFocusStatistics }
+        let abandoned = inPeriod.filter { [.endedEarly, .interrupted].contains($0.outcome) }
+        let protected = inPeriod.filter { $0.outcome.countsTowardProtectedTime }
+        let focusedDays = Set(completed.map { calendar.startOfDay(for: $0.startedAt) }).count
+        let totalMinutes = minutes(in: protected)
+        return FocusPeriodSummary(
+            focusMinutes: totalMinutes,
+            completedSessions: completed.count,
+            abandonedSessions: abandoned.count,
+            focusedDays: focusedDays,
+            longestSessionMinutes: protected.map { protectedDurationSeconds(for: $0) / 60 }.max() ?? 0,
+            averageMinutesPerFocusedDay: focusedDays == 0 ? 0 : totalMinutes / focusedDays
+        )
+    }
+
+    /// Chart points for one calendar period: four-hour blocks for a day,
+    /// days for a week or month, and months for a year.
+    static func buckets(
+        history: [ActiveSessionRecord],
+        in interval: DateInterval,
+        unit: FocusPeriodUnit,
+        now: Date = Date(),
+        calendar: Calendar
+    ) -> [FocusBucket] {
+        let protected = history.filter { $0.outcome.countsTowardProtectedTime }
+        let step: (component: Calendar.Component, value: Int) = switch unit {
+        case .day: (.hour, 4)
+        case .week, .month: (.day, 1)
+        case .year: (.month, 1)
+        }
+        var buckets: [FocusBucket] = []
+        var start = interval.start
+        while start < interval.end, let end = calendar.date(byAdding: step.component, value: step.value, to: start) {
+            let inBucket = protected.filter { $0.startedAt >= start && $0.startedAt < end }
+            buckets.append(FocusBucket(
+                start: start,
+                minutes: minutes(in: inBucket),
+                sessions: inBucket.count,
+                isFuture: start > now
+            ))
+            start = end
+        }
+        return buckets
+    }
+
+    /// Focus minutes in this period against the same stretch of the
+    /// previous one: for the current period, only as far as `now` has got,
+    /// so a half-finished week is compared with the first half of the last.
+    /// Nil when there is no history from before this period to compare with.
+    static func comparison(
+        history: [ActiveSessionRecord],
+        in interval: DateInterval,
+        unit: FocusPeriodUnit,
+        now: Date,
+        calendar: Calendar
+    ) -> (current: Int, previous: Int)? {
+        guard history.contains(where: { $0.startedAt < interval.start }),
+              let previousStart = calendar.date(byAdding: unit.component, value: -1, to: interval.start) else { return nil }
+        let currentEnd = min(interval.end, max(now, interval.start))
+        let span = currentEnd.timeIntervalSince(interval.start)
+        let previous = DateInterval(start: previousStart, end: min(previousStart.addingTimeInterval(span), interval.start))
+        let current = DateInterval(start: interval.start, end: currentEnd)
+        return (
+            summary(history: history, in: current, calendar: calendar).focusMinutes,
+            summary(history: history, in: previous, calendar: calendar).focusMinutes
+        )
+    }
+
+    /// Monday-to-Sunday days of the week containing `date`, and whether each
+    /// had a completed session.
+    static func focusedDays(
+        inWeekContaining date: Date,
+        history: [ActiveSessionRecord],
+        calendar: Calendar
+    ) -> [(day: Date, focused: Bool)] {
+        let week = interval(of: .week, containing: date, calendar: calendar)
+        let focusedDays = Set(
+            history.filter { $0.outcome.countsTowardFocusStatistics }
+                .map { calendar.startOfDay(for: $0.startedAt) }
+        )
+        return (0..<7).compactMap { offset in
+            calendar.date(byAdding: .day, value: offset, to: week.start).map { ($0, focusedDays.contains($0)) }
+        }
+    }
+
+    /// Days in the last week with a completed session, oldest first.
+    static func focusedDaysInLastWeek(
+        history: [ActiveSessionRecord],
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> [(day: Date, focused: Bool)] {
+        let today = calendar.startOfDay(for: now)
+        let focusedDays = Set(
+            history.filter { $0.outcome.countsTowardFocusStatistics }
+                .map { calendar.startOfDay(for: $0.startedAt) }
+        )
+        return (0..<7).reversed().compactMap { offset in
+            calendar.date(byAdding: .day, value: -offset, to: today).map { ($0, focusedDays.contains($0)) }
+        }
     }
 
     private static func minutes(in records: [ActiveSessionRecord]) -> Int {

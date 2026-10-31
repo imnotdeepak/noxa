@@ -6,6 +6,10 @@
 
 **Last updated:** October 20, 2026
 
+> **October 28, 2026 update:** Parts of this document are out of date. `docs/product-roadmap-decisions.md` is the current source for product decisions. In particular, the optional Strict Mode (5.4) is replaced by always-committed Focus with a four-hour maximum. Instagram Full Block (5.2) was removed. Locked schedules were added; the Noxa Key is deferred. Unchecked code tasks below are not the current product state. `docs/physical-device-restriction-checks.md` is the evidence log.
+
+> **October 30, 2026 release scope:** The user approved including the YouTube Shorts Safari filter in the next update. The earlier references below to YouTube as a later release are superseded. On-device validation remains required before shipping.
+
 **Repository:** https://github.com/imnotdeepak/noxa
 
 ---

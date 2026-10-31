@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { requestPostHogDeletion } from "./posthog.mjs";
 
 const jsonHeaders = { "Content-Type": "application/json" };
 
@@ -50,7 +51,11 @@ Deno.serve(async (request) => {
     });
   }
 
-  return new Response(JSON.stringify({ deleted: true }), {
+  // The app identifies analytics by this user ID. Request analytics deletion
+  // only after the account itself is deleted; PostHog errors do not undo it.
+  const analytics = await requestPostHogDeletion(Deno.env, data.user.id);
+
+  return new Response(JSON.stringify({ deleted: true, analytics }), {
     status: 200,
     headers: jsonHeaders,
   });

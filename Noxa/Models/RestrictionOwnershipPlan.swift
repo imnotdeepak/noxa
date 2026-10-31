@@ -31,6 +31,7 @@ enum RestrictionOwnershipPlan {
         var manualShield: ManualShieldConfiguration?
         var blockedWebsiteDomains: [String] = []
         var instagramAppBlock: FamilyActivitySelection?
+        var youtubeAppBlock: FamilyActivitySelection?
     }
 
     static func evaluate(
@@ -95,6 +96,14 @@ enum RestrictionOwnershipPlan {
                 id: RestrictionRuleID(source: .instagramAppBlock, value: fixedOwnerID),
                 effect: .block,
                 targets: targets(selection: instagramApp, domains: [])
+            ))
+        }
+
+        if let youtubeApp = inputs.youtubeAppBlock {
+            rules.append(RestrictionRule(
+                id: RestrictionRuleID(source: .youtubeAppBlock, value: fixedOwnerID),
+                effect: .block,
+                targets: targets(selection: youtubeApp, domains: [])
             ))
         }
 

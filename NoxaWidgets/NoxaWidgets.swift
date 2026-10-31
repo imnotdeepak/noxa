@@ -4,9 +4,19 @@ import WidgetKit
 
 private struct FocusWidgetEntry: TimelineEntry {
     let date: Date
-    let plannedEndAt: Date?
-    let breakEndsAt: Date?
-    let isStrict: Bool
+    /// The current focus interval, or the Pomodoro break; nil when idle.
+    let interval: DateInterval?
+    let isBreak: Bool
+
+    static func idle(at date: Date) -> Self {
+        FocusWidgetEntry(date: date, interval: nil, isBreak: false)
+    }
+
+    /// How much of the interval has passed at this entry, 0...1.
+    var progress: Double {
+        guard let interval, interval.duration > 0 else { return 0 }
+        return min(max(date.timeIntervalSince(interval.start) / interval.duration, 0), 1)
+    }
 }
 
 private struct PomodoroWidgetCycle: Decodable {
@@ -26,14 +36,13 @@ private struct PomodoroWidgetCycle: Decodable {
     }
 
     let plan: Plan
-    let isStrict: Bool
 }
 
 private struct FocusSnapshot: Decodable {
     struct Session: Decodable {
+        let startedAt: Date
         let plannedEndAt: Date
         let outcome: String
-        let isStrict: Bool
     }
 
     let activeSession: Session?
@@ -41,7 +50,7 @@ private struct FocusSnapshot: Decodable {
 
 private struct FocusWidgetProvider: TimelineProvider {
     func placeholder(in context: Context) -> FocusWidgetEntry {
-        FocusWidgetEntry(date: Date(), plannedEndAt: nil, breakEndsAt: nil, isStrict: false)
+        .idle(at: Date())
     }
 
     func getSnapshot(in context: Context, completion: @escaping (FocusWidgetEntry) -> Void) {
@@ -51,18 +60,25 @@ private struct FocusWidgetProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<FocusWidgetEntry>) -> Void) {
         let now = Date()
         let current = entry(at: now)
-        var entries = [current]
+        var dates: Set<Date> = [now]
         if let cycle = pomodoroCycle() {
-            let boundaries = (1...4).flatMap { round -> [Date] in
+            for round in 1...4 {
                 let interval = cycle.plan.workInterval(round: round)
-                return [interval.start, interval.end]
+                dates.formUnion([interval.start, interval.end].filter { $0 > now })
             }
-            entries += boundaries.filter { $0 > now }.map { entry(at: $0) }
-        } else if let end = current.plannedEndAt {
-            entries.append(FocusWidgetEntry(
-                date: end, plannedEndAt: nil, breakEndsAt: nil, isStrict: false
-            ))
+        } else if let end = current.interval?.end {
+            dates.insert(end)
         }
+        // A step each minute so the ring fills; capped at six hours.
+        let last = dates.max() ?? now
+        if current.interval != nil || last > now {
+            var tick = now.addingTimeInterval(60)
+            while tick < last, tick < now.addingTimeInterval(6 * 3_600) {
+                dates.insert(tick)
+                tick = tick.addingTimeInterval(60)
+            }
+        }
+        let entries = dates.sorted().map { entry(at: $0) }
         completion(Timeline(entries: entries, policy: .never))
     }
 
@@ -71,21 +87,15 @@ private struct FocusWidgetProvider: TimelineProvider {
             for round in 1...4 {
                 let interval = cycle.plan.workInterval(round: round)
                 if date >= interval.start && date < interval.end {
-                    return FocusWidgetEntry(
-                        date: date,
-                        plannedEndAt: interval.end,
-                        breakEndsAt: nil,
-                        isStrict: cycle.isStrict
-                    )
+                    return FocusWidgetEntry(date: date, interval: interval, isBreak: false)
                 }
                 if round < 4, date >= interval.end {
                     let nextStart = cycle.plan.workInterval(round: round + 1).start
                     if date < nextStart {
                         return FocusWidgetEntry(
                             date: date,
-                            plannedEndAt: nil,
-                            breakEndsAt: nextStart,
-                            isStrict: cycle.isStrict
+                            interval: DateInterval(start: interval.end, end: nextStart),
+                            isBreak: true
                         )
                     }
                 }
@@ -96,14 +106,14 @@ private struct FocusWidgetProvider: TimelineProvider {
               let snapshot = try? JSONDecoder().decode(FocusSnapshot.self, from: data),
               let session = snapshot.activeSession,
               session.outcome == "active",
-              session.plannedEndAt > date else {
-            return FocusWidgetEntry(date: date, plannedEndAt: nil, breakEndsAt: nil, isStrict: false)
+              session.plannedEndAt > date,
+              session.startedAt < session.plannedEndAt else {
+            return .idle(at: date)
         }
         return FocusWidgetEntry(
             date: date,
-            plannedEndAt: session.plannedEndAt,
-            breakEndsAt: nil,
-            isStrict: session.isStrict
+            interval: DateInterval(start: session.startedAt, end: session.plannedEndAt),
+            isBreak: false
         )
     }
 
@@ -114,75 +124,123 @@ private struct FocusWidgetProvider: TimelineProvider {
     }
 }
 
+private enum WidgetPalette {
+    static let background = Color(red: 3 / 255, green: 5 / 255, blue: 3 / 255)
+    static let track = Color(red: 23 / 255, green: 27 / 255, blue: 23 / 255)
+    static let accent = Color(red: 168 / 255, green: 240 / 255, blue: 0)
+    static let secondary = Color(red: 168 / 255, green: 176 / 255, blue: 165 / 255)
+}
+
 private struct FocusWidgetView: View {
     @Environment(\.widgetFamily) private var family
     let entry: FocusWidgetEntry
 
-    private var isActive: Bool { entry.plannedEndAt != nil || entry.breakEndsAt != nil }
-    private var isBreak: Bool { entry.breakEndsAt != nil }
-    private var timerEndAt: Date? { entry.plannedEndAt ?? entry.breakEndsAt }
-
     @ViewBuilder
     var body: some View {
         if #available(iOS 17.0, *) {
-            content.containerBackground(for: .widget) {
-                Color(red: 0.06, green: 0.10, blue: 0.10)
-            }
+            content.containerBackground(for: .widget) { WidgetPalette.background }
         } else {
-            content.background(Color(red: 0.06, green: 0.10, blue: 0.10))
+            content.background(WidgetPalette.background)
         }
     }
 
     private var content: some View {
         Group {
-            switch family {
-            case .accessoryCircular:
-                VStack(spacing: 2) {
-                    Image(systemName: isBreak ? "cup.and.saucer" : isActive ? "timer" : "play.fill")
-                    if let end = timerEndAt {
-                        Text(timerInterval: entry.date...end, countsDown: true, showsHours: false)
-                            .font(.caption2.monospacedDigit())
-                    } else {
-                        Text("Focus").font(.caption2)
-                    }
-                }
-            case .accessoryRectangular:
-                HStack(spacing: 8) {
-                    Image(systemName: isBreak ? "cup.and.saucer" : isActive ? "timer" : "play.circle.fill")
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(isBreak ? "Break" : isActive ? "Focus" : "Start Focus")
-                            .font(.headline)
-                        if let end = timerEndAt {
-                            Text(timerInterval: entry.date...end, countsDown: true, showsHours: false)
-                                .monospacedDigit()
-                        } else {
-                            Text("Choose your time in Noxa")
-                                .font(.caption)
-                        }
-                    }
-                }
-            default:
-                VStack(alignment: .leading, spacing: 10) {
-                    Label("NOXA FOCUS", systemImage: isBreak ? "cup.and.saucer" : isActive ? "timer" : "play.circle.fill")
-                        .font(.caption.weight(.bold))
-                    Spacer(minLength: 4)
-                    if let end = timerEndAt {
-                        Text(timerInterval: entry.date...end, countsDown: true, showsHours: false)
-                            .font(.title.bold().monospacedDigit())
-                            .minimumScaleFactor(0.6)
-                        Text(isBreak ? "Pomodoro break" : entry.isStrict ? "Strict session" : "Focus session")
-                            .font(.caption)
-                    } else {
-                        Text("Start Focus")
-                            .font(.headline)
-                        Text("One hour selected · change it before starting")
-                            .font(.caption)
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            if let interval = entry.interval {
+                active(interval)
+            } else {
+                idle
             }
         }
-        .widgetURL(URL(string: isActive ? "noxa://focus/active" : "noxa://focus/home"))
+        .widgetURL(URL(string: entry.interval == nil ? "noxa://focus/start" : "noxa://focus/active"))
+    }
+
+    @ViewBuilder
+    private var idle: some View {
+        switch family {
+        case .accessoryCircular, .accessoryRectangular:
+            Text("Start Focus")
+                .font(.headline)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        default:
+            Text("Start Focus")
+                .font(.system(size: family == .systemSmall ? 24 : 28, weight: .bold))
+                .foregroundStyle(WidgetPalette.accent)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private func active(_ interval: DateInterval) -> some View {
+        let range = interval.start...interval.end
+        let label = entry.isBreak ? "Break" : "Focus"
+        switch family {
+        case .accessoryCircular:
+            Gauge(value: entry.progress) {
+                Text(label)
+            } currentValueLabel: {
+                Text(timerInterval: range, countsDown: true, showsHours: false)
+                    .monospacedDigit()
+            }
+            .gaugeStyle(.accessoryCircularCapacity)
+        case .accessoryRectangular:
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(label).font(.headline)
+                    Spacer()
+                    Text(timerInterval: range, countsDown: true, showsHours: false)
+                        .monospacedDigit()
+                }
+                ProgressView(timerInterval: range, countsDown: false) { EmptyView() } currentValueLabel: { EmptyView() }
+                    .progressViewStyle(.linear)
+            }
+        case .systemSmall:
+            // A ring that fills as the session runs, with time left inside.
+            ZStack {
+                Circle()
+                    .stroke(WidgetPalette.track, lineWidth: 10)
+                Circle()
+                    .trim(from: 0, to: entry.progress)
+                    .stroke(WidgetPalette.accent, style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                VStack(spacing: 2) {
+                    Text(timerInterval: range, countsDown: true, showsHours: false)
+                        .font(.system(size: 22, weight: .bold).monospacedDigit())
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.white)
+                    Text(label.uppercased())
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(1)
+                        .foregroundStyle(WidgetPalette.secondary)
+                }
+                .frame(width: 96)
+            }
+            .padding(4)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        default:
+            // A bar that fills left to right as the session runs.
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(label)
+                        .font(.headline)
+                        .foregroundStyle(WidgetPalette.secondary)
+                    Spacer()
+                    Text(timerInterval: range, countsDown: true, showsHours: false)
+                        .font(.system(size: 34, weight: .bold).monospacedDigit())
+                        .multilineTextAlignment(.trailing)
+                        .foregroundStyle(.white)
+                }
+                ProgressView(timerInterval: range, countsDown: false) { EmptyView() } currentValueLabel: { EmptyView() }
+                    .progressViewStyle(.linear)
+                    .tint(WidgetPalette.accent)
+                Text("Ends \(interval.end.formatted(date: .omitted, time: .shortened))")
+                    .font(.caption)
+                    .foregroundStyle(WidgetPalette.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        }
     }
 }
 
@@ -193,7 +251,7 @@ private struct FocusWidget: Widget {
         StaticConfiguration(kind: kind, provider: FocusWidgetProvider()) { entry in
             FocusWidgetView(entry: entry)
         }
-        .configurationDisplayName("Noxa Focus")
+        .configurationDisplayName("Focus")
         .description("Start a session or see the time remaining.")
         .supportedFamilies([.systemSmall, .systemMedium, .accessoryCircular, .accessoryRectangular])
     }
@@ -202,55 +260,82 @@ private struct FocusWidget: Widget {
 private struct FocusLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: FocusActivityAttributes.self) { context in
-            HStack(spacing: 12) {
-                Image(systemName: context.attributes.isStrict ? "lock.fill" : "timer")
-                VStack(alignment: .leading) {
-                    if context.isStale {
-                        Text("Focus interval ended")
+            let range = context.state.startedAt...context.state.plannedEndAt
+            VStack(alignment: .leading, spacing: 10) {
+                if context.isStale {
+                    Text("Focus ended")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                    Text("Open Noxa for current status")
+                        .font(.subheadline)
+                        .foregroundStyle(WidgetPalette.secondary)
+                } else {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Focus")
                             .font(.headline)
-                        Text("Open Noxa for current status")
-                            .font(.subheadline)
-                    } else {
-                        Text(context.attributes.isStrict ? "Strict Focus" : "Focus")
-                            .font(.headline)
-                        Text(timerInterval: context.state.startedAt...context.state.plannedEndAt, countsDown: true)
-                            .font(.title.bold().monospacedDigit())
+                            .foregroundStyle(WidgetPalette.secondary)
+                        Spacer()
+                        Text(timerInterval: range, countsDown: true)
+                            .font(.system(size: 30, weight: .bold).monospacedDigit())
+                            .multilineTextAlignment(.trailing)
+                            .foregroundStyle(.white)
                     }
+                    ProgressView(timerInterval: range, countsDown: false) { EmptyView() } currentValueLabel: { EmptyView() }
+                        .progressViewStyle(.linear)
+                        .tint(WidgetPalette.accent)
                 }
-                Spacer()
             }
             .padding()
-            .activityBackgroundTint(Color(red: 0.06, green: 0.10, blue: 0.10))
+            .activityBackgroundTint(WidgetPalette.background)
             .activitySystemActionForegroundColor(.white)
             .widgetURL(URL(string: "noxa://focus/active"))
         } dynamicIsland: { context in
-            DynamicIsland {
+            let range = context.state.startedAt...context.state.plannedEndAt
+            return DynamicIsland {
+                // Inset so the corners of the island don't clip the text.
                 DynamicIslandExpandedRegion(.leading) {
-                    Label("Focus", systemImage: "timer")
+                    Text("Focus")
+                        .font(.headline)
+                        .foregroundStyle(WidgetPalette.accent)
+                        .padding(.leading, 8)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    if context.isStale {
-                        Text("Ended")
-                    } else {
-                        Text(timerInterval: context.state.startedAt...context.state.plannedEndAt, countsDown: true)
-                            .monospacedDigit()
+                    Group {
+                        if context.isStale {
+                            Text("Ended")
+                        } else {
+                            Text(timerInterval: range, countsDown: true)
+                                .monospacedDigit()
+                                .multilineTextAlignment(.trailing)
+                        }
                     }
+                    .padding(.trailing, 8)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    Text(context.isStale
-                         ? "Open Noxa for current status"
-                         : context.attributes.isStrict ? "Strict session" : "Focus session")
+                    if context.isStale {
+                        Text("Open Noxa for current status")
+                    } else {
+                        ProgressView(timerInterval: range, countsDown: false) { EmptyView() } currentValueLabel: { EmptyView() }
+                            .progressViewStyle(.linear)
+                            .tint(WidgetPalette.accent)
+                    }
                 }
             } compactLeading: {
-                Image(systemName: "timer")
+                ProgressView(timerInterval: range, countsDown: false) { EmptyView() } currentValueLabel: { EmptyView() }
+                    .progressViewStyle(.circular)
+                    .tint(WidgetPalette.accent)
             } compactTrailing: {
                 if context.isStale {
                     Text("Done")
                 } else {
-                    Text(context.state.plannedEndAt, style: .timer)
+                    Text(timerInterval: range, countsDown: true, showsHours: false)
+                        .monospacedDigit()
+                        .frame(maxWidth: 52)
                 }
             } minimal: {
-                Image(systemName: "timer")
+                ProgressView(timerInterval: range, countsDown: false) { EmptyView() } currentValueLabel: { EmptyView() }
+                    .progressViewStyle(.circular)
+                    .tint(WidgetPalette.accent)
             }
             .widgetURL(URL(string: "noxa://focus/active"))
         }
@@ -264,3 +349,28 @@ struct NoxaWidgets: WidgetBundle {
         FocusLiveActivityWidget()
     }
 }
+
+#if DEBUG
+@available(iOS 17.0, *)
+#Preview("Small", as: .systemSmall) {
+    FocusWidget()
+} timeline: {
+    FocusWidgetEntry.idle(at: .now)
+    FocusWidgetEntry(date: .now, interval: DateInterval(start: .now.addingTimeInterval(-600), duration: 1_800), isBreak: false)
+}
+
+@available(iOS 17.0, *)
+#Preview("Medium", as: .systemMedium) {
+    FocusWidget()
+} timeline: {
+    FocusWidgetEntry.idle(at: .now)
+    FocusWidgetEntry(date: .now, interval: DateInterval(start: .now.addingTimeInterval(-600), duration: 1_800), isBreak: false)
+}
+
+@available(iOS 17.0, *)
+#Preview("Live Activity", as: .content, using: FocusActivityAttributes(sessionID: UUID(), isStrict: true)) {
+    FocusLiveActivityWidget()
+} contentStates: {
+    FocusActivityAttributes.ContentState(startedAt: .now.addingTimeInterval(-600), plannedEndAt: .now.addingTimeInterval(1_200))
+}
+#endif

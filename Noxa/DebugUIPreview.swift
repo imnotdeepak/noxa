@@ -19,7 +19,7 @@ struct NoxaUIPreviewApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            previewRoot
                 .environmentObject(authentication)
                 .environmentObject(AnalyticsService.shared)
                 .environmentObject(subscriptions)
@@ -34,6 +34,24 @@ struct NoxaUIPreviewApp: App {
                 .environmentObject(notifications)
                 .environmentObject(FocusLaunchRouter.shared)
                 .task { seed() }
+        }
+    }
+
+    /// `-NoxaOnboardingStep N` shows onboarding step N (0 is Welcome) with
+    /// its routing guards off, so each screen can be reviewed directly.
+    @ViewBuilder
+    private var previewRoot: some View {
+        let arguments = CommandLine.arguments
+        if let index = arguments.firstIndex(of: "-NoxaOnboardingStep"),
+           arguments.indices.contains(index + 1),
+           let number = Int(arguments[index + 1]) {
+            if number == 0 {
+                OnboardingWelcomeView()
+            } else {
+                OnboardingView(previewStep: OnboardingStep(rawValue: number - 1) ?? .goals)
+            }
+        } else {
+            ContentView()
         }
     }
 

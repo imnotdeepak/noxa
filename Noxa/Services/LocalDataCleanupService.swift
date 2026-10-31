@@ -11,6 +11,7 @@ import Foundation
 @MainActor
 enum LocalDataCleanupService {
     static func clear(
+        accountID: UUID,
         focusSession: FocusSessionService,
         restrictions: ScreenTimeRestrictionService,
         monitoring: DeviceActivityMonitoringService,
@@ -23,19 +24,21 @@ enum LocalDataCleanupService {
     ) {
         let store = store ?? AppGroupStore.shared
         monitoring.stop()
-        dailyLimits.clearConfigurations()
-        schedules.clearConfigurations()
-        restrictions.clearSelection(force: true)
-        websites.removeAllDomains(force: true)
-        focusSession.clearAllLocalData()
+        dailyLimits.removeConfigurations(ownedBy: accountID)
+        schedules.removeConfigurations(ownedBy: accountID)
+        restrictions.removeShield(force: true)
+        store.removeEditableConfiguration(for: accountID)
+        restrictions.reloadSelectionForAccount()
+        websites.reloadForAccount()
+        focusSession.replaceHistory([])
+        store.clearScreenTimeAccessPauses()
+        store.clearLegacyStrictModePreference()
         cloudSync.clearState()
         _ = onboarding.reset()
         store.clearCloudSyncState()
-        store.clearCloudAccountCaches()
+        store.removeCloudAccountCache(userID: accountID)
         store.setSafariFilterAllowedUntil(nil)
-        store.clearInstagramSiteMode()
-        store.clearInstagramAppSelection()
-        store.setInstagramAppBlockEnabled(false)
         InstagramSiteProtectionService.reconcile(store: store)
+        YouTubeShortsProtectionService.reconcile(store: store)
     }
 }

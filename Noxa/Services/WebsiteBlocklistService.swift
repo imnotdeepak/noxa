@@ -30,6 +30,14 @@ final class WebsiteBlocklistService: ObservableObject {
         self.isBlocklistActive = self.store.isWebsiteShieldActive
     }
 
+    func reloadForAccount() {
+        domains = (try? store.loadWebsiteBlocklist()) ?? []
+        // The outgoing account's manual website block is cleared or replaced
+        // with this account's saved choice.
+        reconcile()
+        errorMessage = nil
+    }
+
     var isLockedForFocusSession: Bool {
         store.hasActiveFocusSession() || store.hasActivePomodoroCycle()
     }
@@ -54,12 +62,15 @@ final class WebsiteBlocklistService: ObservableObject {
                 errorMessage = "Changes can be made after this Pomodoro cycle ends."
                 return false
             }
-            return addDomainToActiveSession(domain)
+            let added = addDomainToActiveSession(domain)
+            if added { AnalyticsService.shared.capture(.blockedWebsiteAdded(totalCount: domains.count)) }
+            return added
         }
 
         domains.append(domain)
         domains.sort()
         persist()
+        AnalyticsService.shared.capture(.blockedWebsiteAdded(totalCount: domains.count))
         return true
     }
 
@@ -108,8 +119,12 @@ final class WebsiteBlocklistService: ObservableObject {
             errorMessage = "Blocklist changes are locked until the focus session ends."
             return
         }
+        let countBefore = domains.count
         domains.removeAll { $0 == domain }
         persist()
+        if domains.count < countBefore {
+            AnalyticsService.shared.capture(.blockedWebsiteRemoved(totalCount: domains.count))
+        }
     }
 
     /// Replaces cloud-supported domains after account hydration or merging.

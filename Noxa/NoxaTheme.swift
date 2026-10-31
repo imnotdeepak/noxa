@@ -2,27 +2,49 @@ import SwiftUI
 import UIKit
 
 enum NoxaTheme {
-    static let background = Color(red: 7.0 / 255.0, green: 21.0 / 255.0, blue: 15.0 / 255.0)
-    static let elevated = Color.white.opacity(0.075)
-    static let border = Color.white.opacity(0.13)
-    static let subtleBorder = Color.white.opacity(0.075)
-    static let primaryText = Color.white.opacity(0.96)
-    static let secondaryText = Color.white.opacity(0.58)
-    static let accent = Color(red: 138.0 / 255.0, green: 206.0 / 255.0, blue: 0)
+    // Tokens from the v3 design system: black UI with green light.
+    static let background = Color(hex: 0x030503)
+    static let backgroundSecondary = Color(hex: 0x070A07)
+    static let surface = Color(hex: 0x101410)
+    static let elevated = Color(hex: 0x171B17)
+    static let pressed = Color(hex: 0x222922)
+    static let border = Color(hex: 0x293029)
+    static let subtleBorder = Color(hex: 0x293029).opacity(0.6)
+    static let primaryText = Color(hex: 0xF4F7F2)
+    static let secondaryText = Color(hex: 0xA8B0A5)
+    static let tertiaryText = Color(hex: 0x858F82)
+    static let accent = Color(hex: 0xA8F000)
+    static let accentBright = Color(hex: 0xC7FF57)
+    static let accentMuted = Color(hex: 0x799A50)
+    static let accentSoft = Color(hex: 0x7FBF2A)
+    static let olive = Color(hex: 0x32421E)
+    /// Cards are lit from the top left.
+    static let surfaceGradient = LinearGradient(
+        colors: [Color(hex: 0x171C17), Color(hex: 0x101410), Color(hex: 0x0D110D)],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
     static let warning = Color(red: 1.0, green: 0.72, blue: 0.36)
+    /// Light used only around the Focus Halo and chart points.
+    static let glow = Color(hex: 0xA8F000).opacity(0.12)
 
     static func font(
         _ size: CGFloat,
         weight: Font.Weight = .regular,
         relativeTo style: Font.TextStyle = .body
     ) -> Font {
-        .custom("Helvetica Neue", size: size, relativeTo: style)
+        .custom(fontFamily, size: size, relativeTo: style)
             .weight(weight)
     }
 
+    /// Inter once its font files are bundled and registered, else the
+    /// current fallback, so adding the files is the only change needed.
+    private static let fontFamily = UIFont.familyNames.contains("Inter") ? "Inter" : "Helvetica Neue"
+
+
     enum Spacing {
         /// Horizontal inset shared by every top-level screen.
-        static let screen: CGFloat = 16
+        static let screen: CGFloat = 20
         /// Gap between cards and between a header and the first card.
         static let section: CGFloat = 16
         static let card: CGFloat = 18
@@ -89,67 +111,37 @@ extension View {
 /// The one type scale. Every screen picks from here so the app reads as a
 /// single typeface at consistent sizes that still follow Dynamic Type.
 enum NoxaType {
-    static let title = NoxaTheme.font(31, weight: .bold, relativeTo: .largeTitle)
-    static let title2 = NoxaTheme.font(22, weight: .semibold, relativeTo: .title2)
-    static let headline = NoxaTheme.font(17, weight: .semibold, relativeTo: .headline)
-    static let body = NoxaTheme.font(16, relativeTo: .body)
-    static let subheadline = NoxaTheme.font(15, relativeTo: .subheadline)
-    static let subheadlineMedium = NoxaTheme.font(15, weight: .medium, relativeTo: .subheadline)
-    static let subheadlineSemibold = NoxaTheme.font(15, weight: .semibold, relativeTo: .subheadline)
-    static let footnote = NoxaTheme.font(13, relativeTo: .footnote)
-    static let footnoteMedium = NoxaTheme.font(13, weight: .medium, relativeTo: .footnote)
-    static let footnoteSemibold = NoxaTheme.font(13, weight: .semibold, relativeTo: .footnote)
-    static let caption = NoxaTheme.font(12, relativeTo: .caption)
-    static let captionSemibold = NoxaTheme.font(12, weight: .semibold, relativeTo: .caption)
-    static let captionBold = NoxaTheme.font(12, weight: .bold, relativeTo: .caption)
-    static let caption2 = NoxaTheme.font(11, relativeTo: .caption2)
-    static let caption2Bold = NoxaTheme.font(11, weight: .bold, relativeTo: .caption2)
+    static let title = NoxaTheme.font(34, weight: .bold, relativeTo: .largeTitle)
+    static let title2 = NoxaTheme.font(24, weight: .semibold, relativeTo: .title2)
+    static let headline = NoxaTheme.font(18, weight: .semibold, relativeTo: .headline)
+    static let body = NoxaTheme.font(17, relativeTo: .body)
+    static let subheadline = NoxaTheme.font(16, relativeTo: .subheadline)
+    static let subheadlineMedium = NoxaTheme.font(16, weight: .medium, relativeTo: .subheadline)
+    static let subheadlineSemibold = NoxaTheme.font(16, weight: .semibold, relativeTo: .subheadline)
+    static let footnote = NoxaTheme.font(15, relativeTo: .footnote)
+    static let footnoteMedium = NoxaTheme.font(15, weight: .medium, relativeTo: .footnote)
+    static let footnoteSemibold = NoxaTheme.font(15, weight: .semibold, relativeTo: .footnote)
+    static let caption = NoxaTheme.font(14, relativeTo: .caption)
+    static let captionSemibold = NoxaTheme.font(14, weight: .semibold, relativeTo: .caption)
+    static let captionBold = NoxaTheme.font(14, weight: .bold, relativeTo: .caption)
+    static let caption2 = NoxaTheme.font(13, relativeTo: .caption2)
+    static let caption2Bold = NoxaTheme.font(13, weight: .bold, relativeTo: .caption2)
+    /// Timers and headline stats: large, tight and evenly spaced digits.
+    static func display(_ size: CGFloat) -> Font {
+        .system(size: size, weight: .bold, design: .default).monospacedDigit()
+    }
 }
 
 struct NoxaBackground: View {
     var body: some View {
-        ZStack {
-            NoxaTheme.background
-
-            LinearGradient(
-                colors: [
-                    Color(red: 11.0 / 255.0, green: 31.0 / 255.0, blue: 22.0 / 255.0),
-                    NoxaTheme.background,
-                    Color(red: 5.0 / 255.0, green: 16.0 / 255.0, blue: 11.0 / 255.0)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
-        .ignoresSafeArea()
+        NoxaTheme.background
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
     }
 }
 
-/// A top-lit variation used throughout account creation and onboarding. The
-/// green wash fades into the dark background near the primary input area.
-struct NoxaOnboardingBackground: View {
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .top) {
-                NoxaTheme.background
-
-                LinearGradient(
-                    colors: [
-                        NoxaTheme.accent.opacity(0.25),
-                        NoxaTheme.accent.opacity(0.12),
-                        .clear
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: geometry.size.height * 0.58)
-                .frame(maxHeight: .infinity, alignment: .top)
-            }
-        }
-        .ignoresSafeArea()
-        .allowsHitTesting(false)
-    }
-}
+/// Account creation and onboarding share the same black canvas.
+typealias NoxaOnboardingBackground = NoxaBackground
 
 struct NoxaLoadingView: View {
     let message: String
@@ -194,12 +186,20 @@ struct NoxaGlassCardModifier: ViewModifier {
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                NoxaTheme.elevated,
+                NoxaTheme.surfaceGradient,
                 in: RoundedRectangle(cornerRadius: NoxaTheme.Radius.card, style: .continuous)
             )
             .overlay {
+                // A faint top-edge highlight, then a quiet border.
                 RoundedRectangle(cornerRadius: NoxaTheme.Radius.card, style: .continuous)
-                    .stroke(NoxaTheme.subtleBorder, lineWidth: 1)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.07), NoxaTheme.subtleBorder],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 1
+                    )
             }
     }
 }
@@ -234,6 +234,7 @@ struct NoxaScreenHeader: View {
 struct NoxaCardHeader<Trailing: View>: View {
     let title: String
     let systemImage: String
+    var info: String?
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
@@ -246,6 +247,9 @@ struct NoxaCardHeader<Trailing: View>: View {
             Text(title)
                 .font(NoxaType.headline)
                 .foregroundStyle(NoxaTheme.primaryText)
+            if let info {
+                NoxaInfoButton(title: title, message: info)
+            }
             Spacer(minLength: 8)
             trailing()
         }
@@ -253,8 +257,45 @@ struct NoxaCardHeader<Trailing: View>: View {
 }
 
 extension NoxaCardHeader where Trailing == EmptyView {
-    init(title: String, systemImage: String) {
-        self.init(title: title, systemImage: systemImage) { EmptyView() }
+    init(title: String, systemImage: String, info: String? = nil) {
+        self.init(title: title, systemImage: systemImage, info: info) { EmptyView() }
+    }
+}
+
+/// A small (i) that keeps the full explanation one tap away, so cards can
+/// show a short line instead of a paragraph.
+struct NoxaInfoButton: View {
+    let title: String
+    let message: String
+    @State private var isPresented = false
+
+    var body: some View {
+        Button {
+            NoxaHaptics.selection()
+            isPresented = true
+        } label: {
+            Image(systemName: "info.circle")
+                .font(NoxaType.subheadlineMedium)
+                .foregroundStyle(NoxaTheme.secondaryText)
+                .frame(minWidth: 28, minHeight: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("About \(title)")
+        .popover(isPresented: $isPresented) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title)
+                    .font(NoxaType.headline)
+                Text(message)
+                    .font(NoxaType.subheadline)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .foregroundStyle(NoxaTheme.primaryText)
+            .padding(18)
+            .frame(idealWidth: 300, alignment: .leading)
+            .background(NoxaTheme.background)
+            .presentationCompactAdaptation(.popover)
+        }
     }
 }
 
@@ -266,27 +307,28 @@ struct NoxaTextFieldStyle: TextFieldStyle {
             .padding(.horizontal, 14)
             .frame(minHeight: 48)
             .background(
-                Color.white.opacity(0.06),
+                NoxaTheme.elevated,
                 in: RoundedRectangle(cornerRadius: NoxaTheme.Radius.field, style: .continuous)
             )
-            .overlay {
-                RoundedRectangle(cornerRadius: NoxaTheme.Radius.field, style: .continuous)
-                    .stroke(NoxaTheme.subtleBorder, lineWidth: 1)
-            }
     }
 }
 
 struct NoxaPrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
+    /// Lime by default; white for an equal-weight alternative choice.
+    var fill: Color = NoxaTheme.accent
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(NoxaType.headline)
-            .foregroundStyle(.black.opacity(0.9))
+            .foregroundStyle(isEnabled ? Color.black.opacity(0.9) : NoxaTheme.tertiaryText)
             .padding(.horizontal, 18)
             .frame(maxWidth: .infinity, minHeight: 54)
+            // Opaque even when disabled, so nothing behind it shows through.
             .background(
-                NoxaTheme.accent.opacity(isEnabled ? (configuration.isPressed ? 0.88 : 1) : 0.3),
+                isEnabled
+                    ? AnyShapeStyle(fill.opacity(configuration.isPressed ? 0.88 : 1))
+                    : AnyShapeStyle(NoxaTheme.pressed),
                 in: RoundedRectangle(cornerRadius: NoxaTheme.Radius.control, style: .continuous)
             )
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
@@ -307,13 +349,9 @@ struct NoxaSecondaryButtonStyle: ButtonStyle {
             .padding(.horizontal, 18)
             .frame(maxWidth: .infinity, minHeight: 48)
             .background(
-                Color.white.opacity(configuration.isPressed ? 0.13 : 0.08),
+                configuration.isPressed ? NoxaTheme.pressed : NoxaTheme.elevated,
                 in: RoundedRectangle(cornerRadius: NoxaTheme.Radius.control, style: .continuous)
             )
-            .overlay {
-                RoundedRectangle(cornerRadius: NoxaTheme.Radius.control, style: .continuous)
-                    .stroke(NoxaTheme.subtleBorder, lineWidth: 1)
-            }
             .opacity(isEnabled ? 1 : 0.5)
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
             .noxaAnimation(NoxaMotion.snappy, value: configuration.isPressed)
@@ -334,5 +372,43 @@ extension View {
 
     func noxaScreenBackground() -> some View {
         background(NoxaBackground())
+    }
+
+    /// For screens without a navigation bar: a black band behind the status
+    /// bar so scrolled content never sits under the clock or Dynamic Island.
+    func noxaStatusBarScrim() -> some View {
+        overlay(alignment: .top) {
+            NoxaTheme.background
+                .frame(height: 0)
+                .background(NoxaTheme.background.ignoresSafeArea(edges: .top))
+                .allowsHitTesting(false)
+        }
+    }
+}
+
+extension Color {
+    /// A design-token color written as 0xRRGGBB.
+    init(hex: UInt32) {
+        self.init(
+            red: Double((hex >> 16) & 0xFF) / 255,
+            green: Double((hex >> 8) & 0xFF) / 255,
+            blue: Double(hex & 0xFF) / 255
+        )
+    }
+}
+
+/// An app row: the app's own icon at list size, then its name.
+struct NoxaAppRowLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 16) {
+            configuration.icon
+                .scaleEffect(1.6)
+                .frame(width: 44, height: 44)
+            configuration.title
+                .font(NoxaType.body)
+                .foregroundStyle(NoxaTheme.primaryText)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 10)
     }
 }

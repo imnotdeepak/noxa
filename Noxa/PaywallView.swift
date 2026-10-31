@@ -203,8 +203,10 @@ struct PaywallView: View {
                 Button("Delete Account", role: .destructive) {
                     Task { @MainActor in
                         guard !focusSession.isActive && !focusSession.hasPomodoroCycle else { return }
+                        guard let accountID = authentication.userID else { return }
                         guard await authentication.deleteAccount() else { return }
                         LocalDataCleanupService.clear(
+                            accountID: accountID,
                             focusSession: focusSession,
                             restrictions: restrictions,
                             monitoring: monitoring,

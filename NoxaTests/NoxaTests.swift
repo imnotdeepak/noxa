@@ -128,29 +128,41 @@ struct NoxaTests {
     @Test @MainActor func focusSessionDurationStaysWithinDeviceActivityBounds() {
         #expect(FocusSessionService.normalizedDurationMinutes(1) == 15)
         #expect(FocusSessionService.normalizedDurationMinutes(45) == 45)
-        #expect(FocusSessionService.normalizedDurationMinutes(600) == 480)
-        #expect(FocusSessionService.normalizedDurationMinutes(600, strict: true) == 240)
+        #expect(FocusSessionService.normalizedDurationMinutes(240) == 240)
+        #expect(FocusSessionService.normalizedDurationMinutes(600) == 240)
     }
 
-    @Test @MainActor func strictSettingPersistsButDoesNotRewriteAnExistingSession() throws {
-        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.StrictSetting.\(UUID().uuidString)"))
+    @Test @MainActor func legacyNormalSessionCanStillEndEarlyAfterUpgrade() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.LegacyEnd.\(UUID().uuidString)"))
         let store = AppGroupStore(defaults: defaults)
-        let existingSession = ActiveSessionRecord(
+        // Started by a version that had a Strict Mode toggle, with it off.
+        let session = ActiveSessionRecord(
+            startedAt: Date().addingTimeInterval(-300),
             plannedEndAt: Date().addingTimeInterval(900),
-            plannedDurationSeconds: 900,
-            outcome: .active
+            plannedDurationSeconds: 1_200,
+            outcome: .active,
+            isStrict: false
         )
         var snapshot = NoxaLocalSnapshot()
-        snapshot.activeSession = existingSession
+        snapshot.activeSession = session
         try store.saveSnapshot(snapshot)
 
         let service = FocusSessionService(store: store)
-        #expect(!service.strictModeEnabled)
-        service.setStrictModeEnabled(true)
+        service.endEarly()
 
-        #expect(FocusSessionService(store: store).strictModeEnabled)
-        #expect(service.activeSession?.isStrict == false)
-        #expect(try store.loadSnapshot()?.activeSession?.isStrict == false)
+        #expect(service.activeSession == nil)
+        #expect(service.history.first?.id == session.id)
+        #expect(service.history.first?.outcome == .endedEarly)
+    }
+
+    @Test func retiredStrictModePreferenceIsCleared() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.StrictPref.\(UUID().uuidString)"))
+        let store = AppGroupStore(defaults: defaults)
+        defaults.set(true, forKey: "noxa.strictModeEnabled")
+        defaults.set(true, forKey: "noxa.hasOfferedStrictMode")
+        store.clearLegacyStrictModePreference()
+        #expect(defaults.object(forKey: "noxa.strictModeEnabled") == nil)
+        #expect(defaults.object(forKey: "noxa.hasOfferedStrictMode") == nil)
     }
 
     @Test @MainActor func strictActiveSessionRejectsEarlyEnd() throws {
@@ -171,7 +183,7 @@ struct NoxaTests {
 
         #expect(service.activeSession?.id == session.id)
         #expect(try store.loadSnapshot()?.activeSession?.outcome == .active)
-        #expect(service.errorMessage?.contains("cannot end early") == true)
+        #expect(service.errorMessage?.contains("can't end early") == true)
     }
 
     @Test func legacySessionWithoutStrictFieldDecodesAsNormal() throws {
@@ -408,21 +420,18 @@ struct NoxaTests {
         let firstService = OnboardingService(store: store)
 
         firstService.markWelcomeSeen()
-        firstService.saveName("Deepak")
-        firstService.saveGoals(["Work", "Deep focus"])
-        firstService.saveDistractions(["Web browsing"])
-        firstService.saveProblemTimes(["Evening"])
-        firstService.saveMotivations(["Being more present"])
+        firstService.saveGoals([.work, .studying])
+        firstService.saveEstimate(minutesPerDay: 120)
+        firstService.saveDistractions([.browsing])
 
         let secondService = OnboardingService(store: store)
         #expect(secondService.progress.hasSeenWelcome)
-        #expect(secondService.progress.hasCompletedName)
         #expect(secondService.progress.hasCompletedGoals)
+        #expect(secondService.progress.hasCompletedEstimate)
         #expect(secondService.progress.hasCompletedDistractions)
-        #expect(secondService.progress.hasCompletedProblemTimes)
-        #expect(secondService.progress.hasCompletedMotivation)
-        #expect(secondService.progress.draftPersonalizationAnswers == ["Work", "Deep focus"])
-        #expect(secondService.progress.draftSetupConfiguration["distractions"] == "Web browsing")
+        #expect(secondService.progress.selectedGoals == [.work, .studying])
+        #expect(secondService.progress.estimatedDistractingMinutesPerDay == 120)
+        #expect(secondService.progress.selectedDistractions == [.browsing])
         store.clearSnapshot()
     }
 
@@ -431,38 +440,26 @@ struct NoxaTests {
         let store = AppGroupStore(defaults: defaults)
         let service = OnboardingService(store: store)
 
-        #expect(!service.completeCapabilitiesExplainer())
-        #expect(!service.progress.hasSeenCapabilitiesExplainer)
+        #expect(!service.completeProductDemo())
+        #expect(!service.completeProjection())
 
-        #expect(service.markWelcomeSeen())
-        #expect(service.saveName("Deepak"))
-        #expect(service.saveGoals(["Work"]))
-        #expect(service.saveDistractions(["Social media"]))
-        #expect(service.saveProblemTimes(["Before bed"]))
-        #expect(service.saveMotivations(["Better sleep"]))
-        #expect(service.completeCapabilitiesExplainer())
-        #expect(service.progress.hasSeenCapabilitiesExplainer)
-        #expect(service.completeValueOverview())
-        #expect(service.completePricingPreview())
-        #expect(service.progress.hasSeenPricingPreview)
-        #expect(!service.completeInitialSetup())
+        #expect(service.saveGoals([]))
+        #expect(service.saveEstimate(minutesPerDay: nil))
+        #expect(service.completeProjection())
+        #expect(service.saveDistractions([]))
+        #expect(service.completeInsight())
+        #expect(service.completeProductDemo())
         #expect(service.completeNotificationExplainer())
-        #expect(service.progress.hasSeenNotificationExplainer)
-        #expect(service.completeInitialSetup())
-        #expect(service.completeFirstSessionPrompt())
+
+        // The Pact can't finish onboarding before a verified subscription.
+        #expect(!service.finishPact(.completed))
+        #expect(!service.confirmSubscription(hasVerifiedAccess: false))
+        #expect(service.confirmSubscription(hasVerifiedAccess: true))
+        #expect(service.finishPact(.skipped))
+        #expect(service.progress.isComplete)
+        #expect(service.progress.pactStatus == .skipped)
         #expect(!service.progress.hasSeenFirstFocusReview)
         #expect(service.markFirstFocusReviewPresented())
-        #expect(service.progress.hasSeenFirstFocusReview)
-        store.clearSnapshot()
-    }
-
-    @Test @MainActor func pricingPreviewRequiresCapabilitiesMilestone() throws {
-        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.PricingGate.\(UUID().uuidString)"))
-        let store = AppGroupStore(defaults: defaults)
-        let service = OnboardingService(store: store)
-
-        #expect(!service.completePricingPreview())
-        #expect(!service.progress.hasSeenPricingPreview)
         store.clearSnapshot()
     }
 
@@ -473,18 +470,39 @@ struct NoxaTests {
         let firstUserID = UUID()
         let secondUserID = UUID()
 
+        #expect(service.saveGoals([.work]))
         #expect(service.beginAuthentication(mode: AuthenticationView.Mode.createAccount.rawValue))
         #expect(service.bind(to: firstUserID, remoteCompletion: false))
-        #expect(service.saveName("First User"))
+        // The unowned draft is adopted, not wiped, by the first account.
         #expect(service.progress.ownerUserID == firstUserID)
+        #expect(service.progress.selectedGoals == [.work])
 
         #expect(service.bind(to: secondUserID, remoteCompletion: false))
         #expect(service.progress.ownerUserID == secondUserID)
-        #expect(!service.progress.hasCompletedName)
+        #expect(!service.progress.hasCompletedGoals)
         #expect(service.progress.hasSeenWelcome)
 
         #expect(service.bind(to: secondUserID, remoteCompletion: true))
         #expect(service.isComplete(for: secondUserID, remoteCompletion: true))
+        store.clearSnapshot()
+    }
+
+    @Test @MainActor func getStartedResumesAnUnownedDraft() throws {
+        let defaults = try #require(UserDefaults(suiteName: "NoxaTests.OnboardingResume.\(UUID().uuidString)"))
+        let store = AppGroupStore(defaults: defaults)
+        let service = OnboardingService(store: store)
+        #expect(service.saveGoals([.betterSleep]))
+        #expect(service.saveEstimate(minutesPerDay: 60))
+        #expect(service.hasUnfinishedNewUserDraft)
+
+        #expect(service.beginNewAccountPersonalization())
+        #expect(service.progress.selectedGoals == [.betterSleep])
+
+        // Progress owned by a signed-out account is replaced instead.
+        #expect(service.bind(to: UUID(), remoteCompletion: true))
+        #expect(service.beginNewAccountPersonalization())
+        #expect(!service.progress.isComplete)
+        #expect(service.progress.selectedGoals.isEmpty)
         store.clearSnapshot()
     }
 

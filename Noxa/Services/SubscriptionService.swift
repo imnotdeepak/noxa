@@ -30,15 +30,42 @@ final class SubscriptionService: NSObject, ObservableObject {
     @Published private(set) var hasLoaded = false
     @Published private(set) var isLoading = false
     @Published private(set) var purchasingProductID: String?
+    /// Apple accepted the purchase but is waiting on approval (for example
+    /// Ask to Buy). Access is granted only once the entitlement arrives.
+    @Published private(set) var isPurchasePending = false
     @Published private(set) var boundUserID: UUID?
     @Published var message: String?
 
     private let defaults: UserDefaults
     private var isConfigured = false
+    private var analyticsConsent: AnyCancellable?
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         super.init()
+        // Follow the Usage analytics choice as it changes.
+        analyticsConsent = AnalyticsService.shared.$isEnabled
+            .dropFirst()
+            .sink { [weak self] isEnabled in
+                self?.updatePostHogLink(analyticsEnabled: isEnabled)
+            }
+    }
+
+    /// RevenueCat's PostHog integration matches people by this attribute,
+    /// so it is set only while the user shares usage analytics; an empty
+    /// value removes it.
+    nonisolated static func postHogLinkValue(accountID: String, analyticsEnabled: Bool) -> String {
+        analyticsEnabled ? accountID : ""
+    }
+
+    private func updatePostHogLink(analyticsEnabled: Bool) {
+        guard isConfigured, let boundUserID else { return }
+        Purchases.shared.attribution.setAttributes([
+            "$posthogUserId": Self.postHogLinkValue(
+                accountID: boundUserID.uuidString.lowercased(),
+                analyticsEnabled: analyticsEnabled
+            )
+        ])
     }
 
     func canEnterApp(for userID: UUID?) -> Bool {
@@ -67,6 +94,7 @@ final class SubscriptionService: NSObject, ObservableObject {
         hasAccess = false
         AppGroupStore.shared.setSafariFilterAllowedUntil(nil)
         InstagramSiteProtectionService.reconcile()
+        YouTubeShortsProtectionService.reconcile()
         activeProductID = nil
         plans = []
         message = nil
@@ -103,7 +131,12 @@ final class SubscriptionService: NSObject, ObservableObject {
                 customerInfo = try await Purchases.shared.customerInfo()
             }
 
-            Purchases.shared.attribution.setAttributes(["$posthogUserId": accountID])
+            Purchases.shared.attribution.setAttributes([
+                "$posthogUserId": Self.postHogLinkValue(
+                    accountID: accountID,
+                    analyticsEnabled: AnalyticsService.shared.isEnabled
+                )
+            ])
             apply(customerInfo)
 
             if !defaults.bool(forKey: migrationKey(for: userID)) {
@@ -124,6 +157,7 @@ final class SubscriptionService: NSObject, ObservableObject {
         hasAccess = false
         AppGroupStore.shared.setSafariFilterAllowedUntil(nil)
         InstagramSiteProtectionService.reconcile()
+        YouTubeShortsProtectionService.reconcile()
         activeProductID = nil
         hasLoaded = false
         plans = []
@@ -179,6 +213,9 @@ final class SubscriptionService: NSObject, ObservableObject {
             }
             return hasAccess
         } catch {
+            if ErrorCode(rawValue: (error as NSError).code) == .paymentPendingError {
+                isPurchasePending = true
+            }
             message = userMessage(for: error)
             return false
         }
@@ -224,7 +261,11 @@ final class SubscriptionService: NSObject, ObservableObject {
         hasAccess = activeEntitlement != nil
         AppGroupStore.shared.setSafariFilterAllowedUntil(activeEntitlement?.expirationDate)
         InstagramSiteProtectionService.reconcile()
+        YouTubeShortsProtectionService.reconcile()
         activeProductID = activeEntitlement?.productIdentifier
+        if hasAccess {
+            isPurchasePending = false
+        }
         if hasAccess, message?.contains("unavailable") == true {
             message = nil
         }
@@ -241,6 +282,8 @@ final class SubscriptionService: NSObject, ObservableObject {
             return "This App Store subscription is already linked to another Noxa account. Sign in to that account or contact support."
         case .productAlreadyPurchasedError:
             return "This subscription has already been purchased. Try Restore Purchases."
+        case .paymentPendingError:
+            return "Your purchase is waiting for approval. Noxa will continue as soon as Apple confirms it."
         case .networkError, .offlineConnectionError:
             return "Subscriptions could not be reached. Check your connection and try again."
         default:

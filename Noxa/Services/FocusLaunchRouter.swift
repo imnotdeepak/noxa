@@ -13,6 +13,9 @@ final class FocusLaunchRouter: ObservableObject {
         guard url.scheme == "noxa", url.host == "focus" else {
             return false
         }
+        if ["/start", "/active", "/home"].contains(url.path) {
+            AnalyticsService.shared.capture(.widgetOpened(destination: String(url.path.dropFirst())))
+        }
         switch url.path {
         case "/start":
             requestStart()

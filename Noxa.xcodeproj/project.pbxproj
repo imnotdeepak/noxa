@@ -23,6 +23,13 @@
 		00E100000000000000000005 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 00E100000000000000000006 /* manifest.json */; };
 		00E100000000000000000007 /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = 00E100000000000000000008 /* background.js */; };
 		00E100000000000000000009 /* instagram-filter.js in Resources */ = {isa = PBXBuildFile; fileRef = 00E10000000000000000000A /* instagram-filter.js */; };
+		00E1000000000000000000F1 /* youtube-filter.js in Resources */ = {isa = PBXBuildFile; fileRef = 00E1000000000000000000F2 /* youtube-filter.js */; };
+		00E100000000000000000110 /* icon-48.png in Resources */ = {isa = PBXBuildFile; fileRef = 00E100000000000000000100 /* icon-48.png */; };
+		00E100000000000000000111 /* icon-64.png in Resources */ = {isa = PBXBuildFile; fileRef = 00E100000000000000000101 /* icon-64.png */; };
+		00E100000000000000000112 /* icon-96.png in Resources */ = {isa = PBXBuildFile; fileRef = 00E100000000000000000102 /* icon-96.png */; };
+		00E100000000000000000113 /* icon-128.png in Resources */ = {isa = PBXBuildFile; fileRef = 00E100000000000000000103 /* icon-128.png */; };
+		00E100000000000000000114 /* icon-256.png in Resources */ = {isa = PBXBuildFile; fileRef = 00E100000000000000000104 /* icon-256.png */; };
+		00E100000000000000000115 /* icon-512.png in Resources */ = {isa = PBXBuildFile; fileRef = 00E100000000000000000105 /* icon-512.png */; };
 		00F100000000000000000001 /* NoxaShieldConfiguration/ShieldRuleExplanation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00F100000000000000000002 /* NoxaShieldConfiguration/ShieldRuleExplanation.swift */; };
 		00F200000000000000000001 /* Shared/ScheduleWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00F200000000000000000005 /* Shared/ScheduleWindow.swift */; };
 		00F200000000000000000002 /* Shared/ScheduleWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00F200000000000000000005 /* Shared/ScheduleWindow.swift */; };
@@ -112,6 +119,13 @@
 		00E100000000000000000006 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = manifest.json; sourceTree = "<group>"; };
 		00E100000000000000000008 /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = background.js; sourceTree = "<group>"; };
 		00E10000000000000000000A /* instagram-filter.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "instagram-filter.js"; sourceTree = "<group>"; };
+		00E1000000000000000000F2 /* youtube-filter.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "youtube-filter.js"; sourceTree = "<group>"; };
+		00E100000000000000000100 /* icon-48.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-48.png"; sourceTree = "<group>"; };
+		00E100000000000000000101 /* icon-64.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-64.png"; sourceTree = "<group>"; };
+		00E100000000000000000102 /* icon-96.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-96.png"; sourceTree = "<group>"; };
+		00E100000000000000000103 /* icon-128.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-128.png"; sourceTree = "<group>"; };
+		00E100000000000000000104 /* icon-256.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-256.png"; sourceTree = "<group>"; };
+		00E100000000000000000105 /* icon-512.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-512.png"; sourceTree = "<group>"; };
 		00F100000000000000000002 /* NoxaShieldConfiguration/ShieldRuleExplanation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoxaShieldConfiguration/ShieldRuleExplanation.swift; sourceTree = "<group>"; };
 		00F200000000000000000005 /* Shared/ScheduleWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/ScheduleWindow.swift; sourceTree = "<group>"; };
 		00F300000000000000000003 /* Shared/RestrictionStoreWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/RestrictionStoreWriter.swift; sourceTree = "<group>"; };
@@ -302,6 +316,13 @@
 				00E100000000000000000006 /* manifest.json */,
 				00E100000000000000000008 /* background.js */,
 				00E10000000000000000000A /* instagram-filter.js */,
+				00E1000000000000000000F2 /* youtube-filter.js */,
+				00E100000000000000000100 /* icon-48.png */,
+				00E100000000000000000101 /* icon-64.png */,
+				00E100000000000000000102 /* icon-96.png */,
+				00E100000000000000000103 /* icon-128.png */,
+				00E100000000000000000104 /* icon-256.png */,
+				00E100000000000000000105 /* icon-512.png */,
 			);
 			name = Resources;
 			path = ../Experiments/InstagramSafari;
@@ -584,6 +605,13 @@
 				00E100000000000000000005 /* manifest.json in Resources */,
 				00E100000000000000000007 /* background.js in Resources */,
 				00E100000000000000000009 /* instagram-filter.js in Resources */,
+				00E1000000000000000000F1 /* youtube-filter.js in Resources */,
+				00E100000000000000000110 /* icon-48.png in Resources */,
+				00E100000000000000000111 /* icon-64.png in Resources */,
+				00E100000000000000000112 /* icon-96.png in Resources */,
+				00E100000000000000000113 /* icon-128.png in Resources */,
+				00E100000000000000000114 /* icon-256.png in Resources */,
+				00E100000000000000000115 /* icon-512.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -692,7 +720,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = NoxaShieldConfiguration/NoxaShieldConfiguration.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 7QPHM2BM3N;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NoxaShieldConfiguration/Info.plist;
@@ -704,7 +732,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = LycheeCorp.Noxa.ShieldConfiguration;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -722,7 +750,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = NoxaShieldConfiguration/NoxaShieldConfiguration.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 7QPHM2BM3N;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NoxaShieldConfiguration/Info.plist;
@@ -734,7 +762,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = LycheeCorp.Noxa.ShieldConfiguration;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -875,7 +903,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Noxa/Noxa.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 7QPHM2BM3N;
 				ENABLE_PREVIEWS = YES;
 				EXCLUDED_SOURCE_FILE_NAMES = Info.plist;
@@ -891,7 +919,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = LycheeCorp.Noxa;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -911,7 +939,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Noxa/Noxa.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 7QPHM2BM3N;
 				ENABLE_PREVIEWS = YES;
 				EXCLUDED_SOURCE_FILE_NAMES = Info.plist;
@@ -927,7 +955,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = LycheeCorp.Noxa;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -1031,7 +1059,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = NoxaMonitor/NoxaMonitor.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 7QPHM2BM3N;
 				EXCLUDED_SOURCE_FILE_NAMES = Info.plist;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1041,7 +1069,7 @@
 					"$(inherited)",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = LycheeCorp.Noxa.Monitor;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1057,7 +1085,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = NoxaMonitor/NoxaMonitor.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 7QPHM2BM3N;
 				EXCLUDED_SOURCE_FILE_NAMES = Info.plist;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1067,7 +1095,7 @@
 					"$(inherited)",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = LycheeCorp.Noxa.Monitor;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1083,7 +1111,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = NoxaWidgets/NoxaWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 7QPHM2BM3N;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = NoxaWidgets/Info.plist;
@@ -1092,7 +1120,7 @@
 					"$(inherited)",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = LycheeCorp.Noxa.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1108,7 +1136,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = NoxaWidgets/NoxaWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 7QPHM2BM3N;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = NoxaWidgets/Info.plist;
@@ -1117,7 +1145,7 @@
 					"$(inherited)",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = LycheeCorp.Noxa.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1133,7 +1161,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = NoxaSafariFilter/NoxaSafariFilter.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 7QPHM2BM3N;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = NoxaSafariFilter/Info.plist;
@@ -1142,7 +1170,7 @@
 					"$(inherited)",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = LycheeCorp.Noxa.SafariFilter;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1158,7 +1186,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = NoxaSafariFilter/NoxaSafariFilter.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 7QPHM2BM3N;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = NoxaSafariFilter/Info.plist;
@@ -1167,7 +1195,7 @@
 					"$(inherited)",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = LycheeCorp.Noxa.SafariFilter;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;

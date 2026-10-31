@@ -25,9 +25,17 @@ struct AuthenticationView: View {
     @State private var hasBlurredPassword = false
     @FocusState private var focusedCredentialField: CredentialField?
 
-    init(initialMode: Mode = .signIn, initialEmail: String = "") {
+    private let onBack: (() -> Void)?
+    private let isPreview: Bool
+    private let onPreviewContinue: (() -> Void)?
+
+    init(initialMode: Mode = .signIn, initialEmail: String = "", onBack: (() -> Void)? = nil,
+         isPreview: Bool = false, onPreviewContinue: (() -> Void)? = nil) {
         _mode = State(initialValue: initialMode)
         _email = State(initialValue: initialEmail)
+        self.onBack = onBack
+        self.isPreview = isPreview
+        self.onPreviewContinue = onPreviewContinue
     }
 
     var body: some View {
@@ -45,7 +53,7 @@ struct AuthenticationView: View {
                         .multilineTextAlignment(.center)
                     Text(mode == .signIn
                          ? "Sign in to continue to your focus tools."
-                         : "Save your Noxa setup and keep your progress synced.")
+                         : "Keep your setup and progress connected to you.")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
@@ -108,7 +116,7 @@ struct AuthenticationView: View {
                         }
                     }
                     .buttonStyle(NoxaPrimaryButtonStyle())
-                    .disabled(authentication.isBusy || !canSubmitEmailForm)
+                    .disabled(isPreview || authentication.isBusy || !canSubmitEmailForm)
 
                     if mode == .signIn {
                         Button("Forgot password?") {
@@ -116,7 +124,7 @@ struct AuthenticationView: View {
                         }
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .disabled(authentication.isBusy)
+                        .disabled(isPreview || authentication.isBusy)
                     }
 
                     HStack {
@@ -138,7 +146,7 @@ struct AuthenticationView: View {
                     .signInWithAppleButtonStyle(.white)
                     .frame(height: 50)
                     .clipShape(RoundedRectangle(cornerRadius: 13))
-                    .disabled(authentication.isBusy)
+                    .disabled(isPreview || authentication.isBusy)
 
                     if let message = authentication.message {
                         Text(message)
@@ -155,7 +163,15 @@ struct AuthenticationView: View {
                         }
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .disabled(authentication.isBusy)
+                        .disabled(isPreview || authentication.isBusy)
+                    }
+
+                    if isPreview {
+                        Text("Preview only — your account stays signed in.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Button("Continue preview", action: { onPreviewContinue?() })
+                            .buttonStyle(NoxaPrimaryButtonStyle())
                     }
                 }
                 .padding(22)
@@ -173,9 +189,23 @@ struct AuthenticationView: View {
         .scrollDismissesKeyboard(.interactively)
         .font(NoxaTheme.font(17))
         .background(NoxaOnboardingBackground())
+        .overlay(alignment: .topLeading) {
+            if let onBack {
+                Button(action: onBack) {
+                    Image(systemName: "chevron.left")
+                        .font(.body.weight(.semibold))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .foregroundStyle(NoxaTheme.primaryText)
+                .padding(.leading, 12)
+                .accessibilityLabel("Back")
+                .disabled(authentication.isBusy)
+            }
+        }
         .preferredColorScheme(.dark)
         .onChange(of: mode) { _ in
-            authentication.message = nil
+            if !isPreview { authentication.message = nil }
         }
         .onChange(of: focusedCredentialField) { field in
             if field == .password {

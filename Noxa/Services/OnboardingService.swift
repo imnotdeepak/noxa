@@ -44,12 +44,15 @@ final class OnboardingService: ObservableObject {
         return didSave
     }
 
-    /// Starts onboarding for a genuinely new account instead of reusing the
-    /// completed progress that may belong to the last signed-out account.
+    /// Starts onboarding for a new account. A draft that no account owns yet
+    /// is resumed with its answers; completed progress left by a signed-out
+    /// account is replaced so it can't leak into the new one.
     @discardableResult
     func beginNewAccountPersonalization() -> Bool {
         let didSave = commit { progress in
-            progress = OnboardingProgress()
+            if progress.ownerUserID != nil || progress.isComplete {
+                progress = OnboardingProgress()
+            }
             progress.hasSeenWelcome = true
         }
         if didSave {
@@ -57,6 +60,29 @@ final class OnboardingService: ObservableObject {
             isPersonalizationRequested = true
         }
         return didSave
+    }
+
+    /// An unowned draft that was started but not finished on this device,
+    /// so a relaunch can quietly return to it instead of to Welcome.
+    var hasUnfinishedNewUserDraft: Bool {
+        progress.ownerUserID == nil && progress.hasSeenWelcome
+            && progress.hasCompletedEstimate && !progress.isComplete
+    }
+
+    /// Set when leaving the account screen, so the narrative reopens on its
+    /// last step instead of immediately routing back to account creation.
+    private(set) var resumeOverride: OnboardingStep?
+
+    /// Back from the account screen to the narrative, keeping every answer.
+    func returnToPersonalization() {
+        resumeOverride = .productDemo
+        isAuthenticationRequested = false
+        isPersonalizationRequested = true
+    }
+
+    func consumeResumeOverride() -> OnboardingStep? {
+        defer { resumeOverride = nil }
+        return resumeOverride
     }
 
     @discardableResult
@@ -108,129 +134,110 @@ final class OnboardingService: ObservableObject {
         return remoteCompletion || (progress.ownerUserID == userID && progress.isComplete)
     }
 
+    /// Goals are optional; an empty set records a skip. Each tap saves the
+    /// draft with `complete: false` so a relaunch keeps the choices.
     @discardableResult
-    func saveName(_ name: String) -> Bool {
-        let normalized = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalized.isEmpty else {
-            errorMessage = "Enter the name you’d like Noxa to use."
-            return false
+    func saveGoals(_ goals: Set<OnboardingGoal>, complete: Bool = true) -> Bool {
+        commit {
+            $0.hasSeenWelcome = true
+            $0.draftPersonalizationAnswers = OnboardingGoal.allCases.filter(goals.contains).map(\.rawValue)
+            if complete { $0.hasCompletedGoals = true }
         }
-        return commit {
-            $0.draftSetupConfiguration["name"] = String(normalized.prefix(50))
-            $0.hasCompletedName = true
+    }
+
+    /// nil means "I'm not sure"; the projection then shows a labelled example.
+    @discardableResult
+    func saveEstimate(minutesPerDay: Int?) -> Bool {
+        commit {
+            $0.hasSeenWelcome = true
+            if let minutesPerDay {
+                $0.draftSetupConfiguration["estimatedMinutes"] = String(
+                    TimeProjection(minutesPerDay: minutesPerDay).minutesPerDay
+                )
+            } else {
+                $0.draftSetupConfiguration.removeValue(forKey: "estimatedMinutes")
+            }
+            $0.hasCompletedEstimate = true
         }
     }
 
     @discardableResult
-    func saveGoals(_ goals: [String]) -> Bool {
-        guard !goals.isEmpty else {
-            errorMessage = "Choose at least one goal to continue."
+    func completeProjection() -> Bool {
+        guard progress.hasCompletedEstimate else {
+            errorMessage = "Add an estimate before continuing."
             return false
         }
-        return commit {
-            $0.draftPersonalizationAnswers = goals
-            $0.draftSetupConfiguration["primaryGoal"] = goals.first
-            $0.hasCompletedGoals = true
+        return commit { $0.hasSeenProjection = true }
+    }
+
+    /// Distraction types are preference hints only, never blocked tokens.
+    @discardableResult
+    func saveDistractions(_ distractions: Set<OnboardingDistraction>, complete: Bool = true) -> Bool {
+        commit {
+            let ordered = OnboardingDistraction.allCases.filter(distractions.contains).map(\.rawValue)
+            if ordered.isEmpty {
+                $0.draftSetupConfiguration.removeValue(forKey: "distractions")
+            } else {
+                $0.draftSetupConfiguration["distractions"] = ordered.joined(separator: "|")
+            }
+            if complete { $0.hasCompletedDistractions = true }
         }
     }
 
     @discardableResult
-    func saveDistractions(_ distractions: [String]) -> Bool {
-        guard !distractions.isEmpty else {
-            errorMessage = "Choose at least one distraction to continue."
-            return false
-        }
-        return commit {
-            $0.draftSetupConfiguration["distractions"] = distractions.joined(separator: "|")
-            $0.draftSetupConfiguration["primaryDistraction"] = distractions.first
-            $0.hasCompletedDistractions = true
-        }
+    func completeInsight() -> Bool {
+        commit { $0.hasSeenInsight = true }
     }
 
     @discardableResult
-    func saveProblemTimes(_ problemTimes: [String]) -> Bool {
-        guard !problemTimes.isEmpty else {
-            errorMessage = "Choose at least one time to continue."
-            return false
-        }
-        return commit {
-            $0.draftSetupConfiguration["problemTimes"] = problemTimes.joined(separator: "|")
-            $0.draftSetupConfiguration["difficultFocusTime"] = problemTimes.first
-            $0.hasCompletedProblemTimes = true
-        }
-    }
-
-    @discardableResult
-    func saveMotivations(_ motivations: [String]) -> Bool {
-        guard !motivations.isEmpty else {
-            errorMessage = "Choose at least one reason to continue."
-            return false
-        }
-        return commit {
-            $0.draftSetupConfiguration["motivations"] = motivations.joined(separator: "|")
-            $0.draftSetupConfiguration["desiredBenefit"] = motivations.first
-            $0.hasCompletedMotivation = true
-        }
-    }
-
-    @discardableResult
-    func completeCapabilitiesExplainer() -> Bool {
-        guard progress.hasSeenWelcome,
-              progress.hasCompletedName,
-              progress.hasCompletedGoals,
+    func completeProductDemo() -> Bool {
+        guard progress.hasCompletedGoals,
+              progress.hasCompletedEstimate,
+              progress.hasSeenProjection,
               progress.hasCompletedDistractions,
-              progress.hasCompletedProblemTimes,
-              progress.hasCompletedMotivation else {
+              progress.hasSeenInsight else {
             errorMessage = "Complete the earlier onboarding steps before continuing."
             return false
         }
-        return commit { $0.hasSeenCapabilitiesExplainer = true }
+        return commit { $0.hasSeenProductDemo = true }
     }
 
+    /// Optional: granted, denied and "Not Now" all continue.
     @discardableResult
-    func completePricingPreview() -> Bool {
-        guard progress.hasSeenValueOverview else {
-            errorMessage = "Review how Noxa helps before choosing a subscription."
+    func completeNotificationExplainer() -> Bool {
+        commit { $0.hasSeenNotificationExplainer = true }
+    }
+
+    /// Allow and Skip both continue; only the answer differs.
+    @discardableResult
+    func completeAnalyticsConsent() -> Bool {
+        commit { $0.hasAnsweredAnalyticsConsent = true }
+    }
+
+    /// Records a verified entitlement. The caller checks access first; this
+    /// is never set from a purchase button tap alone.
+    @discardableResult
+    func confirmSubscription(hasVerifiedAccess: Bool) -> Bool {
+        guard hasVerifiedAccess else {
+            errorMessage = "Your subscription isn't active yet."
             return false
         }
         return commit { $0.hasSeenPricingPreview = true }
     }
 
+    /// Finishes onboarding. The Pact is voluntary, so completing and skipping
+    /// both open Home; only a verified subscription is required.
     @discardableResult
-    func completeValueOverview() -> Bool {
-        guard progress.hasSeenCapabilitiesExplainer else {
-            errorMessage = "Allow Screen Time access before continuing."
-            return false
-        }
-        return commit { $0.hasSeenValueOverview = true }
-    }
-
-    @discardableResult
-    func completeNotificationExplainer() -> Bool {
+    func finishPact(_ status: PactStatus) -> Bool {
         guard progress.hasSeenPricingPreview else {
-            errorMessage = "Choose a subscription before setting up notifications."
+            errorMessage = "Your subscription isn't active yet."
             return false
         }
-        return commit { $0.hasSeenNotificationExplainer = true }
-    }
-
-    @discardableResult
-    func completeInitialSetup() -> Bool {
-        guard progress.hasSeenPricingPreview,
-              progress.hasSeenNotificationExplainer else {
-            errorMessage = "Finish the notification choice before setup."
-            return false
+        return commit {
+            $0.pactStatus = status
+            $0.hasCompletedInitialSetup = true
+            $0.hasSeenFirstSessionPrompt = true
         }
-        return commit { $0.hasCompletedInitialSetup = true }
-    }
-
-    @discardableResult
-    func completeFirstSessionPrompt() -> Bool {
-        guard progress.hasCompletedInitialSetup else {
-            errorMessage = "Complete the earlier onboarding steps before continuing."
-            return false
-        }
-        return commit { $0.hasSeenFirstSessionPrompt = true }
     }
 
     @discardableResult
@@ -285,5 +292,10 @@ final class OnboardingService: ObservableObject {
         progress.hasCompletedInitialSetup = true
         progress.hasSeenFirstSessionPrompt = true
         progress.hasSeenFirstFocusReview = true
+        progress.hasCompletedEstimate = true
+        progress.hasSeenProjection = true
+        progress.hasSeenInsight = true
+        progress.hasSeenProductDemo = true
+        progress.hasAnsweredAnalyticsConsent = true
     }
 }
