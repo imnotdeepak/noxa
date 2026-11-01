@@ -93,3 +93,40 @@ struct DailyLimitLockTests {
         #expect(service.lockedUntil(saved) != nil)
     }
 }
+
+struct DailyLimitMonitorRegistrationTests {
+    private func limit(_ minutes: Int, enabled: Bool = true) -> DailyLimitConfiguration {
+        var value = DailyLimitConfiguration(selection: FamilyActivitySelection(), dailyLimitMinutes: minutes)
+        value.isEnabled = enabled
+        return value
+    }
+
+    @Test func signatureTracksEnabledLimitsAndAllowances() {
+        let a = limit(10)
+        let b = limit(30)
+        let signature = NoxaDeviceActivityConfiguration.dailyLimitMonitorSignature(configurations: [a, b])
+        #expect(signature.hasPrefix(NoxaDeviceActivityConfiguration.dailyLimitMonitorVersion + "|"))
+        // Order doesn't matter, and turned-off limits aren't monitored.
+        var off = limit(45)
+        off.isEnabled = false
+        #expect(NoxaDeviceActivityConfiguration.dailyLimitMonitorSignature(configurations: [b, a, off]) == signature)
+        var lowered = a
+        lowered.dailyLimitMinutes = 5
+        #expect(NoxaDeviceActivityConfiguration.dailyLimitMonitorSignature(configurations: [lowered, b]) != signature)
+    }
+
+    // Restarting the monitor on every launch made iOS fire limits early.
+    @Test func launchLeavesAMatchingMonitorAlone() {
+        let current = NoxaDeviceActivityConfiguration.dailyLimitMonitorSignature(configurations: [limit(10)])
+        #expect(DailyLimitService.launchAction(savedSignature: current, currentSignature: current) == .keep)
+        let changed = NoxaDeviceActivityConfiguration.dailyLimitMonitorSignature(configurations: [limit(20)])
+        #expect(DailyLimitService.launchAction(savedSignature: changed, currentSignature: current) == .reregister)
+    }
+
+    // Monitors from older builds may already have fired early.
+    @Test func existingMonitorIsAdoptedWithoutClearingToday() {
+        let current = NoxaDeviceActivityConfiguration.dailyLimitMonitorSignature(configurations: [limit(10)])
+        #expect(DailyLimitService.launchAction(savedSignature: nil, currentSignature: current) == .keep)
+        #expect(DailyLimitService.launchAction(savedSignature: "v0|x:10", currentSignature: current) == .reregister)
+    }
+}
