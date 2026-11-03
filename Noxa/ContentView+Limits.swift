@@ -183,7 +183,7 @@ extension ContentView {
         VStack(alignment: .leading, spacing: 12) {
             limitsSectionHeader(
                 "Daily app limits",
-                info: "Give apps a daily allowance. Earlier use today counts. Each limit locks for a week: you can lower it, but not raise, turn off or remove it. After the week you get one day to change it, then it locks again. "
+                info: "Give apps a daily allowance. Counting starts when Noxa begins monitoring and resets each day. Each limit locks for a week: you can lower it, but not raise, turn off or remove it. After the week you get one day to change it, then it locks again. "
                     + (notifications.canSchedule
                        ? "Noxa alerts you about five minutes before a limit, though iOS may deliver it late."
                        : "Turn on notifications to get an alert before a limit is reached."),
