@@ -23,9 +23,9 @@ enum NoxaDeviceActivityConfiguration {
     /// What the running daily-limit monitor was registered with. A launch
     /// only re-registers when this no longer matches.
     static let dailyLimitMonitorSignatureKey = "noxa.dailyLimitMonitorSignature"
-    /// Bump this only when the event definition changes. Earlier use today
-    /// remains part of the limit's allowance.
-    static let dailyLimitMonitorVersion = "v1"
+    /// Bump this only when the event definition changes. v1 counted earlier
+    /// use with includesPastActivity, which made iOS fire limits early.
+    static let dailyLimitMonitorVersion = "v2"
     static let scheduleRelaxationActivityPrefix = "noxa.schedule.relax"
     static let minimumFocusSessionMinutes = 15
     /// Every new Focus session is committed, so one four-hour cap applies.
@@ -434,8 +434,8 @@ final class DailyLimitService: ObservableObject {
     }
 
     /// Called on launch. Avoid re-registering a running monitor: the existing
-    /// event already counts use since midnight, and restarting it mid-day can
-    /// cause an extra threshold callback.
+    /// event already counts today's use, and restarting it mid-day can cause
+    /// an extra threshold callback.
     func rescheduleActiveMonitoring() {
         reconcileDayBoundary()
         guard isMonitoring, configurations.contains(where: \.isEnabled) else { return }
@@ -444,11 +444,6 @@ final class DailyLimitService: ObservableObject {
         let current = NoxaDeviceActivityConfiguration.dailyLimitMonitorSignature(configurations: configurations)
         switch Self.launchAction(savedSignature: saved, currentSignature: current) {
         case .keep:
-            // Build 14 did not save a signature, but its event definition is
-            // unchanged. Adopt the running monitor without restarting it.
-            if saved == nil {
-                defaults?.set(current, forKey: NoxaDeviceActivityConfiguration.dailyLimitMonitorSignatureKey)
-            }
             return
         case .reregister:
             startMonitoring(resetReachedState: false)
@@ -460,10 +455,10 @@ final class DailyLimitService: ObservableObject {
         case reregister
     }
 
+    /// Build 14 saved no signature and, like v1, counted earlier use, so a
+    /// missing signature re-registers too.
     nonisolated static func launchAction(savedSignature: String?, currentSignature: String) -> LaunchAction {
-        guard let savedSignature else { return .keep }
-        if savedSignature == currentSignature { return .keep }
-        return .reregister
+        savedSignature == currentSignature ? .keep : .reregister
     }
 
     /// Clears yesterday's reached-limit state when the app crosses local
@@ -519,20 +514,10 @@ final class DailyLimitService: ObservableObject {
         }
     }
 
-    /// Include today's use before a limit was added or a monitor was
-    /// re-registered, so the allowance always measures the whole day.
+    /// Counts use from when the monitor is registered. includesPastActivity
+    /// made iOS fire limits minutes after a re-register with little real use.
     private func dailyLimitEvent(for configuration: DailyLimitConfiguration) -> DeviceActivityEvent {
-        if #available(iOS 17.4, *) {
-            return DeviceActivityEvent(
-                applications: configuration.selection.applicationTokens,
-                categories: configuration.selection.categoryTokens,
-                webDomains: configuration.selection.webDomainTokens,
-                threshold: DateComponents(minute: configuration.dailyLimitMinutes),
-                includesPastActivity: true
-            )
-        }
-
-        return DeviceActivityEvent(
+        DeviceActivityEvent(
             applications: configuration.selection.applicationTokens,
             categories: configuration.selection.categoryTokens,
             webDomains: configuration.selection.webDomainTokens,

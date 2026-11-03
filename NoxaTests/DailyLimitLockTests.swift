@@ -123,10 +123,12 @@ struct DailyLimitMonitorRegistrationTests {
         #expect(DailyLimitService.launchAction(savedSignature: changed, currentSignature: current) == .reregister)
     }
 
-    // Monitors from older builds may already have fired early.
-    @Test func existingMonitorIsAdoptedWithoutClearingToday() {
-        let current = NoxaDeviceActivityConfiguration.dailyLimitMonitorSignature(configurations: [limit(10)])
-        #expect(DailyLimitService.launchAction(savedSignature: nil, currentSignature: current) == .keep)
-        #expect(DailyLimitService.launchAction(savedSignature: "v0|x:10", currentSignature: current) == .reregister)
+    // Older monitors counted earlier use, which fired limits early.
+    @Test func olderMonitorsAreReregistered() {
+        let limit = limit(10)
+        let current = NoxaDeviceActivityConfiguration.dailyLimitMonitorSignature(configurations: [limit])
+        #expect(DailyLimitService.launchAction(savedSignature: nil, currentSignature: current) == .reregister)
+        let v1 = "v1|\(limit.id.uuidString.lowercased()):10"
+        #expect(DailyLimitService.launchAction(savedSignature: v1, currentSignature: current) == .reregister)
     }
 }
