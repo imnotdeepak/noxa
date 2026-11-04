@@ -46,8 +46,8 @@ struct RuleStatusTests {
     @Test func pausedLimitNeverLooksEnforced() {
         #expect(RuleStatus.dailyLimit(isEnabled: true, isAuthorized: true, isMonitoring: false, hasReachedLimit: true)
             == .paused)
-        #expect(RuleStatus.dailyLimit(isEnabled: true, isAuthorized: true, isMonitoring: true, hasReachedLimit: false)
-            == .counting)
+        #expect(RuleStatus.dailyLimit(isEnabled: true, isAuthorized: true, isMonitoring: true, hasReachedLimit: false, usedMinutes: 7)
+            == .counting(usedMinutes: 7))
         #expect(RuleStatus.dailyLimit(isEnabled: true, isAuthorized: true, isMonitoring: true, hasReachedLimit: true)
             == .blockingNow)
     }

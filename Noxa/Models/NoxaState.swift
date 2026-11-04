@@ -238,7 +238,7 @@ struct DailyLimitConfiguration: Codable, Equatable, Identifiable, Sendable {
         self.id = id
         self.ownerUserID = ownerUserID
         self.selection = selection
-        self.dailyLimitMinutes = min(max(dailyLimitMinutes, 5), 240)
+        self.dailyLimitMinutes = min(max(dailyLimitMinutes, 5), 60)
         self.createdAt = createdAt
         self.isEnabled = isEnabled
         self.lockAnchor = lockAnchor

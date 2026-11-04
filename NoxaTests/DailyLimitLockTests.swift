@@ -118,17 +118,36 @@ struct DailyLimitMonitorRegistrationTests {
     // Restarting the monitor on every launch made iOS fire limits early.
     @Test func launchLeavesAMatchingMonitorAlone() {
         let current = NoxaDeviceActivityConfiguration.dailyLimitMonitorSignature(configurations: [limit(10)])
-        #expect(DailyLimitService.launchAction(savedSignature: current, currentSignature: current) == .keep)
+        #expect(DailyLimitService.launchAction(isRegistered: true, savedSignature: current, currentSignature: current) == .keep)
         let changed = NoxaDeviceActivityConfiguration.dailyLimitMonitorSignature(configurations: [limit(20)])
-        #expect(DailyLimitService.launchAction(savedSignature: changed, currentSignature: current) == .reregister)
+        #expect(DailyLimitService.launchAction(isRegistered: true, savedSignature: changed, currentSignature: current) == .reregister)
     }
 
     // Older monitors counted earlier use, which fired limits early.
     @Test func olderMonitorsAreReregistered() {
         let limit = limit(10)
         let current = NoxaDeviceActivityConfiguration.dailyLimitMonitorSignature(configurations: [limit])
-        #expect(DailyLimitService.launchAction(savedSignature: nil, currentSignature: current) == .reregister)
+        #expect(DailyLimitService.launchAction(isRegistered: true, savedSignature: nil, currentSignature: current) == .reregister)
         let v1 = "v1|\(limit.id.uuidString.lowercased()):10"
-        #expect(DailyLimitService.launchAction(savedSignature: v1, currentSignature: current) == .reregister)
+        #expect(DailyLimitService.launchAction(isRegistered: true, savedSignature: v1, currentSignature: current) == .reregister)
+    }
+
+    @Test func usageEventsCountEachMinuteBelowTheAllowance() {
+        #expect(NoxaDeviceActivityConfiguration.dailyLimitUsageEvents(limitMinutes: 5) == [1, 2, 3, 4])
+        #expect(NoxaDeviceActivityConfiguration.dailyLimitUsageEvents(limitMinutes: 60).count == 59)
+        // Limits saved before the one-hour cap count every 5 minutes.
+        #expect(NoxaDeviceActivityConfiguration.dailyLimitUsageEvents(limitMinutes: 120).prefix(3) == [1, 6, 11])
+    }
+
+    @Test func newAllowancesAreCappedAtAnHour() {
+        #expect(limit(240).dailyLimitMinutes == 60)
+    }
+
+    // iOS dropped the monitor on device while every limit was still on.
+    @Test func droppedMonitorIsRestoredUnlessStopped() {
+        let current = NoxaDeviceActivityConfiguration.dailyLimitMonitorSignature(configurations: [limit(10)])
+        #expect(DailyLimitService.launchAction(isRegistered: false, savedSignature: current, currentSignature: current) == .reregister)
+        // Stopping clears the signature, so stopped limits stay stopped.
+        #expect(DailyLimitService.launchAction(isRegistered: false, savedSignature: nil, currentSignature: current) == .keep)
     }
 }

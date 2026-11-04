@@ -130,7 +130,7 @@ struct NoxaApp: App {
                 Task { await FocusPresentationCoordinator.reconcile(session: focusSession.activeSession) }
                 restrictions.reconcile()
                 websites.reconcile()
-                dailyLimits.reconcileDayBoundary()
+                dailyLimits.rescheduleActiveMonitoring()
                 schedules.reconcile()
                 Task {
                     if subscriptions.boundUserID == authentication.userID {

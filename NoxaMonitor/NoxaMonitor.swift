@@ -25,8 +25,19 @@ private enum NoxaMonitorActivity {
     static let scheduleRelaxationActivityPrefix = "noxa.schedule.relax."
     static let pomodoroWorkActivityPrefix = "noxa.pomodoro.work."
 
+    static let dailyLimitUsedMinutesKey = "noxa.dailyLimitUsedMinutes"
+    static let dailyLimitUsageEventPrefix = "noxa.daily.usage."
+
     static func dailyLimitEventPrefix() -> String {
         "noxa.daily.limit."
+    }
+
+    /// Parses "noxa.daily.usage.<id>.<minute>" into the limit and minute.
+    static func dailyLimitUsage(from event: DeviceActivityEvent.Name) -> (id: String, minute: Int)? {
+        guard event.rawValue.hasPrefix(dailyLimitUsageEventPrefix) else { return nil }
+        let parts = event.rawValue.dropFirst(dailyLimitUsageEventPrefix.count).split(separator: ".")
+        guard parts.count == 2, let minute = Int(parts[1]) else { return nil }
+        return (String(parts[0]), minute)
     }
 
     static func dailyLimitDayStamp(for date: Date = Date(), calendar: Calendar = .autoupdatingCurrent) -> String {
@@ -205,6 +216,7 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
             if defaults?.string(forKey: NoxaMonitorActivity.dailyLimitResetDayKey) != today {
                 dailyLimitSettingsStore.clearAllSettings()
                 defaults?.removeObject(forKey: NoxaMonitorActivity.dailyLimitReachedEventsKey)
+                defaults?.removeObject(forKey: NoxaMonitorActivity.dailyLimitUsedMinutesKey)
                 defaults?.set(today, forKey: NoxaMonitorActivity.dailyLimitResetDayKey)
                 logger.info("Reset daily limit shields for a new day")
             } else {
@@ -231,6 +243,10 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
     ) {
         super.eventDidReachThreshold(event, activity: activity)
         if activity == NoxaMonitorActivity.dailyLimitActivityName {
+            if let usage = NoxaMonitorActivity.dailyLimitUsage(from: event) {
+                recordDailyLimitUsage(id: usage.id, minute: usage.minute)
+                return
+            }
             recordDailyLimitCallback("reached", event: event)
             applyDailyLimitShield(for: event)
         } else {
@@ -243,9 +259,18 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         activity: DeviceActivityName
     ) {
         super.eventWillReachThresholdWarning(event, activity: activity)
-        guard activity == NoxaMonitorActivity.dailyLimitActivityName else { return }
+        guard activity == NoxaMonitorActivity.dailyLimitActivityName,
+              NoxaMonitorActivity.dailyLimitUsage(from: event) == nil else { return }
         recordDailyLimitCallback("warning", event: event)
         sendDailyLimitWarning(for: event)
+    }
+
+    private func recordDailyLimitUsage(id: String, minute: Int) {
+        guard let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa") else { return }
+        var used = defaults.dictionary(forKey: NoxaMonitorActivity.dailyLimitUsedMinutesKey) as? [String: Int] ?? [:]
+        guard minute > used[id, default: 0] else { return }
+        used[id] = minute
+        defaults.set(used, forKey: NoxaMonitorActivity.dailyLimitUsedMinutesKey)
     }
 
     private func recordDailyLimitCallback(
