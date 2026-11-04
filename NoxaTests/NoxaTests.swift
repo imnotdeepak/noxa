@@ -575,7 +575,7 @@ struct NoxaTests {
             dailyLimitMinutes: 500
         )
 
-        #expect(configuration.dailyLimitMinutes == 240)
+        #expect(configuration.dailyLimitMinutes == 60)
     }
 
     @Test func dailyLimitConfigurationEditsRetainOnlyReachedEnabledLimits() throws {

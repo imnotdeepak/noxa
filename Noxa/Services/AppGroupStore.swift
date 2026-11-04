@@ -515,6 +515,20 @@ final class AppGroupStore {
         return Set(defaults.stringArray(forKey: Key.dailyLimitReachedEvents) ?? [])
     }
 
+    /// Minutes of today's use the limit's monitor has counted so far.
+    func dailyLimitUsedMinutes(
+        for id: UUID,
+        at date: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Int {
+        guard defaults.string(forKey: Key.dailyLimitResetDay)
+            == NoxaDeviceActivityConfiguration.dailyLimitDayStamp(for: date, calendar: calendar) else {
+            return 0
+        }
+        let used = defaults.dictionary(forKey: NoxaDeviceActivityConfiguration.dailyLimitUsedMinutesKey)
+        return used?[id.uuidString.lowercased()] as? Int ?? 0
+    }
+
     func loadRestrictionSchedules() throws -> [RestrictionScheduleConfiguration] {
         guard let data = defaults.data(forKey: Key.restrictionSchedules) else {
             return []

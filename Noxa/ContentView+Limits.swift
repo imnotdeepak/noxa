@@ -77,7 +77,7 @@ extension ContentView {
                 columns: durationGridColumns(regularCount: 2, spacing: 10),
                 spacing: 10
             ) {
-                ForEach([10, 15, 30, 45, 60, 120], id: \.self) { minutes in
+                ForEach([10, 15, 20, 30, 45, 60], id: \.self) { minutes in
                     Button(Self.durationLabel(minutes: minutes)) {
                         selectedDailyLimitMinutes = minutes
                     }
@@ -277,7 +277,8 @@ extension ContentView {
                                 isMonitoring: hasActiveDailyLimits,
                                 hasReachedLimit: AppGroupStore.shared.reachedDailyLimitEventNames().contains(
                                     NoxaDeviceActivityConfiguration.dailyLimitEventName(for: configuration.id).rawValue
-                                )
+                                ),
+                                usedMinutes: AppGroupStore.shared.dailyLimitUsedMinutes(for: configuration.id)
                             ),
                             now: Date()
                         )
@@ -315,7 +316,7 @@ extension ContentView {
                     Text("Daily allowance")
                         .font(NoxaType.headline)
                     LazyVGrid(columns: durationGridColumns(regularCount: 3, spacing: 10), spacing: 10) {
-                        ForEach([10, 15, 30, 45, 60, 90, 120, 180, 240], id: \.self) { minutes in
+                        ForEach([10, 15, 20, 30, 45, 60], id: \.self) { minutes in
                             Button(Self.durationLabel(minutes: minutes)) {
                                 dailyLimits.updateMinutes(minutes, for: saved)
                             }

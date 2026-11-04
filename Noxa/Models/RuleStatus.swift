@@ -17,7 +17,7 @@ enum RuleStatus: Equatable {
     /// Blocking now, and locked against changes until the given time.
     case lockedUntil(Date)
     /// A daily limit that is on and counting today's use.
-    case counting
+    case counting(usedMinutes: Int)
 
     static func schedule(
         _ rule: ScheduleRule,
@@ -40,11 +40,12 @@ enum RuleStatus: Equatable {
         isEnabled: Bool,
         isAuthorized: Bool,
         isMonitoring: Bool,
-        hasReachedLimit: Bool
+        hasReachedLimit: Bool,
+        usedMinutes: Int = 0
     ) -> RuleStatus {
         guard isAuthorized else { return .needsPermission }
         guard isEnabled else { return .off }
         guard isMonitoring else { return .paused }
-        return hasReachedLimit ? .blockingNow : .counting
+        return hasReachedLimit ? .blockingNow : .counting(usedMinutes: usedMinutes)
     }
 }

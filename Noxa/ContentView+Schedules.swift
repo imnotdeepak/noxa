@@ -431,7 +431,7 @@ extension ContentView {
         case .scheduled(let next): ("Scheduled · next at \(time(next))", "clock", NoxaTheme.secondaryText)
         case .blockingNow: ("Blocking now", "shield.fill", NoxaTheme.accent)
         case .lockedUntil(let end): ("Blocking now · until \(time(end))", "shield.fill", NoxaTheme.accent)
-        case .counting: ("Counting today's use", "hourglass", NoxaTheme.secondaryText)
+        case .counting(let used): ("\(used) min used today", "hourglass", NoxaTheme.secondaryText)
         }
         return Label(text, systemImage: icon)
             .font(NoxaType.captionSemibold)
