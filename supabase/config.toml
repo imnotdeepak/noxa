@@ -3,3 +3,6 @@ verify_jwt = false
 
 [functions.release-policy]
 verify_jwt = false
+
+[functions.retry-account-deletions]
+verify_jwt = false

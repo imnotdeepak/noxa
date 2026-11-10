@@ -61,6 +61,7 @@ struct ContentView: View {
         }
     }
 
+    @Environment(\.openURL) private var openURL
     @EnvironmentObject var authentication: AuthenticationService
     @EnvironmentObject var analytics: AnalyticsService
     @EnvironmentObject var subscriptions: SubscriptionService
@@ -297,15 +298,18 @@ struct ContentView: View {
             statsReferenceDate = Date()
         }
         let accountAlerts = observedTabs
-        .alert("Delete your Noxa account?", isPresented: $isDeleteAccountConfirmationPresented) {
+        .alert(AccountDeletionNotice.title, isPresented: $isDeleteAccountConfirmationPresented) {
             Button("Cancel", role: .cancel) {}
+            Button(AccountDeletionNotice.manageSubscriptionTitle) {
+                openURL(AccountDeletionNotice.manageSubscriptionURL)
+            }
             Button("Delete Account", role: .destructive) {
                 Task { @MainActor in
                     await deleteAccountAndLocalData()
                 }
             }
         } message: {
-            Text("This permanently deletes your cloud account and Noxa data. Your App Store subscription must be cancelled separately in Apple settings.")
+            Text(AccountDeletionNotice.message(hasActiveSubscription: subscriptions.hasAccess))
         }
         .alert("Get focus notifications?", isPresented: $isNotificationPromptPresented) {
             Button("Not Now", role: .cancel) {}

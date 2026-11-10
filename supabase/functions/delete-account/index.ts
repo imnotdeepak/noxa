@@ -1,15 +1,15 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { requestPostHogDeletion } from "./posthog.mjs";
+import { deleteRevenueCatCustomer, revenueCatConfig } from "./revenuecat.mjs";
+import { deleteAccount } from "./workflow.mjs";
+import { deletionJobs } from "./jobs.mjs";
 
 const jsonHeaders = { "Content-Type": "application/json" };
+const json = (status: number, body: object) =>
+  new Response(JSON.stringify(body), { status, headers: jsonHeaders });
 
 Deno.serve(async (request) => {
-  if (request.method !== "POST") {
-    return new Response(JSON.stringify({ error: "method_not_allowed" }), {
-      status: 405,
-      headers: jsonHeaders,
-    });
-  }
+  if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
 
   const authorization = request.headers.get("Authorization");
   const supabaseURL = Deno.env.get("SUPABASE_URL");
@@ -17,10 +17,7 @@ Deno.serve(async (request) => {
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
   if (!authorization || !supabaseURL || !publishableKey || !serviceRoleKey) {
-    return new Response(JSON.stringify({ error: "unauthorized" }), {
-      status: 401,
-      headers: jsonHeaders,
-    });
+    return json(401, { error: "unauthorized" });
   }
 
   const userClient = createClient(supabaseURL, publishableKey, {
@@ -29,34 +26,21 @@ Deno.serve(async (request) => {
   });
   const { data, error: userError } = await userClient.auth.getUser();
 
-  if (userError || !data.user) {
-    return new Response(JSON.stringify({ error: "invalid_session" }), {
-      status: 401,
-      headers: jsonHeaders,
-    });
-  }
+  if (userError || !data.user) return json(401, { error: "invalid_session" });
 
   const adminClient = createClient(supabaseURL, serviceRoleKey, {
     auth: { persistSession: false },
   });
-  const { error: deletionError } = await adminClient.auth.admin.deleteUser(
-    data.user.id,
-  );
+  const revenueCat = revenueCatConfig(Deno.env);
 
-  if (deletionError) {
-    console.error("Account deletion failed", deletionError.message);
-    return new Response(JSON.stringify({ error: "deletion_failed" }), {
-      status: 500,
-      headers: jsonHeaders,
-    });
-  }
-
-  // The app identifies analytics by this user ID. Request analytics deletion
-  // only after the account itself is deleted; PostHog errors do not undo it.
-  const analytics = await requestPostHogDeletion(Deno.env, data.user.id);
-
-  return new Response(JSON.stringify({ deleted: true, analytics }), {
-    status: 200,
-    headers: jsonHeaders,
+  const result = await deleteAccount(data.user.id, {
+    revenueCat: revenueCat
+      ? (userID: string) => deleteRevenueCatCustomer(revenueCat, userID)
+      : null,
+    deleteAuthUser: (userID: string) => adminClient.auth.admin.deleteUser(userID),
+    requestAnalyticsDeletion: (userID: string) => requestPostHogDeletion(Deno.env, userID),
+    jobs: deletionJobs(adminClient),
   });
+
+  return json(result.status, result.body);
 });

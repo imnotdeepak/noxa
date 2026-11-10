@@ -41,7 +41,59 @@ user ID, along with their events. Set these secrets to enable it:
 - `POSTHOG_API_HOST` (optional): defaults to `https://us.posthog.com`; use
   `https://eu.posthog.com` for an EU project.
 
-Without them the function still deletes the account and reports
+### RevenueCat customer deletion
+
+Before it deletes the Supabase user, the function deletes the account's
+RevenueCat customer (App User ID = lowercased Supabase user ID) and every
+alias, including anonymous `$RCAnonymousID:` ones. It then reads each ID back
+until RevenueCat answers 404. If RevenueCat fails, nothing is deleted and the
+app shows a "try again" message. After the Supabase user is deleted it checks
+RevenueCat again, because the app's SDK can recreate the customer in between.
+If that last check isn't confirmed, the account is still deleted. The function
+returns `"subscriptionRecord": "pending_verification"` and keeps a row in
+`account_deletion_jobs` for the `retry-account-deletions` function. Apple billing
+is never touched.
+
+Run `migrations/20261110_account_deletion_jobs.sql` first, then set:
+
+- `REVENUECAT_SECRET_KEY`: a RevenueCat **v2 secret** key with
+  `customer_information:customers:read_write`. Server-only; never in the app.
+- `REVENUECAT_PROJECT_ID`: from the RevenueCat project settings.
+- `NOXA_ACCOUNT_DELETION_CRON_SECRET`: a random value, used by the retry
+  function's cron job in the `x-noxa-cron-secret` header, like the Live
+  Activity job below. Every 15 minutes is enough.
+
+Without the RevenueCat secrets, the function refuses to delete the account
+(`subscription_cleanup_unavailable`) rather than leaving the customer behind,
+so set them **before** deploying this version.
+
+```sh
+supabase functions deploy delete-account
+supabase functions deploy retry-account-deletions
+```
+
+Save the cron secret in Vault as `noxa_account_deletion_cron_secret`, then:
+
+```sql
+select cron.schedule(
+  'noxa-retry-account-deletions',
+  '*/15 * * * *',
+  $$
+    select net.http_post(
+      url := 'https://ckwikbybjgydfcqpnfyo.supabase.co/functions/v1/retry-account-deletions',
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'x-noxa-cron-secret',
+        (select decrypted_secret from vault.decrypted_secrets
+         where name = 'noxa_account_deletion_cron_secret')
+      ),
+      body := '{}'::jsonb
+    );
+  $$
+);
+```
+
+Without the PostHog secrets the function still deletes the account and reports
 `"analytics": "skipped"`. A PostHog error is logged and reported as
 `"failed"`, but never blocks the account deletion. PostHog processes person
 deletions in the background, so the record can take a while to disappear.

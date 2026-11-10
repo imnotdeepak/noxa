@@ -81,6 +81,23 @@ create index if not exists focus_live_activity_ends_due_idx
   where status = 'pending';
 alter table public.focus_live_activity_ends enable row level security;
 
+-- RevenueCat cleanup for account deletions; see delete-account. No foreign
+-- key to auth.users, so a row outlives the account until cleanup is confirmed.
+create table if not exists public.account_deletion_jobs (
+  user_id uuid primary key,
+  status text not null default 'pending' check (status in ('pending', 'verifying')),
+  revenuecat_customer_ids text[] not null default '{}',
+  attempts integer not null default 0,
+  last_error text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists account_deletion_jobs_verifying_idx
+  on public.account_deletion_jobs(updated_at)
+  where status = 'verifying';
+alter table public.account_deletion_jobs enable row level security;
+revoke all on public.account_deletion_jobs from anon, authenticated;
+
 -- Upgrade databases created by the first stage-three draft. Legacy Boolean
 -- rows cannot distinguish all outcomes, so successful rows migrate to
 -- completed and unsuccessful rows migrate to interrupted.

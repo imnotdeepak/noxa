@@ -192,9 +192,17 @@ final class AuthenticationService: ObservableObject {
             message = nil
             return true
         } catch {
-            message = "Your account could not be deleted right now. Please try again."
+            message = AccountDeletionNotice.failureMessage(errorCode: Self.functionErrorCode(error))
             return false
         }
+    }
+
+    private static func functionErrorCode(_ error: Error) -> String? {
+        guard case FunctionsError.httpError(_, let data) = error,
+              let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        return body["error"] as? String
     }
 
     func sendPasswordReset(to email: String) async {

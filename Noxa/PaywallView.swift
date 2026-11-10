@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     @EnvironmentObject private var authentication: AuthenticationService
     @EnvironmentObject private var subscriptions: SubscriptionService
     @EnvironmentObject private var focusSession: FocusSessionService
@@ -156,7 +157,7 @@ struct PaywallView: View {
                         .foregroundStyle(.red)
                         .disabled(authentication.isBusy || focusSession.isActive || focusSession.hasPomodoroCycle)
 
-                        Link("Manage subscriptions in Apple settings", destination: URL(string: "https://apps.apple.com/account/subscriptions")!)
+                        Link("Manage subscriptions in Apple settings", destination: AccountDeletionNotice.manageSubscriptionURL)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -165,6 +166,13 @@ struct PaywallView: View {
                         Text(message)
                             .font(.footnote)
                             .foregroundStyle(subscriptions.hasAccess ? .green : .secondary)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    if !isOnboarding, let message = authentication.message {
+                        Text(message)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
                             .multilineTextAlignment(.center)
                     }
 
@@ -198,8 +206,11 @@ struct PaywallView: View {
                     confirmAccess()
                 }
             }
-            .alert("Delete your Noxa account?", isPresented: $isDeleteAccountConfirmationPresented) {
+            .alert(AccountDeletionNotice.title, isPresented: $isDeleteAccountConfirmationPresented) {
                 Button("Cancel", role: .cancel) {}
+                Button(AccountDeletionNotice.manageSubscriptionTitle) {
+                    openURL(AccountDeletionNotice.manageSubscriptionURL)
+                }
                 Button("Delete Account", role: .destructive) {
                     Task { @MainActor in
                         guard !focusSession.isActive && !focusSession.hasPomodoroCycle else { return }
@@ -219,7 +230,7 @@ struct PaywallView: View {
                     }
                 }
             } message: {
-                Text("This permanently deletes your cloud account and Noxa data. Your App Store subscription must be cancelled separately in Apple settings.")
+                Text(AccountDeletionNotice.message(hasActiveSubscription: subscriptions.hasAccess))
             }
             .toolbar {
                 if allowsDismissal {
