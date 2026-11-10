@@ -21,33 +21,32 @@ enum NoxaDeviceActivityConfiguration {
     static let dailyLimitReachedEventsKey = "noxa.dailyLimitReachedEvents"
     static let dailyLimitResetDayKey = "noxa.dailyLimitResetDay"
     /// Minutes counted so far today, by limit ID, from the usage events.
-    static let dailyLimitUsedMinutesKey = "noxa.dailyLimitUsedMinutes"
-    static let dailyLimitUsageEventPrefix = "noxa.daily.usage."
-    static let maximumDailyLimitMinutes = 60
+    static let dailyLimitUsedMinutesKey = DailyLimitEvents.usedMinutesKey
+    static let maximumDailyLimitMinutes = DailyLimitEvents.maximumMinutes
     /// What the running daily-limit monitor was registered with. A launch
     /// only re-registers when this no longer matches.
     static let dailyLimitMonitorSignatureKey = "noxa.dailyLimitMonitorSignature"
     /// Bump this only when the event definition changes. v1 counted earlier
     /// use with includesPastActivity, which made iOS fire limits early. v3
-    /// added the per-minute usage events.
-    static let dailyLimitMonitorVersion = "v3"
+    /// added the per-minute usage events. v4 put a registration generation in
+    /// every event name so stale callbacks can be ignored.
+    static let dailyLimitMonitorVersion = "v4"
     static let scheduleRelaxationActivityPrefix = "noxa.schedule.relax"
     static let minimumFocusSessionMinutes = 15
     /// Every new Focus session is committed, so one four-hour cap applies.
     static let maximumFocusSessionMinutes = 240
 
+    /// The name a limit's reached state is stored under.
     static func dailyLimitEventName(for id: UUID) -> DeviceActivityEvent.Name {
-        DeviceActivityEvent.Name("noxa.daily.limit.\(id.uuidString.lowercased())")
+        DeviceActivityEvent.Name(DailyLimitEvents.canonicalReachedName(id: id.uuidString.lowercased()))
     }
 
-    /// One event per minute of use below the allowance, so the app can show
-    /// how much of it is gone. Older limits above an hour count every 5.
-    static func dailyLimitUsageEvents(limitMinutes: Int) -> [Int] {
-        Array(stride(from: 1, to: limitMinutes, by: limitMinutes <= maximumDailyLimitMinutes ? 1 : 5))
-    }
-
-    static func dailyLimitUsageEventName(for id: UUID, minute: Int) -> DeviceActivityEvent.Name {
-        DeviceActivityEvent.Name("\(dailyLimitUsageEventPrefix)\(id.uuidString.lowercased()).\(minute)")
+    /// Per-registration state the monitor uses to verify callbacks. A new
+    /// registration counts from zero, so none of it carries over.
+    static func clearDailyLimitRegistrationState(_ defaults: UserDefaults?) {
+        defaults?.removeObject(forKey: DailyLimitEvents.usedMinutesKey)
+        defaults?.removeObject(forKey: DailyLimitEvents.usageTimesKey)
+        defaults?.removeObject(forKey: DailyLimitEvents.baselinesKey)
     }
 
     static func scheduleActivityName(for id: UUID, segment: String) -> DeviceActivityName {
@@ -176,6 +175,12 @@ final class DailyLimitService: ObservableObject {
             || settingsStore.shield.applicationCategories != nil
             || settingsStore.shield.webDomains != nil
         reconcileDayBoundary()
+        #if DEBUG
+        // Device testing: drop today's blocks and count every limit from now.
+        if ProcessInfo.processInfo.arguments.contains("-NoxaRestartDailyLimits") {
+            startMonitoring()
+        }
+        #endif
     }
 
     var enabledCount: Int {
@@ -357,24 +362,22 @@ final class DailyLimitService: ObservableObject {
             return
         }
 
-        let schedule = DeviceActivitySchedule(
-            intervalStart: DateComponents(hour: 0, minute: 0),
-            intervalEnd: DateComponents(hour: 23, minute: 59),
-            repeats: true,
-            warningTime: DateComponents(minute: 5)
-        )
-        var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
-        for configuration in active {
-            events[NoxaDeviceActivityConfiguration.dailyLimitEventName(for: configuration.id)] =
-                dailyLimitEvent(for: configuration, minutes: configuration.dailyLimitMinutes)
-            for minute in NoxaDeviceActivityConfiguration.dailyLimitUsageEvents(limitMinutes: configuration.dailyLimitMinutes) {
-                events[NoxaDeviceActivityConfiguration.dailyLimitUsageEventName(for: configuration.id, minute: minute)] =
-                    dailyLimitEvent(for: configuration, minutes: minute)
-            }
-        }
-
         do {
             let defaults = UserDefaults(suiteName: AppGroupStore.suiteName)
+            let generation = (defaults?.integer(forKey: DailyLimitEvents.generationKey) ?? 0) + 1
+            let events = DailyLimitEvents.events(
+                for: active.map { configuration in
+                    (
+                        DailyLimitEvents.Limit(
+                            id: configuration.id.uuidString.lowercased(),
+                            minutes: configuration.dailyLimitMinutes
+                        ),
+                        configuration.selection,
+                        0
+                    )
+                },
+                generation: generation
+            )
             let today = NoxaDeviceActivityConfiguration.dailyLimitDayStamp()
             let startsNewDay = defaults?.string(
                 forKey: NoxaDeviceActivityConfiguration.dailyLimitResetDayKey
@@ -382,8 +385,9 @@ final class DailyLimitService: ObservableObject {
             let shouldResetReachedState = resetReachedState || startsNewDay
 
             center.stopMonitoring([NoxaDeviceActivityConfiguration.dailyLimitActivityName])
-            // The new registration counts from zero.
-            defaults?.removeObject(forKey: NoxaDeviceActivityConfiguration.dailyLimitUsedMinutesKey)
+            // Callbacks still queued for the old registration are ignored.
+            defaults?.set(generation, forKey: DailyLimitEvents.generationKey)
+            NoxaDeviceActivityConfiguration.clearDailyLimitRegistrationState(defaults)
             if shouldResetReachedState {
                 settingsStore.clearAllSettings()
                 isShieldActive = false
@@ -410,7 +414,7 @@ final class DailyLimitService: ObservableObject {
             defaults?.set(today, forKey: NoxaDeviceActivityConfiguration.dailyLimitResetDayKey)
             try center.startMonitoring(
                 NoxaDeviceActivityConfiguration.dailyLimitActivityName,
-                during: schedule,
+                during: DailyLimitEvents.schedule,
                 events: events
             )
             defaults?.set(
@@ -434,7 +438,7 @@ final class DailyLimitService: ObservableObject {
         defaults?.removeObject(forKey: NoxaDeviceActivityConfiguration.dailyLimitReachedEventsKey)
         defaults?.removeObject(forKey: NoxaDeviceActivityConfiguration.dailyLimitResetDayKey)
         defaults?.removeObject(forKey: NoxaDeviceActivityConfiguration.dailyLimitMonitorSignatureKey)
-        defaults?.removeObject(forKey: NoxaDeviceActivityConfiguration.dailyLimitUsedMinutesKey)
+        NoxaDeviceActivityConfiguration.clearDailyLimitRegistrationState(defaults)
         isMonitoring = false
         isShieldActive = false
         errorMessage = nil
@@ -508,7 +512,7 @@ final class DailyLimitService: ObservableObject {
             settingsStore.clearAllSettings()
             defaults?.removeObject(forKey: NoxaDeviceActivityConfiguration.dailyLimitReachedEventsKey)
             defaults?.removeObject(forKey: NoxaDeviceActivityConfiguration.dailyLimitResetDayKey)
-            defaults?.removeObject(forKey: NoxaDeviceActivityConfiguration.dailyLimitUsedMinutesKey)
+            NoxaDeviceActivityConfiguration.clearDailyLimitRegistrationState(defaults)
             isShieldActive = false
             return
         }
@@ -523,12 +527,19 @@ final class DailyLimitService: ObservableObject {
             return
         }
 
+        // A limit re-armed yesterday was registered for only its remaining
+        // minutes, so it needs its full allowance back.
+        let wasRearmed = !(defaults?.dictionary(forKey: DailyLimitEvents.baselinesKey) ?? [:]).isEmpty
         settingsStore.clearAllSettings()
         defaults?.removeObject(forKey: NoxaDeviceActivityConfiguration.dailyLimitReachedEventsKey)
-        defaults?.removeObject(forKey: NoxaDeviceActivityConfiguration.dailyLimitUsedMinutesKey)
+        defaults?.removeObject(forKey: DailyLimitEvents.rearmsKey)
+        NoxaDeviceActivityConfiguration.clearDailyLimitRegistrationState(defaults)
         defaults?.set(today, forKey: NoxaDeviceActivityConfiguration.dailyLimitResetDayKey)
         isShieldActive = false
         logger.info("Reset daily limit state at the local day boundary")
+        if wasRearmed, configurations.contains(where: \.isEnabled) {
+            startMonitoring(resetReachedState: true)
+        }
     }
 
     private func persistAndRestartIfNeeded() {
@@ -548,17 +559,6 @@ final class DailyLimitService: ObservableObject {
             errorMessage = "Could not save daily limits: \(error.localizedDescription)"
             logger.error("Daily limit persistence failed: \(error.localizedDescription, privacy: .public)")
         }
-    }
-
-    /// Counts use from when the monitor is registered. includesPastActivity
-    /// made iOS fire limits minutes after a re-register with little real use.
-    private func dailyLimitEvent(for configuration: DailyLimitConfiguration, minutes: Int) -> DeviceActivityEvent {
-        DeviceActivityEvent(
-            applications: configuration.selection.applicationTokens,
-            categories: configuration.selection.categoryTokens,
-            webDomains: configuration.selection.webDomainTokens,
-            threshold: DateComponents(minute: minutes)
-        )
     }
 
     private func applyDailyLimitShields(

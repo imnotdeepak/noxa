@@ -25,20 +25,6 @@ private enum NoxaMonitorActivity {
     static let scheduleRelaxationActivityPrefix = "noxa.schedule.relax."
     static let pomodoroWorkActivityPrefix = "noxa.pomodoro.work."
 
-    static let dailyLimitUsedMinutesKey = "noxa.dailyLimitUsedMinutes"
-    static let dailyLimitUsageEventPrefix = "noxa.daily.usage."
-
-    static func dailyLimitEventPrefix() -> String {
-        "noxa.daily.limit."
-    }
-
-    /// Parses "noxa.daily.usage.<id>.<minute>" into the limit and minute.
-    static func dailyLimitUsage(from event: DeviceActivityEvent.Name) -> (id: String, minute: Int)? {
-        guard event.rawValue.hasPrefix(dailyLimitUsageEventPrefix) else { return nil }
-        let parts = event.rawValue.dropFirst(dailyLimitUsageEventPrefix.count).split(separator: ".")
-        guard parts.count == 2, let minute = Int(parts[1]) else { return nil }
-        return (String(parts[0]), minute)
-    }
 
     static func dailyLimitDayStamp(for date: Date = Date(), calendar: Calendar = .autoupdatingCurrent) -> String {
         let components = calendar.dateComponents([.era, .year, .month, .day], from: date)
@@ -213,12 +199,19 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
             recordDailyLimitCallback("interval-start")
             let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa")
             let today = NoxaMonitorActivity.dailyLimitDayStamp()
-            if defaults?.string(forKey: NoxaMonitorActivity.dailyLimitResetDayKey) != today {
+            if let defaults, defaults.string(forKey: NoxaMonitorActivity.dailyLimitResetDayKey) != today {
+                // A limit re-armed yesterday was registered for only its
+                // remaining minutes, so it needs its full allowance back.
+                let wasRearmed = !(defaults.dictionary(forKey: DailyLimitEvents.baselinesKey) ?? [:]).isEmpty
                 dailyLimitSettingsStore.clearAllSettings()
-                defaults?.removeObject(forKey: NoxaMonitorActivity.dailyLimitReachedEventsKey)
-                defaults?.removeObject(forKey: NoxaMonitorActivity.dailyLimitUsedMinutesKey)
-                defaults?.set(today, forKey: NoxaMonitorActivity.dailyLimitResetDayKey)
+                defaults.removeObject(forKey: NoxaMonitorActivity.dailyLimitReachedEventsKey)
+                defaults.removeObject(forKey: DailyLimitEvents.rearmsKey)
+                clearDailyLimitRegistrationState(defaults)
+                defaults.set(today, forKey: NoxaMonitorActivity.dailyLimitResetDayKey)
                 logger.info("Reset daily limit shields for a new day")
+                if wasRearmed {
+                    rearmDailyLimits(baselines: [:], countsTowardDailyCap: false, defaults: defaults)
+                }
             } else {
                 logger.info("Restarted daily limit monitoring without resetting today's reached limits")
             }
@@ -243,12 +236,7 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
     ) {
         super.eventDidReachThreshold(event, activity: activity)
         if activity == NoxaMonitorActivity.dailyLimitActivityName {
-            if let usage = NoxaMonitorActivity.dailyLimitUsage(from: event) {
-                recordDailyLimitUsage(id: usage.id, minute: usage.minute)
-                return
-            }
-            recordDailyLimitCallback("reached", event: event)
-            applyDailyLimitShield(for: event)
+            handleDailyLimitCallback(event)
         } else {
             applyPersistedShield(reason: "threshold reached")
         }
@@ -260,17 +248,142 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
     ) {
         super.eventWillReachThresholdWarning(event, activity: activity)
         guard activity == NoxaMonitorActivity.dailyLimitActivityName,
-              NoxaMonitorActivity.dailyLimitUsage(from: event) == nil else { return }
+              case .reached(let id, let generation)? = DailyLimitEvents.parse(event),
+              let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa"),
+              generation == defaults.integer(forKey: DailyLimitEvents.generationKey) else { return }
         recordDailyLimitCallback("warning", event: event)
-        sendDailyLimitWarning(for: event)
+        sendDailyLimitWarning(forLimitID: id)
     }
 
-    private func recordDailyLimitUsage(id: String, minute: Int) {
+    /// Blocks a limit only once DailyLimitCallbackVerifier trusts its
+    /// callback. See that type for what a callback is checked against.
+    private func handleDailyLimitCallback(_ event: DeviceActivityEvent.Name) {
         guard let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa") else { return }
-        var used = defaults.dictionary(forKey: NoxaMonitorActivity.dailyLimitUsedMinutesKey) as? [String: Int] ?? [:]
-        guard minute > used[id, default: 0] else { return }
-        used[id] = minute
-        defaults.set(used, forKey: NoxaMonitorActivity.dailyLimitUsedMinutesKey)
+        guard let callback = DailyLimitEvents.parse(event) else {
+            logger.error("Ignored unrecognised daily limit event \(event.rawValue, privacy: .public)")
+            return
+        }
+        let now = Date()
+        let limits = loadDailyLimitConfigurations(defaults)
+            .filter(\.isEnabled)
+            .map { DailyLimitEvents.Limit(id: $0.id.uuidString.lowercased(), minutes: $0.dailyLimitMinutes) }
+        let state = loadDailyLimitState(defaults, now: now)
+        let action = DailyLimitCallbackVerifier.decide(callback, state: state, limits: limits, now: now)
+
+        switch action {
+        case .recordUsage(let id, let minute):
+            var times = state.usageTimes
+            times[id, default: [:]][minute] = now
+            saveDailyLimitUsageTimes(times, defaults: defaults)
+            var used = defaults.dictionary(forKey: DailyLimitEvents.usedMinutesKey) as? [String: Int] ?? [:]
+            used[id] = max(used[id, default: 0], minute)
+            defaults.set(used, forKey: DailyLimitEvents.usedMinutesKey)
+            recordDailyLimitCallback("usage", event: event)
+        case .ignoreStale:
+            recordDailyLimitCallback("stale", event: event)
+        case .ignoreDuplicate, .ignoreUnknown:
+            break
+        case .block(let id):
+            recordDailyLimitCallback("reached", event: event)
+            applyDailyLimitShield(forLimitID: id, defaults: defaults)
+        case .reject(let id):
+            recordDailyLimitCallback("rejected", event: event)
+            logger.error("Left daily limit \(id, privacy: .public) unblocked: callback could not be verified")
+        case .rearm(let baselines):
+            recordDailyLimitCallback("rejected-rearm", event: event)
+            rearmDailyLimits(baselines: baselines, countsTowardDailyCap: true, defaults: defaults)
+        }
+    }
+
+    private func loadDailyLimitConfigurations(_ defaults: UserDefaults) -> [PersistedDailyLimitConfiguration] {
+        guard let data = defaults.data(forKey: "noxa.dailyLimits") else { return [] }
+        return (try? JSONDecoder().decode([PersistedDailyLimitConfiguration].self, from: data)) ?? []
+    }
+
+    private func loadDailyLimitState(_ defaults: UserDefaults, now: Date) -> DailyLimitCallbackVerifier.State {
+        var state = DailyLimitCallbackVerifier.State()
+        state.generation = defaults.integer(forKey: DailyLimitEvents.generationKey)
+        let prefix = DailyLimitEvents.reachedPrefix
+        state.reachedIDs = Set((defaults.stringArray(forKey: NoxaMonitorActivity.dailyLimitReachedEventsKey) ?? [])
+            .filter { $0.hasPrefix(prefix) }
+            .map { String($0.dropFirst(prefix.count)) })
+        state.baselines = defaults.dictionary(forKey: DailyLimitEvents.baselinesKey) as? [String: Int] ?? [:]
+        // Plist keys must be strings, so minutes are stored as text.
+        let stored = defaults.dictionary(forKey: DailyLimitEvents.usageTimesKey) as? [String: [String: Double]] ?? [:]
+        let calendar = Calendar.autoupdatingCurrent
+        for (id, minutes) in stored {
+            for (minute, time) in minutes {
+                let date = Date(timeIntervalSince1970: time)
+                guard let minute = Int(minute), calendar.isDate(date, inSameDayAs: now) else { continue }
+                state.usageTimes[id, default: [:]][minute] = date
+            }
+        }
+        let today = NoxaMonitorActivity.dailyLimitDayStamp(for: now)
+        let rearms = (defaults.string(forKey: DailyLimitEvents.rearmsKey) ?? "").split(separator: "|")
+        if rearms.count == 2, rearms[0] == today { state.rearmsToday = Int(rearms[1]) ?? 0 }
+        return state
+    }
+
+    private func saveDailyLimitUsageTimes(_ times: [String: [Int: Date]], defaults: UserDefaults) {
+        let stored = times.mapValues { minutes in
+            Dictionary(uniqueKeysWithValues: minutes.map { (String($0.key), $0.value.timeIntervalSince1970) })
+        }
+        defaults.set(stored, forKey: DailyLimitEvents.usageTimesKey)
+    }
+
+    private func clearDailyLimitRegistrationState(_ defaults: UserDefaults) {
+        defaults.removeObject(forKey: DailyLimitEvents.usedMinutesKey)
+        defaults.removeObject(forKey: DailyLimitEvents.usageTimesKey)
+        defaults.removeObject(forKey: DailyLimitEvents.baselinesKey)
+    }
+
+    /// Registers every enabled limit again under a new generation, each
+    /// counting only the minutes it has left after `baselines`. Reached
+    /// limits stay blocked and are registered in full for tomorrow.
+    private func rearmDailyLimits(
+        baselines: [String: Int],
+        countsTowardDailyCap: Bool,
+        defaults: UserDefaults
+    ) {
+        let enabled = loadDailyLimitConfigurations(defaults).filter(\.isEnabled)
+        guard !enabled.isEmpty else { return }
+        let generation = defaults.integer(forKey: DailyLimitEvents.generationKey) + 1
+        let credited = baselines.filter { $0.value > 0 }
+        let limits = enabled.map { configuration in
+            let id = configuration.id.uuidString.lowercased()
+            return (
+                DailyLimitEvents.Limit(id: id, minutes: configuration.dailyLimitMinutes),
+                configuration.selection,
+                credited[id] ?? 0
+            )
+        }
+
+        defaults.set(generation, forKey: DailyLimitEvents.generationKey)
+        clearDailyLimitRegistrationState(defaults)
+        if !credited.isEmpty {
+            defaults.set(credited, forKey: DailyLimitEvents.baselinesKey)
+            defaults.set(credited, forKey: DailyLimitEvents.usedMinutesKey)
+        }
+        if countsTowardDailyCap {
+            let today = NoxaMonitorActivity.dailyLimitDayStamp()
+            let count = loadDailyLimitState(defaults, now: Date()).rearmsToday + 1
+            defaults.set("\(today)|\(count)", forKey: DailyLimitEvents.rearmsKey)
+        }
+
+        let center = DeviceActivityCenter()
+        center.stopMonitoring([NoxaMonitorActivity.dailyLimitActivityName])
+        do {
+            try center.startMonitoring(
+                NoxaMonitorActivity.dailyLimitActivityName,
+                during: DailyLimitEvents.schedule,
+                events: DailyLimitEvents.events(for: limits, generation: generation)
+            )
+            recordDailyLimitCallback("rearmed-g\(generation)")
+            logger.info("Re-armed daily limits as generation \(generation)")
+        } catch {
+            // The app re-registers a monitor that is missing on its next launch.
+            logger.error("Could not re-arm daily limits: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     private func recordDailyLimitCallback(
@@ -282,7 +395,7 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         let key = "noxa.debug.dailyLimitCallbacks"
         var entries = defaults.stringArray(forKey: key) ?? []
         entries.append("\(Date().timeIntervalSince1970)|\(kind)|\(event?.rawValue ?? "")")
-        defaults.set(Array(entries.suffix(30)), forKey: key)
+        defaults.set(Array(entries.suffix(200)), forKey: key)
         #endif
     }
 
@@ -302,9 +415,8 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         #endif
     }
 
-    private func sendDailyLimitWarning(for event: DeviceActivityEvent.Name) {
-        guard let idText = event.rawValue.split(separator: ".").last,
-              let id = UUID(uuidString: String(idText)),
+    private func sendDailyLimitWarning(forLimitID idText: String) {
+        guard let id = UUID(uuidString: idText),
               let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa"),
               let data = defaults.data(forKey: "noxa.dailyLimits"),
               let configurations = try? JSONDecoder().decode(
@@ -317,7 +429,7 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         let identifier = "noxa.daily.warning.\(id.uuidString.lowercased()).\(today)"
         guard !defaults.bool(forKey: identifier),
               !(defaults.stringArray(forKey: NoxaMonitorActivity.dailyLimitReachedEventsKey) ?? [])
-                .contains(event.rawValue) else { return }
+                .contains(DailyLimitEvents.canonicalReachedName(id: idText)) else { return }
         defaults.set(true, forKey: identifier)
 
         let content = UNMutableNotificationContent()
@@ -597,27 +709,24 @@ final class NoxaMonitorExtension: DeviceActivityMonitor {
         logger.info("Applied monitor shield: \(reason, privacy: .public)")
     }
 
-    private func applyDailyLimitShield(for event: DeviceActivityEvent.Name) {
-        guard let defaults = UserDefaults(suiteName: "group.LycheeCorp.Noxa"),
-              let data = defaults.data(forKey: "noxa.dailyLimits"),
-              let configurations = try? JSONDecoder().decode([PersistedDailyLimitConfiguration].self, from: data) else {
-            logger.error("Could not load a daily limit for monitor event \(event.rawValue, privacy: .public)")
-            return
-        }
-
+    private func applyDailyLimitShield(forLimitID id: String, defaults: UserDefaults) {
+        let configurations = loadDailyLimitConfigurations(defaults)
         var reachedEvents = Set(defaults.stringArray(forKey: NoxaMonitorActivity.dailyLimitReachedEventsKey) ?? [])
-        reachedEvents.insert(event.rawValue)
+        reachedEvents.insert(DailyLimitEvents.canonicalReachedName(id: id))
         defaults.set(Array(reachedEvents), forKey: NoxaMonitorActivity.dailyLimitReachedEventsKey)
+        var used = defaults.dictionary(forKey: DailyLimitEvents.usedMinutesKey) as? [String: Int] ?? [:]
+        used[id] = configurations.first { $0.id.uuidString.lowercased() == id }?.dailyLimitMinutes
+        defaults.set(used, forKey: DailyLimitEvents.usedMinutesKey)
 
         let reachedConfigurations = configurations.filter { configuration in
             configuration.isEnabled
                 && reachedEvents.contains(
-                    "\(NoxaMonitorActivity.dailyLimitEventPrefix())\(configuration.id.uuidString.lowercased())"
+                    DailyLimitEvents.canonicalReachedName(id: configuration.id.uuidString.lowercased())
                 )
         }
 
         guard !reachedConfigurations.isEmpty else {
-            logger.error("Could not find an enabled daily limit for monitor event \(event.rawValue, privacy: .public)")
+            logger.error("Could not find an enabled daily limit \(id, privacy: .public)")
             return
         }
 
