@@ -5,5 +5,5 @@ browser.runtime.onMessage.addListener((message) => {
   if (!types.includes(message?.type)) return undefined;
   return browser.runtime.sendNativeMessage("LycheeCorp.Noxa", message)
     .then((response) => ({ enabled: response?.enabled === true }))
-    .catch(() => ({ enabled: false }));
+    .catch(() => ({ enabled: false, retry: true }));
 });

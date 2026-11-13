@@ -32,17 +32,38 @@
   const style = document.createElement("style");
   style.textContent = `${hiddenSelector} { display: none !important; }`;
   let enabled = false;
+  let retryTimer;
+  let retryDelay = 1000;
+
+  function scheduleRetry() {
+    if (retryTimer !== undefined) return;
+    retryTimer = setTimeout(() => {
+      retryTimer = undefined;
+      refreshPermission();
+    }, retryDelay);
+    retryDelay = Math.min(retryDelay * 2, 10_000);
+  }
 
   async function refreshPermission() {
     let nextEnabled = false;
+    let shouldRetry = false;
     try {
       const response = await browser.runtime.sendMessage({
         type: "noxa.youtube.filterState",
         host
       });
       nextEnabled = response?.enabled === true;
+      shouldRetry = response?.retry === true || response?.enabled === undefined;
     } catch {
-      // When Safari or native messaging is unavailable, leave YouTube alone.
+      // A cold Safari extension can miss its first native response.
+      shouldRetry = true;
+    }
+    if (shouldRetry) {
+      scheduleRetry();
+    } else {
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
+      retryTimer = undefined;
+      retryDelay = 1000;
     }
     if (nextEnabled === enabled) return;
     enabled = nextEnabled;
@@ -111,7 +132,13 @@
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });
   window.addEventListener("popstate", updateRoute);
-  window.addEventListener("pageshow", updateRoute);
+  window.addEventListener("pageshow", () => {
+    refreshPermission();
+    updateRoute();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") refreshPermission();
+  });
   // YouTube navigates without reloading the page.
   window.addEventListener("yt-navigate-finish", updateRoute);
   refreshPermission();
