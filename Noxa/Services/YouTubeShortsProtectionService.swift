@@ -17,8 +17,8 @@ enum YouTubeShortsProtectionService {
         named: ManagedSettingsStore.Name("noxa.youtube.app-block")
     )
 
-    /// Lets the block work without the picker. Choosing the app in Apple's
-    /// picker still replaces it, in case this ID ever stops matching.
+    /// Block by app ID even without the picker. A selected app token is also
+    /// applied, so either identifier can match the installed YouTube app.
     static let youtubeBundleIdentifier = "com.google.ios.youtube"
 
     static var isAppBlockApplied: Bool {
@@ -83,10 +83,14 @@ enum YouTubeShortsProtectionService {
     }
 
     static func blockedApps(for selection: FamilyActivitySelection?) -> Set<Application> {
+        // Keep the known YouTube app ID in the block even when a saved picker
+        // token no longer matches the installed app (for example after an
+        // account or device restore).
+        var apps: Set<Application> = [Application(bundleIdentifier: youtubeBundleIdentifier)]
         if let token = selection?.applicationTokens.first {
-            return [Application(token: token)]
+            apps.insert(Application(token: token))
         }
-        return [Application(bundleIdentifier: youtubeBundleIdentifier)]
+        return apps
     }
 
     private static func scheduleExpiryRelease(for expiry: Date) throws {
