@@ -32,6 +32,29 @@ struct SettingsSupportLinksView: View {
 
             settingsDivider
 
+            HStack(spacing: 14) {
+                Image(systemName: "envelope.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(NoxaTheme.accent)
+                    .frame(width: 30, height: 30)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Email support")
+                        .font(NoxaTheme.font(17, weight: .semibold))
+                        .foregroundStyle(NoxaTheme.primaryText)
+                    Text("support@lycheecorp.com")
+                        .font(NoxaType.subheadline)
+                        .foregroundStyle(NoxaTheme.secondaryText)
+                        .textSelection(.enabled)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+
+            settingsDivider
+
             SettingsExternalLink(
                 title: "Terms of Use",
                 icon: "doc.text.fill",
