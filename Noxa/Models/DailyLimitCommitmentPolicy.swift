@@ -34,8 +34,8 @@ enum WeeklyCommitment {
     }
 }
 
-/// Daily limits use the weekly cycle. Stricter changes (a lower allowance,
-/// turning a limit on) are always allowed.
+/// Daily limits use the weekly cycle. Their allowance stays fixed during
+/// the locked week; only the change window permits a new duration.
 enum DailyLimitCommitmentPolicy {
     typealias State = WeeklyCommitment.State
 
@@ -56,10 +56,10 @@ enum DailyLimitCommitmentPolicy {
         to minutes: Int,
         at date: Date
     ) -> Bool {
-        lockedUntil(configuration, at: date) == nil || minutes <= configuration.dailyLimitMinutes
+        lockedUntil(configuration, at: date) == nil || minutes == configuration.dailyLimitMinutes
     }
 
     static func lockedMessage(until end: Date) -> String {
-        "This limit is locked until \(end.formatted(date: .abbreviated, time: .shortened)). You can lower it now, or change it once the week is up."
+        "This limit is locked until \(end.formatted(date: .abbreviated, time: .shortened)). You can change its allowance when the change window opens."
     }
 }

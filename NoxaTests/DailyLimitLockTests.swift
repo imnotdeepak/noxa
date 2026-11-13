@@ -39,10 +39,12 @@ struct DailyLimitLockTests {
         #expect(DailyLimitCommitmentPolicy.lockedUntil(saved, at: anchor - day) == anchor + 7 * day)
     }
 
-    @Test func onlyLowerAllowancesWhileLocked() {
+    @Test func allowanceCannotChangeWhileLocked() {
         let saved = limit(anchor: anchor, minutes: 30)
-        #expect(DailyLimitCommitmentPolicy.canChangeMinutes(of: saved, to: 15, at: anchor + day))
+        #expect(!DailyLimitCommitmentPolicy.canChangeMinutes(of: saved, to: 15, at: anchor + day))
         #expect(!DailyLimitCommitmentPolicy.canChangeMinutes(of: saved, to: 45, at: anchor + day))
+        #expect(DailyLimitCommitmentPolicy.canChangeMinutes(of: saved, to: 30, at: anchor + day))
+        #expect(DailyLimitCommitmentPolicy.canChangeMinutes(of: saved, to: 15, at: anchor + 7.5 * day))
         #expect(DailyLimitCommitmentPolicy.canChangeMinutes(of: saved, to: 45, at: anchor + 7.5 * day))
     }
 
@@ -71,7 +73,7 @@ struct DailyLimitLockTests {
         #expect(service.hasLockedLimits)
 
         service.updateMinutes(15, for: locked)
-        #expect(try store.loadDailyLimitConfigurations().first?.dailyLimitMinutes == 15)
+        #expect(try store.loadDailyLimitConfigurations().first?.dailyLimitMinutes == 30)
     }
 
     @Test @MainActor func changeWindowAllowsEverything() throws {

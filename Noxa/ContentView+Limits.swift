@@ -60,7 +60,7 @@ extension ContentView {
                     }
                 }
             } message: {
-                Text("Until \(Date().addingTimeInterval(DailyLimitCommitmentPolicy.lockDuration).formatted(date: .abbreviated, time: .omitted)) you can lower it but not raise, turn off or remove it. Then you get one day to change it before it locks for another week.")
+                Text("Until \(Date().addingTimeInterval(DailyLimitCommitmentPolicy.lockDuration).formatted(date: .abbreviated, time: .omitted)) you can't change this allowance, turn it off, or remove it. Then you get one day to make changes before it locks for another week.")
             }
         }
         .preferredColorScheme(.dark)
@@ -183,7 +183,7 @@ extension ContentView {
         VStack(alignment: .leading, spacing: 12) {
             limitsSectionHeader(
                 "Daily app limits",
-                info: "Give apps a daily allowance. Counting starts when Noxa begins monitoring and resets each day. Each limit locks for a week: you can lower it, but not raise, turn off or remove it. After the week you get one day to change it, then it locks again. "
+                info: "Give apps a daily allowance. Counting starts when Noxa begins monitoring and resets each day. Each limit locks for a week: its allowance can't change, and it can't be turned off or removed. After the week you get one day to make changes, then it locks again. "
                     + (notifications.canSchedule
                        ? "Noxa alerts you about five minutes before a limit, though iOS may deliver it late."
                        : "Turn on notifications to get an alert before a limit is reached."),
@@ -321,7 +321,7 @@ extension ContentView {
                                 dailyLimits.updateMinutes(minutes, for: saved)
                             }
                             .buttonStyle(NoxaDurationButtonStyle(isSelected: saved.dailyLimitMinutes == minutes))
-                            .disabled(lockedUntil != nil && minutes > saved.dailyLimitMinutes)
+                            .disabled(lockedUntil != nil && minutes != saved.dailyLimitMinutes)
                         }
                     }
 
