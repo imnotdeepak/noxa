@@ -29,12 +29,11 @@ struct NoxaPactView: View {
             ZStack {
                 NoxaTheme.background.ignoresSafeArea()
 
-                // The whole screen turns lime: rising from the bottom, or
-                // fading in when Reduce Motion is on.
+                // The whole screen turns lime at once, brightening evenly
+                // over the hold.
                 NoxaTheme.accent
                     .ignoresSafeArea()
-                    .scaleEffect(x: 1, y: reduceMotion ? 1 : max(fill, 0.001), anchor: .bottom)
-                    .opacity(reduceMotion ? fill : (fill > 0 ? 1 : 0))
+                    .opacity(fill)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
 
@@ -60,10 +59,10 @@ struct NoxaPactView: View {
     }
 
     private func content(fill: CGFloat) -> some View {
-        // How far each area has turned dark, 0...1, so text fades to black
-        // as the lime passes behind it instead of switching at once.
-        let top = fade(fill, from: reduceMotion ? 0.3 : 0.62, to: reduceMotion ? 0.7 : 0.86)
-        let bottom = fade(fill, from: reduceMotion ? 0.3 : 0.04, to: reduceMotion ? 0.7 : 0.2)
+        // How far the text has turned dark, 0...1, so it fades to black
+        // as the lime behind it brightens instead of switching at once.
+        let top = fade(fill, from: 0.3, to: 0.7)
+        let bottom = top
         return VStack(spacing: 0) {
             VStack(spacing: 14) {
                 Text("THE NOXA PACT")
@@ -87,10 +86,12 @@ struct NoxaPactView: View {
             }
             .padding(.horizontal, 28)
             .padding(.top, 48)
+            .onboardingFadeUp()
 
             Spacer(minLength: 24)
 
             holdButton(fill: fill)
+                .onboardingFadeUp(delay: 0.08)
 
             Spacer(minLength: 24)
 
@@ -102,6 +103,7 @@ struct NoxaPactView: View {
                 .opacity(isComplete ? 0 : 1)
                 .padding(.horizontal, 24)
                 .padding(.bottom, 32)
+                .onboardingFadeUp(delay: 0.16)
         }
     }
 

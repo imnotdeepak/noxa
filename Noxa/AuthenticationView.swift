@@ -58,6 +58,7 @@ struct AuthenticationView: View {
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)
+                .onboardingFadeUp()
 
                 VStack(spacing: 18) {
                     Picker("Authentication mode", selection: $mode) {
@@ -180,8 +181,10 @@ struct AuthenticationView: View {
                     RoundedRectangle(cornerRadius: 26, style: .continuous)
                         .stroke(NoxaTheme.border, lineWidth: 1)
                 }
+                .onboardingFadeUp(delay: 0.08)
 
                 LegalLinksView()
+                    .onboardingFadeUp(delay: 0.16)
             }
             .padding(.horizontal, 40)
             .padding(.vertical, 20)

@@ -22,6 +22,10 @@ struct OnboardingEstimateStep: View {
                 subtitle: "Think social feeds, videos, games, or browsing you wish you'd spent differently."
             )
 
+            // The number and slider sit centered in the space below the
+            // heading.
+            Spacer(minLength: 24)
+
             VStack(spacing: 4) {
                 Text(TimeProjection.label(minutes: wholeMinutes))
                     .font(NoxaType.display(80))
@@ -35,7 +39,6 @@ struct OnboardingEstimateStep: View {
                     .foregroundStyle(NoxaTheme.secondaryText)
             }
             .frame(maxWidth: .infinity)
-            .padding(.top, 24)
             .accessibilityHidden(true)
 
             VStack(spacing: 8) {
@@ -62,6 +65,8 @@ struct OnboardingEstimateStep: View {
                 .accessibilityHidden(true)
             }
             .padding(.top, 8)
+
+            Spacer(minLength: 24)
         } actions: {
             OnboardingPrimaryButton("See my time") {
                 if onboarding.saveEstimate(minutesPerDay: wholeMinutes) { onContinue() }
@@ -101,7 +106,7 @@ struct OnboardingProjectionStep: View {
     private static let whereYouCouldBe = "Where you could be"
 
     var body: some View {
-        OnboardingScaffold(eyebrow: "Your time, visualized", onBack: onBack) {
+        OnboardingScaffold(eyebrow: "Your time, visualized", onBack: onBack, topSpacing: 28) {
             OnboardingHeading(title: "Small moments add up.")
 
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -246,6 +251,7 @@ struct OnboardingGoalsStep: View {
             OnboardingOptionList(
                 options: OnboardingGoal.allCases,
                 title: \.rawValue,
+                symbol: \.symbol,
                 isSelected: { selected.contains($0) },
                 toggle: { goal in
                     selected.formSymmetricDifference([goal])
@@ -285,6 +291,7 @@ struct OnboardingCategoriesStep: View {
             OnboardingOptionList(
                 options: OnboardingDistraction.allCases,
                 title: \.rawValue,
+                symbol: \.symbol,
                 isSelected: { selected.contains($0) },
                 toggle: { distraction in
                     selected.formSymmetricDifference([distraction])

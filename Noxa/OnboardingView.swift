@@ -5,9 +5,7 @@ import UIKit
 /// Step 1. The brand promise, then either a new setup or sign-in. Signing in
 /// never clears an unowned draft; it is adopted by the account.
 struct OnboardingWelcomeView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var onboarding: OnboardingService
-    @State private var revealsDetails = false
     var onGetStarted: (() -> Void)? = nil
 
     var body: some View {
@@ -26,6 +24,7 @@ struct OnboardingWelcomeView: View {
                     .tracking(-1)
             }
             .frame(maxWidth: .infinity)
+            .onboardingFadeUp()
 
             VStack(spacing: 14) {
                 Text("Your attention belongs to you.")
@@ -41,8 +40,7 @@ struct OnboardingWelcomeView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.top, 32)
-            .opacity(revealsDetails ? 1 : 0)
-            .offset(y: revealsDetails ? 0 : 16)
+            .onboardingFadeUp(delay: 0.08)
 
             Spacer()
 
@@ -59,22 +57,14 @@ struct OnboardingWelcomeView: View {
                     }
                 }
             }
+            .onboardingFadeUp(delay: 0.16)
         }
         .padding(.horizontal, 28)
         .padding(.vertical, 20)
         .font(OnboardingType.body)
         .foregroundStyle(NoxaTheme.primaryText)
-        .background(NoxaOnboardingBackground())
+        .background(OnboardingBackdrop())
         .preferredColorScheme(.dark)
-        .onAppear {
-            if reduceMotion {
-                revealsDetails = true
-            } else {
-                withAnimation(.easeOut(duration: 0.5).delay(0.1)) {
-                    revealsDetails = true
-                }
-            }
-        }
     }
 }
 
@@ -91,6 +81,7 @@ struct ReturningUserView: View {
                 .scaledToFit()
                 .frame(maxWidth: 220, maxHeight: 112)
                 .accessibilityHidden(true)
+                .onboardingFadeUp()
 
             VStack(spacing: 12) {
                 Text(welcomeTitle)
@@ -110,6 +101,7 @@ struct ReturningUserView: View {
                 }
             }
             .padding(.top, 28)
+            .onboardingFadeUp(delay: 0.08)
 
             Spacer()
 
@@ -127,6 +119,7 @@ struct ReturningUserView: View {
                 }
                 .buttonStyle(NoxaSecondaryButtonStyle())
             }
+            .onboardingFadeUp(delay: 0.16)
         }
         .padding(.horizontal, 40)
         .padding(.vertical, 24)
@@ -151,6 +144,7 @@ struct ReturningUserView: View {
 /// the user back to the step that repairs it rather than past it.
 struct OnboardingView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var onboarding: OnboardingService
     @EnvironmentObject private var authentication: AuthenticationService
     @EnvironmentObject private var restrictions: ScreenTimeRestrictionService
@@ -169,14 +163,29 @@ struct OnboardingView: View {
 
     var body: some View {
         ZStack {
-            NoxaBackground()
+            OnboardingBackdrop()
             if let current = guardedStep {
                 stepView(current)
                     .id(current)
+                    // The old page clears quickly so the next one, which
+                    // fades up on its own, takes over without a wait.
+                    .transition(.asymmetric(
+                        insertion: .opacity,
+                        removal: .opacity.animation(.easeOut(duration: 0.12))
+                    ))
+            }
+        }
+        .overlay(alignment: .top) {
+            if let fraction = progressFraction {
+                // Centered in the steps' 44 pt top bar, where the wordmark was.
+                OnboardingProgressBar(fraction: fraction)
+                    .frame(width: OnboardingProgressBar.width)
+                    .padding(.top, (44 - OnboardingProgressBar.height) / 2)
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: guardedStep)
+        // Each page fades upward on its own; Reduce Motion swaps at once.
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: guardedStep)
         .preferredColorScheme(.dark)
         .onAppear {
             guard step == nil else { return }
@@ -207,6 +216,13 @@ struct OnboardingView: View {
             }
             .preferredColorScheme(.dark)
         }
+    }
+
+    /// How far through setup the current step is. Hidden on screens with
+    /// their own layout: account creation and the Pact.
+    private var progressFraction: Double? {
+        guard let current = guardedStep, current != .account, current != .pact else { return nil }
+        return Double(current.rawValue + 1) / Double(OnboardingStep.allCases.count)
     }
 
     private var hasSubscription: Bool {

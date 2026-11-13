@@ -476,6 +476,11 @@ struct OnboardingSubscriptionStep: View {
                 RoundedRectangle(cornerRadius: NoxaTheme.Radius.control, style: .continuous)
                     .stroke(isSelected ? NoxaTheme.accent : NoxaTheme.border, lineWidth: isSelected ? 1.5 : 1)
             }
+            .overlay {
+                if isSelected {
+                    OnboardingSelectionOrbit(cornerRadius: NoxaTheme.Radius.control)
+                }
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
